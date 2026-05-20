@@ -22,6 +22,22 @@ public class Response<T> {
         return Response.<T>builder().status("SUCCESS").payload(payload).message(message).build();
     }
 
+    public static <T> Response<T> ok(T payload, String message) {
+        return Response.<T>builder().status("SUCCESS").payload(payload).message(message).build();
+    }
+
+    public static <T> Response<T> ok(T payload) {
+        return Response.<T>builder().status("SUCCESS").payload(payload).build();
+    }
+
+    public static <T> Response<T> created(T payload, String message) {
+        return Response.<T>builder().status("CREATED").payload(payload).message(message).build();
+    }
+
+    public static <T> Response<T> created(T payload) {
+        return Response.<T>builder().status("CREATED").payload(payload).build();
+    }
+
     public static <T> Response<T> error(String message) {
         return Response.<T>builder().status("ERROR").message(message).build();
     }
