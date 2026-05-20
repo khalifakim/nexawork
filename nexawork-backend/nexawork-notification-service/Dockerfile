@@ -1,5 +1,13 @@
+# Build stage
+FROM maven:3.9-eclipse-temurin-21-alpine AS builder
+WORKDIR /app
+COPY pom.xml .
+COPY src ./src
+RUN mvn package -DskipTests --no-transfer-progress
+
+# Run stage
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
-COPY target/nexawork-notification-service-*.jar app.jar
+COPY --from=builder /app/target/*.jar app.jar
 EXPOSE 8085
 ENTRYPOINT ["java", "-jar", "app.jar"]
