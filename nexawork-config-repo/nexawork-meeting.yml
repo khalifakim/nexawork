@@ -1,0 +1,20 @@
+server:
+  port: 8084
+  servlet:
+    context-path: /nexawork-meeting-api-v1
+
+spring:
+  application:
+    name: nexawork-meeting
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:5432/${DB_NAME:nexawork_meeting_db}
+    username: ${DB_USERNAME:nexawork}
+    password: ${DB_PASSWORD:nexawork_pass}
+  flyway:
+    locations: classpath:db/migration
+
+nexawork:
+  jitsi:
+    app-id: ${JITSI_APP_ID:nexawork}
+    secret: ${JITSI_SECRET:jitsi_secret_change_in_prod}
+    url: ${JITSI_URL:https://localhost:8443}

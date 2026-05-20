@@ -1,0 +1,18 @@
+server:
+  port: 8081
+  servlet:
+    context-path: /nexawork-auth-api-v1
+
+spring:
+  application:
+    name: nexawork-auth
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:5432/${DB_NAME:nexawork_auth_db}
+    username: ${DB_USERNAME:nexawork}
+    password: ${DB_PASSWORD:nexawork_pass}
+  flyway:
+    locations: classpath:db/migration
+
+nexawork:
+  jwt:
+    refresh-token-validity-in-days: 7

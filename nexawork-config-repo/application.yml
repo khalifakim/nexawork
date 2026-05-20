@@ -1,0 +1,50 @@
+# Configuration commune à tous les microservices NexaWork
+# Chaque service peut surcharger ces valeurs dans son fichier dédié
+
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+      naming:
+        physical-strategy: org.hibernate.boot.model.naming.PhysicalNamingStrategyStandardImpl
+    show-sql: false
+    open-in-view: false
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+
+  threads:
+    virtual:
+      enabled: true
+
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: 5672
+    username: nexawork
+    password: nexawork_pass
+
+nexawork:
+  jwt:
+    base64-secret: ${JWT_SECRET:bmV4YXdvcmtfc2VjcmV0X2NoYW5nZV9pbl9wcm9k}
+    token-validity-in-seconds: 86400
+
+nexawork-cors:
+  allowed-origins: "${CORS_ORIGINS:http://localhost:4200}"
+  allowed-methods: "*"
+  allowed-headers: "*"
+  exposed-headers: "Authorization,Content-Disposition"
+  allow-credentials: true
+  max-age: 1800
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics

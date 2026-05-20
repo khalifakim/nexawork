@@ -1,0 +1,399 @@
+version: '3.9'
+
+services:
+
+  # ─── PostgreSQL ─────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:17
+    container_name: nexawork-postgres
+    environment:
+      POSTGRES_USER: nexawork
+      POSTGRES_PASSWORD: nexawork_pass
+      POSTGRES_DB: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-databases.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nexawork"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Redis ──────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: nexawork-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── RabbitMQ ───────────────────────────────────────────────────────────────
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: nexawork-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: nexawork
+      RABBITMQ_DEFAULT_PASS: nexawork_pass
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  # ─── MinIO ──────────────────────────────────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    container_name: nexawork-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: nexawork_minio
+      MINIO_ROOT_PASSWORD: nexawork_minio_secret
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  # ─── Config Server ──────────────────────────────────────────────────────────
+  config-server:
+    build: ./nexawork-backend/nexawork-config-server
+    container_name: nexawork-config-server
+    ports:
+      - "8888:8888"
+    environment:
+      CONFIG_REPO_PATH: /config-repo
+    volumes:
+      - ./nexawork-config-repo:/config-repo
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8888/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # ─── Auth Service ───────────────────────────────────────────────────────────
+  auth-service:
+    build: ./nexawork-backend/nexawork-auth-service
+    container_name: nexawork-auth-service
+    depends_on:
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+      config-server: { condition: service_healthy }
+    environment:
+      SPRING_CONFIG_IMPORT: "configserver:http://config-server:8888"
+      DB_HOST: postgres
+      DB_NAME: nexawork_auth_db
+      DB_USERNAME: nexawork
+      DB_PASSWORD: nexawork_pass
+      JWT_SECRET: ${JWT_SECRET:-bmV4YXdvcmtfc2VjcmV0X2NoYW5nZV9pbl9wcm9k}
+      RABBITMQ_HOST: rabbitmq
+    ports:
+      - "8081:8081"
+    networks:
+      - default
+
+  # ─── Project Service ────────────────────────────────────────────────────────
+  project-service:
+    build: ./nexawork-backend/nexawork-project-service
+    container_name: nexawork-project-service
+    depends_on:
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+      config-server: { condition: service_healthy }
+    environment:
+      SPRING_CONFIG_IMPORT: "configserver:http://config-server:8888"
+      DB_HOST: postgres
+      DB_NAME: nexawork_project_db
+      DB_USERNAME: nexawork
+      DB_PASSWORD: nexawork_pass
+      JWT_SECRET: ${JWT_SECRET:-bmV4YXdvcmtfc2VjcmV0X2NoYW5nZV9pbl9wcm9k}
+      RABBITMQ_HOST: rabbitmq
+    ports:
+      - "8082:8082"
+    networks:
+      - default
+
+  # ─── Messaging Service ──────────────────────────────────────────────────────
+  messaging-service:
+    build: ./nexawork-backend/nexawork-messaging-service
+    container_name: nexawork-messaging-service
+    depends_on:
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+      config-server: { condition: service_healthy }
+    environment:
+      SPRING_CONFIG_IMPORT: "configserver:http://config-server:8888"
+      DB_HOST: postgres
+      DB_NAME: nexawork_messaging_db
+      DB_USERNAME: nexawork
+      DB_PASSWORD: nexawork_pass
+      JWT_SECRET: ${JWT_SECRET:-bmV4YXdvcmtfc2VjcmV0X2NoYW5nZV9pbl9wcm9k}
+      RABBITMQ_HOST: rabbitmq
+    ports:
+      - "8083:8083"
+    networks:
+      - default
+
+  # ─── Meeting Service ────────────────────────────────────────────────────────
+  meeting-service:
+    build: ./nexawork-backend/nexawork-meeting-service
+    container_name: nexawork-meeting-service
+    depends_on:
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+      config-server: { condition: service_healthy }
+      jitsi-web:
+        condition: service_started
+    environment:
+      SPRING_CONFIG_IMPORT: "configserver:http://config-server:8888"
+      DB_HOST: postgres
+      DB_NAME: nexawork_meeting_db
+      DB_USERNAME: nexawork
+      DB_PASSWORD: nexawork_pass
+      JWT_SECRET: ${JWT_SECRET:-bmV4YXdvcmtfc2VjcmV0X2NoYW5nZV9pbl9wcm9k}
+      RABBITMQ_HOST: rabbitmq
+      JITSI_APP_ID: ${JITSI_APP_ID:-nexawork}
+      JITSI_SECRET: ${JITSI_SECRET:-jitsi_secret_change_in_prod}
+      JITSI_URL: https://localhost:8443
+    ports:
+      - "8084:8084"
+    networks:
+      - default
+
+  # ─── Notification Service ───────────────────────────────────────────────────
+  notification-service:
+    build: ./nexawork-backend/nexawork-notification-service
+    container_name: nexawork-notification-service
+    depends_on:
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      config-server: { condition: service_healthy }
+    environment:
+      SPRING_CONFIG_IMPORT: "configserver:http://config-server:8888"
+      DB_HOST: postgres
+      DB_NAME: nexawork_notification_db
+      DB_USERNAME: nexawork
+      DB_PASSWORD: nexawork_pass
+      JWT_SECRET: ${JWT_SECRET:-bmV4YXdvcmtfc2VjcmV0X2NoYW5nZV9pbl9wcm9k}
+      RABBITMQ_HOST: rabbitmq
+      REDIS_HOST: redis
+    ports:
+      - "8085:8085"
+    networks:
+      - default
+
+  # ─── File Service ───────────────────────────────────────────────────────────
+  file-service:
+    build: ./nexawork-backend/nexawork-file-service
+    container_name: nexawork-file-service
+    depends_on:
+      postgres: { condition: service_healthy }
+      minio: { condition: service_healthy }
+      config-server: { condition: service_healthy }
+    environment:
+      SPRING_CONFIG_IMPORT: "configserver:http://config-server:8888"
+      DB_HOST: postgres
+      DB_NAME: nexawork_file_db
+      DB_USERNAME: nexawork
+      DB_PASSWORD: nexawork_pass
+      JWT_SECRET: ${JWT_SECRET:-bmV4YXdvcmtfc2VjcmV0X2NoYW5nZV9pbl9wcm9k}
+      MINIO_URL: http://minio:9000
+      MINIO_ACCESS_KEY: nexawork_minio
+      MINIO_SECRET_KEY: nexawork_minio_secret
+    ports:
+      - "8086:8086"
+    networks:
+      - default
+
+  # ─── GED Service ────────────────────────────────────────────────────────────
+  ged-service:
+    build: ./nexawork-backend/nexawork-ged-service
+    container_name: nexawork-ged-service
+    depends_on:
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+      config-server: { condition: service_healthy }
+    environment:
+      SPRING_CONFIG_IMPORT: "configserver:http://config-server:8888"
+      DB_HOST: postgres
+      DB_NAME: nexawork_ged_db
+      DB_USERNAME: nexawork
+      DB_PASSWORD: nexawork_pass
+      JWT_SECRET: ${JWT_SECRET:-bmV4YXdvcmtfc2VjcmV0X2NoYW5nZV9pbl9wcm9k}
+      RABBITMQ_HOST: rabbitmq
+    ports:
+      - "8087:8087"
+    networks:
+      - default
+
+  # ─── API Gateway ────────────────────────────────────────────────────────────
+  api-gateway:
+    build: ./nexawork-backend/nexawork-api-gateway
+    container_name: nexawork-api-gateway
+    depends_on:
+      - auth-service
+      - project-service
+      - messaging-service
+      - meeting-service
+      - notification-service
+      - file-service
+      - ged-service
+    environment:
+      SPRING_CONFIG_IMPORT: "configserver:http://config-server:8888"
+      JWT_SECRET: ${JWT_SECRET:-bmV4YXdvcmtfc2VjcmV0X2NoYW5nZV9pbl9wcm9k}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:4200}
+    ports:
+      - "8080:8080"
+    networks:
+      - default
+
+  # ─── Jitsi Meet (4 conteneurs, réseau interne meet.jitsi) ───────────────────
+  jitsi-web:
+    image: jitsi/web:stable
+    container_name: nexawork-jitsi-web
+    restart: unless-stopped
+    ports:
+      - "8443:443"
+    environment:
+      - PUBLIC_URL=https://localhost:8443
+      - ENABLE_AUTH=1
+      - AUTH_TYPE=jwt
+      - JWT_APP_ID=${JITSI_APP_ID:-nexawork}
+      - JWT_APP_SECRET=${JITSI_SECRET:-jitsi_secret_change_in_prod}
+      - JWT_ACCEPTED_ISSUERS=${JITSI_APP_ID:-nexawork}
+      - JWT_ACCEPTED_AUDIENCES=${JITSI_APP_ID:-nexawork}
+      - ENABLE_LOBBY=1
+      - XMPP_SERVER=jitsi-prosody
+      - XMPP_BOSH_URL_BASE=http://jitsi-prosody:5280
+      - XMPP_DOMAIN=meet.jitsi
+      - XMPP_AUTH_DOMAIN=auth.meet.jitsi
+      - XMPP_MUC_DOMAIN=muc.meet.jitsi
+      - TZ=Africa/Dakar
+    volumes:
+      - jitsi_web_data:/config
+    networks:
+      - default
+      - meet.jitsi
+
+  jitsi-prosody:
+    image: jitsi/prosody:stable
+    container_name: nexawork-jitsi-prosody
+    restart: unless-stopped
+    expose:
+      - "5222"
+      - "5280"
+      - "5347"
+    environment:
+      - AUTH_TYPE=jwt
+      - JWT_APP_ID=${JITSI_APP_ID:-nexawork}
+      - JWT_APP_SECRET=${JITSI_SECRET:-jitsi_secret_change_in_prod}
+      - ENABLE_AUTH=1
+      - ENABLE_LOBBY=1
+      - XMPP_DOMAIN=meet.jitsi
+      - XMPP_AUTH_DOMAIN=auth.meet.jitsi
+      - XMPP_GUEST_DOMAIN=guest.meet.jitsi
+      - XMPP_MUC_DOMAIN=muc.meet.jitsi
+      - XMPP_INTERNAL_MUC_DOMAIN=internal-muc.meet.jitsi
+      - JICOFO_COMPONENT_SECRET=${JICOFO_COMPONENT_SECRET:-jicofo_secret_change_in_prod}
+      - JVB_AUTH_USER=jvb
+      - JVB_AUTH_PASSWORD=${JVB_AUTH_PASSWORD:-jvb_password_change_in_prod}
+      - TZ=Africa/Dakar
+    volumes:
+      - jitsi_prosody_data:/config
+    networks:
+      meet.jitsi:
+        aliases:
+          - meet.jitsi
+          - auth.meet.jitsi
+          - internal-muc.meet.jitsi
+          - muc.meet.jitsi
+          - guest.meet.jitsi
+
+  jitsi-jicofo:
+    image: jitsi/jicofo:stable
+    container_name: nexawork-jitsi-jicofo
+    restart: unless-stopped
+    environment:
+      - AUTH_TYPE=jwt
+      - XMPP_SERVER=jitsi-prosody
+      - XMPP_DOMAIN=meet.jitsi
+      - XMPP_AUTH_DOMAIN=auth.meet.jitsi
+      - XMPP_INTERNAL_MUC_DOMAIN=internal-muc.meet.jitsi
+      - JICOFO_COMPONENT_SECRET=${JICOFO_COMPONENT_SECRET:-jicofo_secret_change_in_prod}
+      - JICOFO_AUTH_USER=focus
+      - JICOFO_AUTH_PASSWORD=${JICOFO_AUTH_PASSWORD:-jicofo_password_change_in_prod}
+      - JVB_BREWERY_MUC=jvbbrewery@internal-muc.meet.jitsi
+      - TZ=Africa/Dakar
+    networks:
+      - meet.jitsi
+    depends_on:
+      - jitsi-prosody
+
+  jitsi-jvb:
+    image: jitsi/jvb:stable
+    container_name: nexawork-jitsi-jvb
+    restart: unless-stopped
+    ports:
+      - "10000:10000/udp"   # WebRTC media — port obligatoire
+      - "4443:4443/tcp"     # Fallback TCP (réseaux bloquant UDP)
+    environment:
+      - XMPP_SERVER=jitsi-prosody
+      - XMPP_DOMAIN=meet.jitsi
+      - XMPP_AUTH_DOMAIN=auth.meet.jitsi
+      - XMPP_INTERNAL_MUC_DOMAIN=internal-muc.meet.jitsi
+      - JVB_AUTH_USER=jvb
+      - JVB_AUTH_PASSWORD=${JVB_AUTH_PASSWORD:-jvb_password_change_in_prod}
+      - JVB_BREWERY_MUC=jvbbrewery@internal-muc.meet.jitsi
+      - JVB_PORT=10000
+      - JVB_TCP_HARVESTER_DISABLED=false
+      - JVB_TCP_PORT=4443
+      - DOCKER_HOST_ADDRESS=${DOCKER_HOST_ADDRESS:-127.0.0.1}
+      - TZ=Africa/Dakar
+    networks:
+      - meet.jitsi
+    depends_on:
+      - jitsi-prosody
+
+# ─── Volumes ────────────────────────────────────────────────────────────────
+volumes:
+  postgres_data:
+  redis_data:
+  rabbitmq_data:
+  minio_data:
+  jitsi_web_data:
+  jitsi_prosody_data:
+
+# ─── Réseaux ────────────────────────────────────────────────────────────────
+networks:
+  default:
+    driver: bridge
+  meet.jitsi:
+    driver: bridge
