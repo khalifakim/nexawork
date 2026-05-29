@@ -17,8 +17,9 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
+import io.jsonwebtoken.io.Decoders;
+
 import javax.crypto.SecretKey;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 @Slf4j
@@ -27,10 +28,27 @@ import java.util.List;
 public class JwtAuthFilter implements GlobalFilter, Ordered {
 
     private static final List<String> PUBLIC_PATHS = List.of(
+        // Auth — endpoints publics
         "/nexawork-auth-api-v1/api/v1/auth/login",
         "/nexawork-auth-api-v1/api/v1/auth/register",
         "/nexawork-auth-api-v1/api/v1/auth/refresh",
         "/nexawork-auth-api-v1/api/v1/organisations/invitations/accept",
+        // Swagger UI — tous les services
+        "/nexawork-auth-api-v1/swagger-ui",
+        "/nexawork-auth-api-v1/v3/api-docs",
+        "/nexawork-project-api-v1/swagger-ui",
+        "/nexawork-project-api-v1/v3/api-docs",
+        "/nexawork-messaging-api-v1/swagger-ui",
+        "/nexawork-messaging-api-v1/v3/api-docs",
+        "/nexawork-meeting-api-v1/swagger-ui",
+        "/nexawork-meeting-api-v1/v3/api-docs",
+        "/nexawork-notification-api-v1/swagger-ui",
+        "/nexawork-notification-api-v1/v3/api-docs",
+        "/nexawork-file-api-v1/swagger-ui",
+        "/nexawork-file-api-v1/v3/api-docs",
+        "/nexawork-ged-api-v1/swagger-ui",
+        "/nexawork-ged-api-v1/v3/api-docs",
+        // Actuator
         "/actuator"
     );
 
@@ -72,8 +90,8 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
     }
 
     private Claims parseClaims(String token) {
-        SecretKey key = Keys.hmacShaKeyFor(
-            jwtProperties.getSecret().getBytes(StandardCharsets.UTF_8));
+        byte[] keyBytes = Decoders.BASE64.decode(jwtProperties.getBase64Secret());
+        SecretKey key = Keys.hmacShaKeyFor(keyBytes);
         return Jwts.parser()
             .verifyWith(key)
             .build()

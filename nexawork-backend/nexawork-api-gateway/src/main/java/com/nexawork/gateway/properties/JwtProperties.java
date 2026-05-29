@@ -8,5 +8,5 @@ import org.springframework.stereotype.Component;
 @Component
 @ConfigurationProperties(prefix = "nexawork.jwt")
 public class JwtProperties {
-    private String secret;
+    private String base64Secret;
 }

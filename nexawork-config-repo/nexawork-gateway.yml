@@ -1,0 +1,63 @@
+server:
+  port: 8080
+
+spring:
+  cloud:
+    gateway:
+      routes:
+        # Chaque service gère son propre context-path — pas de RewritePath nécessaire
+
+        - id: auth-service
+          uri: http://${AUTH_SERVICE_HOST:localhost}:8081
+          predicates:
+            - Path=/nexawork-auth-api-v1/**
+
+        - id: project-service
+          uri: http://${PROJECT_SERVICE_HOST:localhost}:8082
+          predicates:
+            - Path=/nexawork-project-api-v1/**
+
+        - id: messaging-service
+          uri: http://${MESSAGING_SERVICE_HOST:localhost}:8083
+          predicates:
+            - Path=/nexawork-messaging-api-v1/**
+
+        - id: meeting-service
+          uri: http://${MEETING_SERVICE_HOST:localhost}:8084
+          predicates:
+            - Path=/nexawork-meeting-api-v1/**
+
+        - id: notification-service
+          uri: http://${NOTIFICATION_SERVICE_HOST:localhost}:8085
+          predicates:
+            - Path=/nexawork-notification-api-v1/**
+
+        - id: file-service
+          uri: http://${FILE_SERVICE_HOST:localhost}:8086
+          predicates:
+            - Path=/nexawork-file-api-v1/**
+
+        - id: ged-service
+          uri: http://${GED_SERVICE_HOST:localhost}:8087
+          predicates:
+            - Path=/nexawork-ged-api-v1/**
+
+        # WebSocket — Messaging
+        - id: messaging-ws
+          uri: ws://${MESSAGING_SERVICE_HOST:localhost}:8083
+          predicates:
+            - Path=/ws/messaging/**
+
+        # WebSocket — Notifications
+        - id: notification-ws
+          uri: ws://${NOTIFICATION_SERVICE_HOST:localhost}:8085
+          predicates:
+            - Path=/ws/notifications/**
+
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOriginPatterns: "${CORS_ORIGINS:http://localhost:4200}"
+            allowedMethods: "*"
+            allowedHeaders: "*"
+            allowCredentials: true

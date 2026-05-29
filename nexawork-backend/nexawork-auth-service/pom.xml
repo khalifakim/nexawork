@@ -23,7 +23,7 @@
         <mapstruct.version>1.5.5.Final</mapstruct.version>
         <querydsl.version>5.1.0</querydsl.version>
         <jsonwebtoken.version>0.12.6</jsonwebtoken.version>
-        <springdoc.version>2.5.0</springdoc.version>
+        <springdoc.version>2.8.0</springdoc.version>
         <lombok.version>1.18.32</lombok.version>
     </properties>
 

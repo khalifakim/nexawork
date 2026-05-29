@@ -8,7 +8,13 @@ spring:
     name: nexawork-ged
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:5432/${DB_NAME:nexawork_ged_db}
-    username: ${DB_USERNAME:nexawork}
-    password: ${DB_PASSWORD:nexawork_pass}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:passe}
   flyway:
     locations: classpath:db/migration
+
+management:
+  health:
+    group:
+      readiness:
+        include: "readinessState,db,rabbit"

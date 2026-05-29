@@ -8,11 +8,17 @@ spring:
     name: nexawork-notification
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:5432/${DB_NAME:nexawork_notification_db}
-    username: ${DB_USERNAME:nexawork}
-    password: ${DB_PASSWORD:nexawork_pass}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:passe}
   flyway:
     locations: classpath:db/migration
   data:
     redis:
       host: ${REDIS_HOST:localhost}
       port: 6379
+
+management:
+  health:
+    group:
+      readiness:
+        include: "readinessState,db,rabbit,redis"

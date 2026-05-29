@@ -4,9 +4,9 @@
 spring:
   jpa:
     hibernate:
-      ddl-auto: validate
+      ddl-auto: none
       naming:
-        physical-strategy: org.hibernate.boot.model.naming.PhysicalNamingStrategyStandardImpl
+        physical-strategy: org.hibernate.boot.model.naming.CamelCaseToUnderscoresNamingStrategy
     show-sql: false
     open-in-view: false
 
@@ -22,11 +22,11 @@ spring:
     host: ${RABBITMQ_HOST:localhost}
     port: 5672
     username: nexawork
-    password: nexawork_pass
+    password: nexawork-passe
 
 nexawork:
   jwt:
-    base64-secret: ${JWT_SECRET:bmV4YXdvcmtfc2VjcmV0X2NoYW5nZV9pbl9wcm9k}
+    base64-secret: ${JWT_SECRET}
     token-validity-in-seconds: 86400
 
 nexawork-cors:
@@ -48,3 +48,13 @@ management:
     web:
       exposure:
         include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+  health:
+    livenessState:
+      enabled: true
+    readinessState:
+      enabled: true
