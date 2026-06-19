@@ -29,7 +29,12 @@ public class GedFolder {
     private Long createdByUserId;
 
     @Column(nullable = false)
+    @Builder.Default
     private LocalDateTime createdAt = LocalDateTime.now();
+
+    @Column(nullable = false)
+    @Builder.Default
+    private Boolean isDeleted = false;
 
     @OneToMany(mappedBy = "folder", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default

@@ -24,13 +24,16 @@ public class NotificationService {
 
     @Transactional
     public NotificationResponse createAndPush(Long recipientUserId, NotificationType type,
-                                               String title, String body, String targetUrl) {
+                                               String title, String body, String targetUrl,
+                                               Long workspaceId, String payload) {
         Notification notif = Notification.builder()
             .recipientUserId(recipientUserId)
             .type(type)
             .title(title)
             .body(body)
             .targetUrl(targetUrl)
+            .workspaceId(workspaceId)
+            .payload(payload)
             .build();
         notificationRepo.save(notif);
 
@@ -69,8 +72,20 @@ public class NotificationService {
         return Boolean.TRUE.equals(redisTemplate.hasKey("presence:" + userId));
     }
 
+    @Transactional
+    public void hideNotification(Long notifId, Long userId) {
+        Notification notif = notificationRepo.findById(notifId)
+            .orElseThrow(() -> new RuntimeException("Notification introuvable : " + notifId));
+        if (!notif.getRecipientUserId().equals(userId)) {
+            throw new RuntimeException("Accès refusé");
+        }
+        notif.setIsHidden(true);
+        notificationRepo.save(notif);
+    }
+
     private NotificationResponse toResponse(Notification n) {
-        return new NotificationResponse(n.getId(), n.getRecipientUserId(), n.getType(),
-            n.getTitle(), n.getBody(), n.getTargetUrl(), n.getRead(), n.getCreatedAt());
+        return new NotificationResponse(n.getId(), n.getRecipientUserId(), n.getWorkspaceId(),
+            n.getType(), n.getTitle(), n.getBody(), n.getTargetUrl(), n.getPayload(),
+            n.getRead(), n.getIsHidden(), n.getCreatedAt());
     }
 }

@@ -24,7 +24,7 @@ public class ChannelService {
     public ChannelResponse create(CreateChannelRequest request, Long organisationId, Long userId) {
         Channel channel = Channel.builder()
             .name(request.name())
-            .channelType(request.channelType() != null ? request.channelType() : ChannelType.PUBLIC)
+            .channelType(request.channelType() != null ? request.channelType() : ChannelType.GLOBAL_ORG)
             .organisationId(organisationId)
             .projectId(request.projectId())
             .createdByUserId(userId)

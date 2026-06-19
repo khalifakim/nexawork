@@ -8,7 +8,10 @@ import java.util.List;
 
 @Repository
 public interface GedFileRepository extends JpaRepository<GedFile, Long> {
-    List<GedFile> findByFolderId(Long folderId);
-    List<GedFile> findByProjectId(Long projectId);
-    List<GedFile> findByTaskId(Long taskId);
+    List<GedFile> findByFolderIdAndIsDeletedFalse(Long folderId);
+    List<GedFile> findByProjectIdAndIsDeletedFalse(Long projectId);
+    List<GedFile> findByTaskIdAndIsDeletedFalse(Long taskId);
+    default List<GedFile> findByFolderId(Long folderId) { return findByFolderIdAndIsDeletedFalse(folderId); }
+    default List<GedFile> findByProjectId(Long projectId) { return findByProjectIdAndIsDeletedFalse(projectId); }
+    default List<GedFile> findByTaskId(Long taskId) { return findByTaskIdAndIsDeletedFalse(taskId); }
 }

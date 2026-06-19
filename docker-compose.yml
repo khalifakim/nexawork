@@ -191,9 +191,6 @@ services:
       postgres: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
       config-server: { condition: service_healthy }
-      jitsi-web:
-        condition: service_started
-        required: false
     environment:
       CONFIG_SERVER_URL: config-server
       DB_HOST: postgres
@@ -202,9 +199,9 @@ services:
       DB_PASSWORD: ${POSTGRES_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
       RABBITMQ_HOST: rabbitmq
-      JITSI_APP_ID: ${JITSI_APP_ID}
-      JITSI_SECRET: ${JITSI_SECRET}
-      JITSI_URL: https://localhost:8443
+      JAAS_APP_ID: ${JAAS_APP_ID}
+      JAAS_API_KEY_ID: ${JAAS_API_KEY_ID}
+      JAAS_PRIVATE_KEY: ${JAAS_PRIVATE_KEY}
     ports:
       - "8084:8084"
     networks:
@@ -354,138 +351,6 @@ services:
       retries: 3
       start_period: 30s
 
-  # ─── Jitsi Meet (4 conteneurs, réseau interne meet.jitsi) ───────────────────
-  jitsi-web:
-    image: jitsi/web:stable
-    container_name: nexawork-jitsi-web
-    restart: unless-stopped
-    ports:
-      - "8443:443"
-    environment:
-      - PUBLIC_URL=https://localhost:8443
-      - ENABLE_AUTH=1
-      - AUTH_TYPE=jwt
-      - JWT_APP_ID=${JITSI_APP_ID}
-      - JWT_APP_SECRET=${JITSI_SECRET}
-      - JWT_ACCEPTED_ISSUERS=${JITSI_APP_ID}
-      - JWT_ACCEPTED_AUDIENCES=${JITSI_APP_ID}
-      - ENABLE_LOBBY=1
-      - XMPP_SERVER=jitsi-prosody
-      - XMPP_BOSH_URL_BASE=http://jitsi-prosody:5280
-      - XMPP_DOMAIN=meet.jitsi
-      - XMPP_AUTH_DOMAIN=auth.meet.jitsi
-      - XMPP_MUC_DOMAIN=muc.meet.jitsi
-      - TZ=Africa/Dakar
-    volumes:
-      - jitsi_web_data:/config
-    networks:
-      - default
-      - meet.jitsi
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:80/ > /dev/null || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-
-  jitsi-prosody:
-    image: jitsi/prosody:stable
-    container_name: nexawork-jitsi-prosody
-    restart: unless-stopped
-    expose:
-      - "5222"
-      - "5280"
-      - "5347"
-    environment:
-      - AUTH_TYPE=jwt
-      - JWT_APP_ID=${JITSI_APP_ID}
-      - JWT_APP_SECRET=${JITSI_SECRET}
-      - ENABLE_AUTH=1
-      - ENABLE_LOBBY=1
-      - XMPP_DOMAIN=meet.jitsi
-      - XMPP_AUTH_DOMAIN=auth.meet.jitsi
-      - XMPP_GUEST_DOMAIN=guest.meet.jitsi
-      - XMPP_MUC_DOMAIN=muc.meet.jitsi
-      - XMPP_INTERNAL_MUC_DOMAIN=internal-muc.meet.jitsi
-      - JICOFO_COMPONENT_SECRET=${JICOFO_COMPONENT_SECRET}
-      - JICOFO_AUTH_USER=focus
-      - JICOFO_AUTH_PASSWORD=${JICOFO_AUTH_PASSWORD}
-      - JVB_AUTH_USER=jvb
-      - JVB_AUTH_PASSWORD=${JVB_AUTH_PASSWORD}
-      - TZ=Africa/Dakar
-    volumes:
-      - jitsi_prosody_data:/config
-    networks:
-      meet.jitsi:
-        aliases:
-          - meet.jitsi
-          - auth.meet.jitsi
-          - internal-muc.meet.jitsi
-          - muc.meet.jitsi
-          - guest.meet.jitsi
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:5280/http-bind > /dev/null || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-
-  jitsi-jicofo:
-    image: jitsi/jicofo:stable
-    container_name: nexawork-jitsi-jicofo
-    restart: unless-stopped
-    environment:
-      - AUTH_TYPE=jwt
-      - XMPP_SERVER=jitsi-prosody
-      - XMPP_DOMAIN=meet.jitsi
-      - XMPP_AUTH_DOMAIN=auth.meet.jitsi
-      - XMPP_INTERNAL_MUC_DOMAIN=internal-muc.meet.jitsi
-      - JICOFO_COMPONENT_SECRET=${JICOFO_COMPONENT_SECRET}
-      - JICOFO_AUTH_USER=focus
-      - JICOFO_AUTH_PASSWORD=${JICOFO_AUTH_PASSWORD}
-      - JVB_BREWERY_MUC=jvbbrewery
-      - TZ=Africa/Dakar
-    networks:
-      - meet.jitsi
-    depends_on:
-      - jitsi-prosody
-    healthcheck:
-      test: ["CMD-SHELL", "curl -s http://127.0.0.1:8888/ -o /dev/null || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 90s
-
-  jitsi-jvb:
-    image: jitsi/jvb:stable
-    container_name: nexawork-jitsi-jvb
-    restart: unless-stopped
-    ports:
-      - "10000:10000/udp"   # WebRTC media — port obligatoire
-      - "4443:4443/tcp"     # Fallback TCP (réseaux bloquant UDP)
-    environment:
-      - XMPP_SERVER=jitsi-prosody
-      - XMPP_DOMAIN=meet.jitsi
-      - XMPP_AUTH_DOMAIN=auth.meet.jitsi
-      - XMPP_INTERNAL_MUC_DOMAIN=internal-muc.meet.jitsi
-      - JVB_AUTH_USER=jvb
-      - JVB_AUTH_PASSWORD=${JVB_AUTH_PASSWORD}
-      - JVB_BREWERY_MUC=jvbbrewery
-      - JVB_PORT=10000
-      - JVB_TCP_HARVESTER_DISABLED=false
-      - JVB_TCP_PORT=4443
-      - DOCKER_HOST_ADDRESS=${DOCKER_HOST_ADDRESS}
-      - TZ=Africa/Dakar
-    networks:
-      - meet.jitsi
-    depends_on:
-      - jitsi-prosody
-    healthcheck:
-      test: ["CMD-SHELL", "pgrep -f jvb > /dev/null || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
 
 # ─── Volumes ────────────────────────────────────────────────────────────────
 volumes:
@@ -493,12 +358,8 @@ volumes:
   redis_data:
   rabbitmq_data:
   minio_data:
-  jitsi_web_data:
-  jitsi_prosody_data:
 
 # ─── Réseaux ────────────────────────────────────────────────────────────────
 networks:
   default:
-    driver: bridge
-  meet.jitsi:
     driver: bridge

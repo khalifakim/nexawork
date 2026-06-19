@@ -1,8 +1,9 @@
 package com.nexawork.ged.controllers;
 
+import com.nexawork.ged.dtos.requests.AddFileVersionRequest;
 import com.nexawork.ged.dtos.requests.CreateFolderRequest;
-import com.nexawork.ged.dtos.responses.GedFileResponse;
-import com.nexawork.ged.dtos.responses.GedFolderResponse;
+import com.nexawork.ged.dtos.requests.GrantAccessRequest;
+import com.nexawork.ged.dtos.responses.*;
 import com.nexawork.ged.security.SecurityUtils;
 import com.nexawork.ged.services.GedService;
 import com.nexawork.ged.utils.Response;
@@ -23,6 +24,8 @@ import java.util.List;
 public class GedController {
 
     private final GedService gedService;
+
+    // ── Dossiers ──────────────────────────────────────────────────────────────
 
     @Operation(summary = "Créer un dossier")
     @PostMapping("/folders")
@@ -64,5 +67,59 @@ public class GedController {
     public ResponseEntity<Response<Void>> deleteFolder(@PathVariable Long folderId) {
         gedService.deleteFolder(folderId);
         return ResponseEntity.ok(Response.ok(null, "Dossier supprimé"));
+    }
+
+    // ── Versioning ────────────────────────────────────────────────────────────
+
+    @Operation(summary = "Ajouter une nouvelle version d'un fichier GED")
+    @PostMapping("/files/{fileId}/versions")
+    public ResponseEntity<Response<GedFileVersionResponse>> addVersion(
+            @PathVariable Long fileId,
+            @Valid @RequestBody AddFileVersionRequest request) {
+        Long userId = SecurityUtils.getCurrentUserId().orElseThrow(() -> new RuntimeException("Non authentifié"));
+        return ResponseEntity.status(HttpStatus.CREATED)
+            .body(Response.created(gedService.addVersion(fileId, request, userId), "Version ajoutée"));
+    }
+
+    @Operation(summary = "Historique des versions d'un fichier GED")
+    @GetMapping("/files/{fileId}/versions")
+    public ResponseEntity<Response<List<GedFileVersionResponse>>> listVersions(@PathVariable Long fileId) {
+        return ResponseEntity.ok(Response.ok(gedService.listVersions(fileId), "Versions récupérées"));
+    }
+
+    @Operation(summary = "Envoyer en corbeille un fichier")
+    @DeleteMapping("/files/{fileId}")
+    public ResponseEntity<Response<Void>> deleteFile(@PathVariable Long fileId) {
+        gedService.deleteFile(fileId);
+        return ResponseEntity.ok(Response.ok(null, "Fichier déplacé en corbeille"));
+    }
+
+    // ── Accès granulaires ─────────────────────────────────────────────────────
+
+    @Operation(summary = "Accorder l'accès (FOLDER|FILE) à un utilisateur ou une équipe")
+    @PostMapping("/grants")
+    public ResponseEntity<Response<GedAccessGrantResponse>> grantAccess(
+            @Valid @RequestBody GrantAccessRequest request) {
+        Long userId = SecurityUtils.getCurrentUserId().orElseThrow(() -> new RuntimeException("Non authentifié"));
+        return ResponseEntity.status(HttpStatus.CREATED)
+            .body(Response.created(gedService.grantAccess(request, userId), "Accès accordé"));
+    }
+
+    @Operation(summary = "Lister les accès d'une cible (ex: FOLDER/42)")
+    @GetMapping("/grants")
+    public ResponseEntity<Response<List<GedAccessGrantResponse>>> listGrants(
+            @RequestParam String targetType,
+            @RequestParam Long targetId) {
+        return ResponseEntity.ok(Response.ok(
+            gedService.listGrantsForTarget(targetType, targetId), "Accès récupérés"));
+    }
+
+    @Operation(summary = "Lister les éléments partagés avec un utilisateur ou une équipe")
+    @GetMapping("/grants/shared-with-me")
+    public ResponseEntity<Response<List<GedAccessGrantResponse>>> sharedWithMe(
+            @RequestParam String granteeType,
+            @RequestParam Long granteeId) {
+        return ResponseEntity.ok(Response.ok(
+            gedService.listGrantsForGrantee(granteeType, granteeId), "Partages récupérés"));
     }
 }

@@ -44,4 +44,8 @@ public class Task extends Auditable {
     @OneToMany(mappedBy = "task", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
     private List<TaskAttachment> attachments = new ArrayList<>();
+
+    @OneToMany(mappedBy = "task", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private List<SubTask> subTasks = new ArrayList<>();
 }

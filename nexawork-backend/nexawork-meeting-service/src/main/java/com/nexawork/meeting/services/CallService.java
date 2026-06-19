@@ -3,6 +3,7 @@ package com.nexawork.meeting.services;
 import com.nexawork.meeting.dtos.requests.CreateCallRequest;
 import com.nexawork.meeting.dtos.requests.InviteGuestRequest;
 import com.nexawork.meeting.dtos.responses.CallResponse;
+import com.nexawork.meeting.dtos.responses.GuestJoinResponse;
 import com.nexawork.meeting.entities.Call;
 import com.nexawork.meeting.entities.CallParticipant;
 import com.nexawork.meeting.entities.ExternalGuest;
@@ -57,9 +58,12 @@ public class CallService {
         Call call = getOrThrow(callId);
         boolean alreadyIn = call.getParticipants().stream()
             .anyMatch(p -> p.getUserId().equals(userId));
+        boolean isModerator = call.getHostUserId().equals(userId);
         if (!alreadyIn) {
             call.getParticipants().add(CallParticipant.builder()
-                .call(call).userId(userId).joinedAt(LocalDateTime.now()).build());
+                .call(call).userId(userId)
+                .invitedExplicitly(isModerator)
+                .joinedAt(LocalDateTime.now()).build());
         }
         if (call.getStatus() == CallStatus.SCHEDULED) {
             call.setStatus(CallStatus.ACTIVE);
@@ -67,9 +71,9 @@ public class CallService {
         }
         callRepo.save(call);
 
-        boolean isModerator = call.getHostUserId().equals(userId);
+        boolean lobbyBypass = isModerator;
         String token = jitsiTokenService.generateToken(
-            call.getRoomName(), userId, displayName, email, isModerator);
+            call.getRoomName(), userId, displayName, email, isModerator, lobbyBypass);
         return toResponse(call, token);
     }
 
@@ -102,6 +106,34 @@ public class CallService {
         eventPublisher.publishExternalGuestInvited(call, guest, inviterUserId);
     }
 
+    @Transactional
+    public GuestJoinResponse joinCallAsGuest(String guestToken) {
+        ExternalGuest guest = guestRepo.findByGuestToken(guestToken)
+            .orElseThrow(() -> new ResourceNotFoundException("Token invité invalide : " + guestToken));
+
+        if (Boolean.TRUE.equals(guest.getUsed())) {
+            throw new IllegalStateException("Ce lien d'invitation a déjà été utilisé.");
+        }
+
+        guest.setUsed(true);
+        guestRepo.save(guest);
+
+        Call call = guest.getCall();
+        if (call.getStatus() == CallStatus.SCHEDULED) {
+            call.setStatus(CallStatus.ACTIVE);
+            call.setStartedAt(LocalDateTime.now());
+            callRepo.save(call);
+        }
+
+        String token = jitsiTokenService.generateToken(
+            call.getRoomName(), null, guest.getDisplayName(), guest.getEmail(), false, true);
+
+        String jitsiUrl = jitsiProperties.getUrl() + "/" + jitsiProperties.getAppId()
+            + "/" + call.getRoomName() + "?jwt=" + token;
+
+        return new GuestJoinResponse(call.getId(), call.getTopic(), call.getRoomName(), token, jitsiUrl);
+    }
+
     @Transactional(readOnly = true)
     public List<CallResponse> findByOrganisation(Long organisationId) {
         return callRepo.findByOrganisationId(organisationId).stream()
@@ -115,7 +147,7 @@ public class CallService {
 
     private CallResponse toResponse(Call c, String token) {
         String jitsiUrl = token != null
-            ? jitsiProperties.getUrl() + "/" + c.getRoomName() + "?jwt=" + token
+            ? jitsiProperties.getUrl() + "/" + jitsiProperties.getAppId() + "/" + c.getRoomName() + "?jwt=" + token
             : null;
         return new CallResponse(c.getId(), c.getTopic(), c.getRoomName(),
             c.getOrganisationId(), c.getProjectId(), c.getHostUserId(),

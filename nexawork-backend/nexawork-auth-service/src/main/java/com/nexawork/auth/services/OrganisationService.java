@@ -61,6 +61,7 @@ public class OrganisationService {
             .organisation(org)
             .user(creator)
             .orgRole(OrgRole.OWNER)
+            .isOwner(true)
             .joinedAt(LocalDateTime.now())
             .build();
         memberRepo.save(owner);
@@ -138,6 +139,7 @@ public class OrganisationService {
                     .organisation(invitation.getOrganisation())
                     .user(user)
                     .orgRole(OrgRole.MEMBER)
+                    .isOwner(false)
                     .joinedAt(LocalDateTime.now())
                     .build();
                 memberRepo.save(member);

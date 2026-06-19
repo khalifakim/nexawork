@@ -22,4 +22,8 @@ public class CallParticipant {
 
     private LocalDateTime joinedAt;
     private LocalDateTime leftAt;
+
+    @Column(nullable = false)
+    @Builder.Default
+    private Boolean invitedExplicitly = false;
 }

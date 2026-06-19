@@ -7,6 +7,14 @@ import { provideStoreDevtools } from '@ngrx/store-devtools';
 import { routes } from './app.routes';
 import { authReducer } from '@store/auth/auth.reducer';
 import { AuthEffects } from '@store/auth/auth.effects';
+import { projectsReducer } from '@store/projects/projects.reducer';
+import { ProjectEffects } from '@store/projects/projects.effects';
+import { messagingReducer } from '@store/messaging/messaging.reducer';
+import { MessagingEffects } from '@store/messaging/messaging.effects';
+import { meetingsReducer } from '@store/meetings/meetings.reducer';
+import { MeetingEffects } from '@store/meetings/meetings.effects';
+import { notificationsReducer } from '@store/notifications/notifications.reducer';
+import { NotificationEffects } from '@store/notifications/notifications.effects';
 import { jwtInterceptor } from '@core/interceptors/jwt.interceptor';
 import { errorInterceptor } from '@core/interceptors/error.interceptor';
 import { environment } from '@environment/environment';
@@ -17,8 +25,20 @@ export const appConfig: ApplicationConfig = {
     provideHttpClient(
       withInterceptors([jwtInterceptor, errorInterceptor])
     ),
-    provideStore({ auth: authReducer }),
-    provideEffects([AuthEffects]),
+    provideStore({
+      auth:          authReducer,
+      projects:      projectsReducer,
+      messaging:     messagingReducer,
+      meetings:      meetingsReducer,
+      notifications: notificationsReducer,
+    }),
+    provideEffects([
+      AuthEffects,
+      ProjectEffects,
+      MessagingEffects,
+      MeetingEffects,
+      NotificationEffects,
+    ]),
     provideStoreDevtools({ maxAge: 25, logOnly: environment.production }),
     { provide: LOCALE_ID, useValue: 'fr-FR' },
   ],

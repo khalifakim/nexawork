@@ -49,7 +49,9 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
         "/nexawork-ged-api-v1/swagger-ui",
         "/nexawork-ged-api-v1/v3/api-docs",
         // Actuator
-        "/actuator"
+        "/actuator",
+        // Invitation invité externe (lien sans authentification)
+        "/nexawork-meeting-api-v1/api/v1/meetings/guests/join"
     );
 
     private final JwtProperties jwtProperties;

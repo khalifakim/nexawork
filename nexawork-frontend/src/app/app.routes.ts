@@ -1,5 +1,6 @@
 import { Routes } from '@angular/router';
 import { authGuard } from '@core/guards/auth.guard';
+import { workspaceGuard } from '@core/guards/workspace.guard';
 
 export const routes: Routes = [
   {
@@ -18,13 +19,19 @@ export const routes: Routes = [
     loadComponent: () =>
       import('@layouts/main-layout/main-layout.component').then(m => m.MainLayoutComponent),
     children: [
-      { path: 'dashboard',    loadComponent: () => import('@views/dashboard/dashboard.component').then(m => m.DashboardComponent) },
-      { path: 'projects',     loadComponent: () => import('@views/projects/kanban/kanban.component').then(m => m.KanbanComponent) },
-      { path: 'ged',          loadComponent: () => import('@views/ged/ged.component').then(m => m.GedComponent) },
-      { path: 'messaging',    loadComponent: () => import('@views/messaging/messaging.component').then(m => m.MessagingComponent) },
-      { path: 'meetings',     loadComponent: () => import('@views/meeting/meeting.component').then(m => m.MeetingComponent) },
-      { path: 'notifications', loadComponent: () => import('@views/notifications/notifications.component').then(m => m.NotificationsComponent) },
-      { path: 'profile',      loadComponent: () => import('@views/profile/profile.component').then(m => m.ProfileComponent) },
+      { path: 'workspace/setup', loadComponent: () => import('@views/workspace/workspace-setup.component').then(m => m.WorkspaceSetupComponent) },
+      { path: 'dashboard',       canActivate: [workspaceGuard], loadComponent: () => import('@views/dashboard/dashboard.component').then(m => m.DashboardComponent) },
+      { path: 'projects',        canActivate: [workspaceGuard], loadComponent: () => import('@views/projects/kanban/kanban.component').then(m => m.KanbanComponent) },
+      { path: 'teams',           canActivate: [workspaceGuard], loadComponent: () => import('@views/teams/teams.component').then(m => m.TeamsComponent) },
+      { path: 'documents',       canActivate: [workspaceGuard], loadComponent: () => import('@views/ged/ged.component').then(m => m.GedComponent) },
+      { path: 'ged',             redirectTo: 'documents', pathMatch: 'full' },
+      { path: 'channels',        canActivate: [workspaceGuard], loadComponent: () => import('@views/channels/channels.component').then(m => m.ChannelsComponent) },
+      { path: 'conversations',   canActivate: [workspaceGuard], loadComponent: () => import('@views/conversations/conversations.component').then(m => m.ConversationsComponent) },
+      { path: 'messaging',       redirectTo: 'channels', pathMatch: 'full' },
+      { path: 'meetings',        canActivate: [workspaceGuard], loadComponent: () => import('@views/meeting/meeting.component').then(m => m.MeetingComponent) },
+      { path: 'notifications',   canActivate: [workspaceGuard], loadComponent: () => import('@views/notifications/notifications.component').then(m => m.NotificationsComponent) },
+      { path: 'settings',        loadComponent: () => import('@views/settings/settings.component').then(m => m.SettingsComponent) },
+      { path: 'profile',         redirectTo: 'settings', pathMatch: 'full' },
       { path: '', redirectTo: 'dashboard', pathMatch: 'full' },
     ],
   },

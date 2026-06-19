@@ -29,7 +29,7 @@ public class NotificationEventConsumer {
             log.info("Invitation membre [{}] vers {}", orgName, email);
             notificationService.createAndPush(0L, NotificationType.MEMBER_INVITED,
                 "Invitation à rejoindre " + orgName,
-                inviter + " vous invite à rejoindre l'organisation " + orgName, url);
+                inviter + " vous invite à rejoindre l'organisation " + orgName, url, null, null);
         } catch (Exception e) {
             log.error("Erreur member.invited : {}", e.getMessage());
         }
@@ -46,7 +46,7 @@ public class NotificationEventConsumer {
             notificationService.createAndPush(assigneeId, NotificationType.TASK_ASSIGNED,
                 "Nouvelle tâche assignée",
                 "Tâche \"" + taskTitle + "\" dans le projet " + projectName,
-                "/projects/" + event.get("projectId") + "/tasks/" + taskId);
+                "/projects/" + event.get("projectId") + "/tasks/" + taskId, null, null);
         } catch (Exception e) {
             log.error("Erreur task.assigned : {}", e.getMessage());
         }
@@ -62,7 +62,7 @@ public class NotificationEventConsumer {
             notificationService.createAndPush(assigneeId, NotificationType.LIVRABLE_VALIDATED,
                 "Livrable validé",
                 "Votre tâche \"" + taskTitle + "\" a été validée dans " + projectName,
-                "/projects/" + event.get("projectId"));
+                "/projects/" + event.get("projectId"), null, null);
         } catch (Exception e) {
             log.error("Erreur livrable.validated : {}", e.getMessage());
         }
@@ -77,7 +77,7 @@ public class NotificationEventConsumer {
 
             notificationService.createAndPush(hostId, NotificationType.CALL_ENDED,
                 "Appel terminé",
-                "L'appel \"" + topic + "\" a duré " + dur / 60 + " min", "/meetings");
+                "L'appel \"" + topic + "\" a duré " + dur / 60 + " min", "/meetings", null, null);
         } catch (Exception e) {
             log.error("Erreur call.ended : {}", e.getMessage());
         }

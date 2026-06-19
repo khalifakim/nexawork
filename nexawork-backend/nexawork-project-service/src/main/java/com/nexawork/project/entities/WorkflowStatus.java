@@ -24,7 +24,15 @@ public class WorkflowStatus {
     @Column(nullable = false)
     private Integer position;
 
+    @Builder.Default
     private Boolean isFinal = false;
+
+    @Builder.Default
+    private Boolean isInitial = false;
+
+    @Column(nullable = false)
+    @Builder.Default
+    private String color = "#6c757d";
 
     @OneToMany(mappedBy = "fromStatus", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default

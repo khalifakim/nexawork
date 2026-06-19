@@ -45,6 +45,14 @@ public class NotificationController {
         return ResponseEntity.ok(Response.ok(null, "Notifications marquées comme lues"));
     }
 
+    @Operation(summary = "Masquer une notification")
+    @PatchMapping("/{notifId}/hide")
+    public ResponseEntity<Response<Void>> hide(@PathVariable Long notifId) {
+        Long userId = SecurityUtils.getCurrentUserId().orElseThrow(() -> new RuntimeException("Non authentifié"));
+        notificationService.hideNotification(notifId, userId);
+        return ResponseEntity.ok(Response.ok(null, "Notification masquée"));
+    }
+
     @Operation(summary = "Statut de présence")
     @GetMapping("/presence/{userId}")
     public ResponseEntity<Response<Map<String, Boolean>>> presence(@PathVariable Long userId) {

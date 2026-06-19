@@ -35,4 +35,12 @@ public class OrganisationMember extends Auditable {
     private OrgRole orgRole;
 
     private LocalDateTime joinedAt;
+
+    @Column(nullable = false)
+    @Builder.Default
+    private Boolean isOwner = false;
+
+    @Column(nullable = false)
+    @Builder.Default
+    private Boolean isDeactivated = false;
 }

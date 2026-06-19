@@ -3,6 +3,7 @@ package com.nexawork.meeting.controllers;
 import com.nexawork.meeting.dtos.requests.CreateCallRequest;
 import com.nexawork.meeting.dtos.requests.InviteGuestRequest;
 import com.nexawork.meeting.dtos.responses.CallResponse;
+import com.nexawork.meeting.dtos.responses.GuestJoinResponse;
 import com.nexawork.meeting.security.SecurityUtils;
 import com.nexawork.meeting.services.CallService;
 import com.nexawork.meeting.utils.Response;
@@ -67,5 +68,11 @@ public class CallController {
     public ResponseEntity<Response<List<CallResponse>>> list() {
         Long orgId = SecurityUtils.getCurrentOrganisationId().orElseThrow(() -> new RuntimeException("Organisation manquante"));
         return ResponseEntity.ok(Response.ok(callService.findByOrganisation(orgId), "Appels récupérés"));
+    }
+
+    @Operation(summary = "Rejoindre un appel en tant qu'invité externe (public — aucune authentification requise)")
+    @PostMapping("/guests/join")
+    public ResponseEntity<Response<GuestJoinResponse>> joinAsGuest(@RequestParam String token) {
+        return ResponseEntity.ok(Response.ok(callService.joinCallAsGuest(token), "Bienvenue dans la réunion"));
     }
 }

@@ -12,6 +12,7 @@ export interface UserProfile {
   displayName: string;
   avatarUrl?: string;
   organisationId?: number;
+  organisationName?: string;
   orgRole?: string;
 }
 
@@ -34,5 +35,6 @@ export interface AuthResponse {
   email: string;
   displayName: string;
   organisationId?: number;
+  organisationName?: string;
   orgRole?: string;
 }

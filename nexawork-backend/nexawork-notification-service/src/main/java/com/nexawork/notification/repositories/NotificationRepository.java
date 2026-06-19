@@ -10,8 +10,15 @@ import java.util.List;
 
 @Repository
 public interface NotificationRepository extends JpaRepository<Notification, Long> {
-    List<Notification> findByRecipientUserIdOrderByCreatedAtDesc(Long userId);
-    List<Notification> findByRecipientUserIdAndReadFalse(Long userId);
+    List<Notification> findByRecipientUserIdAndIsHiddenFalseOrderByCreatedAtDesc(Long userId);
+    List<Notification> findByRecipientUserIdAndReadFalseAndIsHiddenFalse(Long userId);
+    // aliases pour compatibilité avec le service
+    default List<Notification> findByRecipientUserIdOrderByCreatedAtDesc(Long userId) {
+        return findByRecipientUserIdAndIsHiddenFalseOrderByCreatedAtDesc(userId);
+    }
+    default List<Notification> findByRecipientUserIdAndReadFalse(Long userId) {
+        return findByRecipientUserIdAndReadFalseAndIsHiddenFalse(userId);
+    }
 
     @Modifying
     @Query("UPDATE Notification n SET n.read = true WHERE n.recipientUserId = :userId")

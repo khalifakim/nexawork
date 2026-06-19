@@ -4,6 +4,8 @@ import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "messages")
@@ -14,8 +16,11 @@ public class Message {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "channel_id", nullable = false)
+    @JoinColumn(name = "channel_id")
     private Channel channel;
+
+    @Column(name = "conversation_id")
+    private Long conversationId;
 
     @Column(nullable = false)
     private Long senderUserId;
@@ -27,7 +32,21 @@ public class Message {
     private String attachmentName;
 
     @Column(nullable = false)
+    @Builder.Default
+    private String messageType = "USER";
+
+    @Column(nullable = false)
+    @Builder.Default
+    private Boolean isDeleted = false;
+
+    @Column(nullable = false)
+    @Builder.Default
     private LocalDateTime sentAt = LocalDateTime.now();
 
+    @Builder.Default
     private Boolean edited = false;
+
+    @OneToMany(mappedBy = "message", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private List<MessageMention> mentions = new ArrayList<>();
 }

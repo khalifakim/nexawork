@@ -26,6 +26,15 @@ public class ProjectMember {
     @Column(nullable = false)
     private ProjectRole projectRole = ProjectRole.DEVELOPER;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "team_id")
+    private Team team;
+
     @Column(nullable = false)
+    @Builder.Default
+    private Boolean isProjectLead = false;
+
+    @Column(nullable = false)
+    @Builder.Default
     private LocalDateTime joinedAt = LocalDateTime.now();
 }

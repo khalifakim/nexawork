@@ -2,7 +2,7 @@
   "compileOnSave": false,
   "compilerOptions": {
     "baseUrl": "./",
-    "outDir": "./dist/out-tsc",
+    "ignoreDeprecations": "6.0",
     "forceConsistentCasingInFileNames": true,
     "strict": true,
     "noImplicitOverride": true,
@@ -12,7 +12,6 @@
     "esModuleInterop": true,
     "sourceMap": true,
     "declaration": false,
-    "downlevelIteration": true,
     "experimentalDecorators": true,
     "moduleResolution": "bundler",
     "importHelpers": true,
@@ -21,12 +20,12 @@
     "useDefineForClassFields": false,
     "lib": ["ES2022", "dom"],
     "paths": {
-      "@core/*": ["src/app/core/*"],
-      "@store/*": ["src/app/store/*"],
-      "@views/*": ["src/app/views/*"],
-      "@common/*": ["src/app/shared/*"],
-      "@layouts/*": ["src/app/layouts/*"],
-      "@environment/*": ["src/environments/*"]
+      "@core/*": ["./src/app/core/*"],
+      "@store/*": ["./src/app/store/*"],
+      "@views/*": ["./src/app/views/*"],
+      "@common/*": ["./src/app/shared/*"],
+      "@layouts/*": ["./src/app/layouts/*"],
+      "@environment/*": ["./src/environments/*"]
     }
   },
   "angularCompilerOptions": {

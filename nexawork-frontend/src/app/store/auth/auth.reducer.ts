@@ -26,6 +26,7 @@ export const authReducer = createReducer(
         email: response.email,
         displayName: response.displayName,
         organisationId: response.organisationId,
+        organisationName: response.organisationName,
         orgRole: response.orgRole,
       },
     };

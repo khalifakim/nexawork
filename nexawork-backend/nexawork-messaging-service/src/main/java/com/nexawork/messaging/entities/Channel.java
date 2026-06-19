@@ -21,7 +21,7 @@ public class Channel {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private ChannelType channelType = ChannelType.PUBLIC;
+    private ChannelType channelType = ChannelType.GLOBAL_ORG;
 
     @Column(nullable = false)
     private Long organisationId;
@@ -30,6 +30,19 @@ public class Channel {
     private Long createdByUserId;
 
     @Column(nullable = false)
+    @Builder.Default
+    private Boolean isSystem = false;
+
+    @Column(nullable = false)
+    @Builder.Default
+    private Boolean isReadOnly = false;
+
+    @Column(nullable = false)
+    @Builder.Default
+    private Boolean isPrivate = false;
+
+    @Column(nullable = false)
+    @Builder.Default
     private LocalDateTime createdAt = LocalDateTime.now();
 
     @OneToMany(mappedBy = "channel", cascade = CascadeType.ALL, orphanRemoval = true)

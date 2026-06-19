@@ -20,7 +20,8 @@ management:
         include: "readinessState,db,rabbit"
 
 nexawork:
-  jitsi:
-    app-id: ${JITSI_APP_ID:nexawork}
-    secret: ${JITSI_SECRET:jitsi_secret_change_in_prod}
-    url: ${JITSI_URL:https://localhost:8443}
+  jaas:
+    app-id: ${JAAS_APP_ID:vpaas-magic-cookie-changeme}
+    api-key-id: ${JAAS_API_KEY_ID:changeme/changeme}
+    private-key: ${JAAS_PRIVATE_KEY:}
+    url: https://8x8.vc

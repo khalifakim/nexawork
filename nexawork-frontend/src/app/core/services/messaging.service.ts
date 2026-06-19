@@ -13,8 +13,8 @@ export class MessagingService {
     return this.http.get<{ data: Channel[] }>(`${this.base}/channels`);
   }
 
-  createChannel(name: string, projectId?: number): Observable<{ data: Channel }> {
-    return this.http.post<{ data: Channel }>(`${this.base}/channels`, { name, projectId });
+  createChannel(name: string, projectId?: number, channelType?: string): Observable<{ data: Channel }> {
+    return this.http.post<{ data: Channel }>(`${this.base}/channels`, { name, projectId, channelType });
   }
 
   getMessages(channelId: number, page = 0, size = 50): Observable<{ data: Message[] }> {

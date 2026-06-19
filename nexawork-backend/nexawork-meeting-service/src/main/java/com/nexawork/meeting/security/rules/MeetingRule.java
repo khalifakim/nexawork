@@ -34,6 +34,21 @@ public class MeetingRule {
     }
 
     @Bean
+    public SecurityRule meetingActions() {
+        return SecurityRule.builder()
+            .httpMethod(HttpMethod.POST)
+            .apiPattern("/api/v1/meetings/**/join")
+            .apiPattern("/api/v1/meetings/**/end")
+            .apiPattern("/api/v1/meetings/**/guests")
+            .build()
+            .condition()
+            .hasPermission(NexaWorkPermissions.MEMBER)
+            .or().hasPermission(NexaWorkPermissions.ADMIN)
+            .or().hasPermission(NexaWorkPermissions.OWNER)
+            .end();
+    }
+
+    @Bean
     public SecurityRule deleteMeeting() {
         return SecurityRule.builder()
             .httpMethod(HttpMethod.DELETE)

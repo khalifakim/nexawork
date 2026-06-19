@@ -30,8 +30,19 @@ public class Notification {
     private String targetUrl;
 
     @Column(nullable = false)
+    @Builder.Default
     private Boolean read = false;
 
     @Column(nullable = false)
+    @Builder.Default
+    private Boolean isHidden = false;
+
+    private Long workspaceId;
+
+    @Column(columnDefinition = "jsonb")
+    private String payload;
+
+    @Column(nullable = false)
+    @Builder.Default
     private LocalDateTime createdAt = LocalDateTime.now();
 }
