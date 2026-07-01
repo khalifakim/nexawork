@@ -13,8 +13,8 @@
   border: none; border-radius: 9px; cursor: pointer; background: rgba(255,255,255,.06); color: #fff;
 }
 .ws:hover { background: rgba(255,255,255,.12); }
-.ws__logo { width: 26px; height: 26px; border-radius: 7px; background: linear-gradient(135deg,#6C70F0,#4B3FD6);
-  display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; flex: none; }
+.ws__logo { width: 26px; height: 26px; border-radius: 7px;
+  display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; flex: none; color: #fff; }
 .ws__t { display: flex; flex-direction: column; line-height: 1.05; align-items: flex-start; }
 .ws__name { font-size: 13.5px; font-weight: 600; }
 .ws__sub { font-size: 10.5px; color: rgba(255,255,255,.5); }
@@ -62,7 +62,7 @@
 .iconbtn { width: 32px; height: 32px; flex: none; border: 1px solid var(--nx-border); border-radius: 9px; background: #fff; color: var(--nx-text-700); display: flex; align-items: center; justify-content: center; cursor: pointer; }
 .iconbtn:hover { background: var(--nx-surface-2); color: var(--nx-indigo); }
 .wsm__head { padding: 16px; border-bottom: 1px solid var(--nx-border-card); }
-.wsm__logo { width: 40px; height: 40px; border-radius: 11px; background: linear-gradient(135deg,#6C70F0,#4B3FD6); display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 16px; flex: none; }
+.wsm__logo { width: 40px; height: 40px; border-radius: 11px; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 16px; flex: none; }
 .badge { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 7px; }
 .badge--indigo { color: var(--nx-indigo); background: var(--nx-indigo-50); }
 .badge--amber { color: var(--nx-warning); background: #FBF1E2; }

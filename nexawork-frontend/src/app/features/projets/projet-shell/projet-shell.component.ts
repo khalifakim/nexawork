@@ -14,8 +14,10 @@ import { CreerTacheComponent } from '@features/projets/modals/creer-tache/creer-
 import { StatutsComponent } from '@features/projets/modals/statuts/statuts.component';
 import { WorkflowComponent } from '@features/projets/modals/workflow/workflow.component';
 import { ProjectsService } from '@core/services/projects.service';
+import { SessionService } from '@core/services/session.service';
 import { Project } from '@core/models/project.models';
 import { TaskCard } from '@core/models/task.models';
+import { workspaceSignal } from '@core/util/workspace-signal';
 
 interface Tab { key: string; label: string; icon: string; }
 
@@ -171,7 +173,8 @@ interface Tab { key: string; label: string; icon: string; }
 export class ProjetShellComponent {
   private route    = inject(ActivatedRoute);
   private projectsSvc = inject(ProjectsService);
-  private allProjects = toSignal(this.projectsSvc.list(), { initialValue: [] as Project[] });
+  private session = inject(SessionService);
+  private allProjects = workspaceSignal<Project[]>(this.session, () => this.projectsSvc.list(), []);
   router = inject(Router);
 
   setOpen      = signal(false);

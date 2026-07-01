@@ -1,6 +1,9 @@
 import { ChangeDetectionStrategy, Component, EventEmitter, Output, computed, inject, signal } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { SessionService } from '@core/services/session.service';
+import { WorkspaceLoaderService } from '@core/services/workspace-loader.service';
+import { ToastService } from '@core/services/toast.service';
+import { ShellBus } from '@layouts/app-shell/shell.bus';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 import { AvatarComponent } from '@shared/ui/avatar/avatar.component';
 import { LogoComponent } from '@shared/ui/logo/logo.component';
@@ -8,7 +11,13 @@ import { initials } from '@core/util/ui.util';
 
 type Menu = 'ws' | 'user' | 'notif' | 'call' | null;
 
-interface Notif { id: string; actor: string; ac: string; title: string; text: string; date: string; read?: boolean; }
+/** What the notification points at. The router in `openNotif` maps this to a destination. */
+type NotifKind = 'tache' | 'message' | 'document' | 'projet';
+
+interface Notif {
+  id: string; actor: string; ac: string; title: string; text: string; date: string; read?: boolean;
+  kind: NotifKind; target: string;
+}
 
 @Component({
   selector: 'app-header',
@@ -22,7 +31,7 @@ interface Notif { id: string; actor: string; ac: string; title: string; text: st
         <div class="logo"><app-logo [markSize]="20" [fontSize]="9.5" [onDark]="true" [stacked]="true" /></div>
         <div class="wswrap">
           <button class="ws" (click)="toggle('ws')">
-            <span class="ws__logo">N</span>
+            <span class="ws__logo" [style.background]="wsColor()">{{ wsMono() }}</span>
             <span class="ws__t"><span class="ws__name">{{ wsName() }}</span><span class="ws__sub">12 membres</span></span>
             <app-icon name="chevronDown" [size]="13" [stroke]="2.4" />
           </button>
@@ -30,7 +39,7 @@ interface Notif { id: string; actor: string; ac: string; title: string; text: st
             <div class="pop pop--ws" (click)="$event.stopPropagation()">
               <div class="wsm__head">
                 <div style="display:flex;align-items:center;gap:11px;margin-bottom:11px">
-                  <span class="wsm__logo">N</span>
+                  <span class="wsm__logo" [style.background]="wsColor()">{{ wsMono() }}</span>
                   <div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:700">{{ wsName() }}</div><div style="font-size:12.5px;color:var(--nx-text-500)">12 membres</div></div>
                   <button class="iconbtn" routerLink="/app/parametres/general" (click)="close()"><app-icon name="gear" [size]="17" /></button>
                 </div>
@@ -42,7 +51,7 @@ interface Notif { id: string; actor: string; ac: string; title: string; text: st
               <div class="wsm__sec">
                 <div class="wsm__h">Autres espaces de travail</div>
                 @for (o of others; track o.name) {
-                  <button class="wsm__row"><span class="wsm__av" [style.background]="o.color">{{ o.name[0] }}</span>
+                  <button class="wsm__row" (click)="switchTo(o)"><span class="wsm__av" [style.background]="o.color">{{ o.name[0] }}</span>
                     <span style="flex:1"><span style="display:block;font-size:13.5px;font-weight:600">{{ o.name }}</span><span style="font-size:11.5px;color:var(--nx-text-500)">{{ o.role }}</span></span>
                     <span style="font-size:12px;font-weight:600;color:var(--nx-indigo)">Basculer</span></button>
                 }
@@ -112,7 +121,7 @@ interface Notif { id: string; actor: string; ac: string; title: string; text: st
             </div>
             <div class="nm__list">
               @for (n of visibleNotifs(); track n.id) {
-                <div class="nm__row" [class.nm__row--unread]="!n.read" (click)="markRead(n.id)">
+                <div class="nm__row" [class.nm__row--unread]="!n.read" (click)="openNotif(n)">
                   <span class="nm__u">@if (!n.read) { <span class="nm__udot"></span> }</span>
                   <span class="nm__av" [style.background]="n.ac">{{ ini(n.actor) }}</span>
                   <div style="flex:1;min-width:0">
@@ -152,6 +161,9 @@ interface Notif { id: string; actor: string; ac: string; title: string; text: st
 export class HeaderComponent {
   private session = inject(SessionService);
   private router = inject(Router);
+  private loader = inject(WorkspaceLoaderService);
+  private toast = inject(ToastService);
+  private bus = inject(ShellBus);
   @Output() search = new EventEmitter<void>();
 
   menu = signal<Menu>(null);
@@ -160,21 +172,38 @@ export class HeaderComponent {
 
   userName = computed(() => this.session.user()?.displayName ?? 'Akim Koné');
   userEmail = computed(() => this.session.user()?.email ?? 'akim.kone@nexa.io');
-  wsName = computed(() => this.session.user()?.organisationName ?? 'Atelier Nexa');
+  wsName = computed(() => this.session.activeWorkspace().name);
+  wsColor = computed(() => this.session.activeWorkspace().color);
+  wsMono = computed(() => initials(this.session.activeWorkspace().name));
 
   others = [
-    { name: 'Studio Lumen', color: '#2BB673', role: 'Membre' },
-    { name: 'Projets Perso', color: '#E0497B', role: 'Administrateur' },
+    { id: 'studio-lumen',  name: 'Studio Lumen',  color: '#2BB673', role: 'Membre' },
+    { id: 'projets-perso', name: 'Projets Perso', color: '#E0497B', role: 'Administrateur' },
   ];
   callParts = [
     { i: 'SD', c: '#F2693C' }, { i: 'MB', c: '#6C70F0' }, { i: 'AN', c: '#2BB673' }, { i: 'YS', c: '#3AA9E0' }, { i: 'FT', c: '#E89A2C' },
   ];
   notifs: Notif[] = [
-    { id: 'n1', actor: 'Sarah Diallo', ac: '#F2693C', title: 'Nouvelle tâche assignée', text: 'Sarah Diallo vous a assigné « Intégration écran profil utilisateur » dans Refonte App Mobile.', date: 'Il y a 1 minute' },
-    { id: 'n2', actor: 'Moussa Bâ', ac: '#6C70F0', title: 'Mention dans un commentaire', text: '@Akim peux-tu valider la maquette du profil avant ce soir ?', date: 'Il y a 18 minutes' },
-    { id: 'n3', actor: 'Aïda Ndiaye', ac: '#2BB673', title: 'Nouveau message', text: 'Aïda Ndiaye : on cale un point demain matin ?', date: 'Il y a 2 heures' },
-    { id: 'n4', actor: 'Yacine Sow', ac: '#E0497B', title: 'Document partagé', text: 'Yacine Sow a partagé « Specs fonctionnelles.pdf » avec vous.', date: 'Il y a 5 heures', read: true },
-    { id: 'n5', actor: 'Fatou Traoré', ac: '#3AA9E0', title: 'Ajout à un projet', text: 'Vous avez été ajouté au projet « Campagne Q3 Marketing ».', date: 'Hier', read: true },
+    { id: 'n1', actor: 'Sarah Diallo', ac: '#F2693C',
+      title: 'Nouvelle tâche assignée',
+      text: 'Sarah Diallo vous a assigné « Intégration écran profil utilisateur » dans Refonte App Mobile.',
+      date: 'Il y a 1 minute',  kind: 'tache', target: 'MOB-094' },
+    { id: 'n2', actor: 'Moussa Bâ', ac: '#6C70F0',
+      title: 'Mention dans un commentaire',
+      text: '@Akim peux-tu valider la maquette du profil avant ce soir ?',
+      date: 'Il y a 18 minutes', kind: 'tache', target: 'MOB-094' },
+    { id: 'n3', actor: 'Aïda Ndiaye', ac: '#2BB673',
+      title: 'Nouveau message',
+      text: 'Aïda Ndiaye : on cale un point demain matin ?',
+      date: 'Il y a 2 heures',   kind: 'message', target: 'aida-ndiaye' },
+    { id: 'n4', actor: 'Yacine Sow', ac: '#E0497B',
+      title: 'Document partagé',
+      text: 'Yacine Sow a partagé « Specs fonctionnelles.pdf » avec vous.',
+      date: 'Il y a 5 heures',   kind: 'document', target: 'Specs fonctionnelles.pdf', read: true },
+    { id: 'n5', actor: 'Fatou Traoré', ac: '#3AA9E0',
+      title: 'Ajout à un projet',
+      text: 'Vous avez été ajouté au projet « Campagne Q3 Marketing ».',
+      date: 'Hier',              kind: 'projet', target: 'campagne-q3-marketing', read: true },
   ];
 
   visibleNotifs = computed(() => {
@@ -193,4 +222,45 @@ export class HeaderComponent {
   markRead(id: string): void { this.readIds.update(l => l.includes(id) ? l : [...l, id]); }
   ini(name: string): string { return initials(name); }
   logout(): void { this.close(); this.session.logout(); }
+
+  /** Click handler for a notification row — mark as read, close the popover, then route to the right place. */
+  openNotif(n: Notif): void {
+    this.markRead(n.id);
+    this.close();
+    switch (n.kind) {
+      case 'tache':
+        // We don't have a dedicated /tasks/:id route — the task detail lives inside
+        // the project kanban. Route to the project, which loads MOB-094 by default.
+        this.router.navigate(['/app/projets/refonte-app-mobile/kanban'], { queryParams: { task: n.target } });
+        break;
+      case 'message':
+        this.router.navigate(['/app/conversations', n.target]);
+        break;
+      case 'document':
+        this.bus.openDocument(n.target);
+        break;
+      case 'projet':
+        this.router.navigate(['/app/projets', n.target, 'kanban']);
+        break;
+    }
+  }
+
+  /**
+   * Switch the active workspace from the header menu.
+   * Mirrors the prototype: close the menu → show fullscreen loader for 800 ms →
+   * swap the active workspace, route to the accueil, and notify.
+   */
+  switchTo(o: { id: string; name: string }): void {
+    if (o.id === this.session.activeWorkspaceId()) {
+      this.close();
+      return;
+    }
+    this.close();
+    this.loader.show(800);
+    setTimeout(() => {
+      this.session.switchWorkspace(o.id);
+      this.router.navigate(['/app/accueil/mes-taches']);
+      this.toast.show({ message: 'Vous avez rejoint « ' + o.name + ' »' });
+    }, 800);
+  }
 }

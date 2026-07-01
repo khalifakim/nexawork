@@ -1,9 +1,10 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { Observable, of } from 'rxjs';
 import { delay } from 'rxjs/operators';
 import { Member } from '@core/models/member.models';
 import { ME, slugName } from '@core/util/ui.util';
-import { MEMBERS } from '@core/mock/members';
+import { MEMBERS_BY_WORKSPACE } from '@core/mock/members';
+import { SessionService } from './session.service';
 
 /**
  * Members directory access. Swap `MembersMockService` for an HTTP impl when the
@@ -23,9 +24,16 @@ const unknown = (name: string): Member => ({ name, color: '#86828E', role: 'Memb
 
 @Injectable()
 export class MembersMockService extends MembersService {
-  directory(): Observable<Member[]> { return of(MEMBERS).pipe(delay(80)); }
-  online(): Observable<Member[]> { return of(MEMBERS.filter(m => m.online && m.name !== ME)).pipe(delay(80)); }
-  others(): Observable<Member[]> { return of(MEMBERS.filter(m => m.name !== ME)).pipe(delay(80)); }
-  byName(name: string): Observable<Member> { return of(MEMBERS.find(m => m.name === name) ?? unknown(name)); }
-  bySlug(slug: string): Observable<Member> { return of(MEMBERS.find(m => slugName(m.name) === slug) ?? unknown(slug)); }
+  private readonly session = inject(SessionService);
+
+  private roster(): Member[] {
+    const wsId = this.session.activeWorkspaceId();
+    return MEMBERS_BY_WORKSPACE[wsId] ?? [];
+  }
+
+  directory(): Observable<Member[]> { return of(this.roster()).pipe(delay(80)); }
+  online(): Observable<Member[]> { return of(this.roster().filter(m => m.online && m.name !== ME)).pipe(delay(80)); }
+  others(): Observable<Member[]> { return of(this.roster().filter(m => m.name !== ME)).pipe(delay(80)); }
+  byName(name: string): Observable<Member> { return of(this.roster().find(m => m.name === name) ?? unknown(name)); }
+  bySlug(slug: string): Observable<Member> { return of(this.roster().find(m => slugName(m.name) === slug) ?? unknown(slug)); }
 }

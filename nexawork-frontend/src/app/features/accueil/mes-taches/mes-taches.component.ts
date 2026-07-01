@@ -56,7 +56,7 @@ const PRIO_BG: Record<string, string> = { 'Haute': '#FDECEB', 'Moyenne': '#FBF1E
     </div>
 
     @if (openTask()) {
-      <app-fiche-tache [task]="openTask()!" (closed)="openTask.set(null)" />
+      <app-fiche-tache [task]="openTask()!" (closed)="openTask.set(null)" (openTask)="onChipOpenTask($event)" />
     }
   `,
   styleUrl: './mes-taches.component.scss',
@@ -94,5 +94,16 @@ export class MesTachesComponent {
       prio: [r.prio[0], r.prio[1], PRIO_BG[r.prio[0]] ?? 'rgba(0,0,0,.06)'],
       tag: ['Feature', '#6C70F0'], prog: [0, ''], team: ['#F2693C', '#6C70F0'], links: 2, comments: 3,
     };
+  }
+
+  /** Reuse the local task list to find a clicked mention. Falls back to a stub card. */
+  onChipOpenTask(id: string): void {
+    const all = this.sections.flatMap(s => s.tasks);
+    const row = all.find(t => t.id === id);
+    this.openTask.set(row ? this.toCard(row) : {
+      id, title: 'Tâche ' + id, proj: '', due: '',
+      desc: '', prio: ['Moyenne', '#E89A2C', 'rgba(0,0,0,.06)'],
+      tag: ['', '#8E8AA0'], prog: [0, ''], team: [], links: 0, comments: 0,
+    });
   }
 }

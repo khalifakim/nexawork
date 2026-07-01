@@ -2,6 +2,9 @@
 .wrap { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .toolbar { flex: none; display: flex; align-items: center; gap: 10px; padding: 16px 28px 14px; }
 .search { flex: 1; max-width: 360px; display: flex; align-items: center; gap: 9px; height: 38px; padding: 0 13px; background: #fff; border: 1px solid #DDD9D1; border-radius: 9px; color: var(--nx-text-400); font-size: 13.5px; }
+.search app-icon { color: #9b97a3; display: flex; }
+.search input { flex: 1; min-width: 0; border: none; outline: none; background: transparent; font-family: inherit; font-size: 13.5px; color: #1d1b25; }
+.search input::placeholder { color: #9b97a3; }
 .spacer { flex: 1; }
 .create { display: flex; align-items: center; gap: 7px; height: 38px; padding: 0 15px; border: none; border-radius: 9px; background: var(--nx-indigo); color: #fff; font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; box-shadow: var(--nx-shadow-primary); }
 .tbl { flex: 1; min-height: 0; overflow: auto; margin: 0 28px 24px; background: #fff; border: 1px solid var(--nx-border); border-radius: 12px; }
@@ -15,3 +18,4 @@
 .nm { font-size: 14.5px; font-weight: 600; }
 .lock { color: var(--nx-text-300); }
 .muted { font-size: 13px; color: var(--nx-text-500); }
+.empty { padding: 40px; text-align: center; font-size: 13.5px; color: #a8a4af; }

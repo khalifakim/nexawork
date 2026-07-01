@@ -12,6 +12,7 @@ import { NouveauMessageComponent } from '@features/conversations/modals/nouveau-
 import { NouveauCanalComponent } from '@features/canaux/modals/nouveau-canal/nouveau-canal.component';
 import { CreerProjetComponent } from '@features/projets/modals/creer-projet/creer-projet.component';
 import { FicheProfilComponent } from '@shared/overlays/fiche-profil/fiche-profil.component';
+import { ApercuDocumentComponent } from '@shared/overlays/apercu-document/apercu-document.component';
 import { ShellBus } from './shell.bus';
 
 const SECTION_TITLES: Record<string, string> = {
@@ -24,7 +25,7 @@ const SECTION_TITLES: Record<string, string> = {
   selector: 'app-shell',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterOutlet, HeaderComponent, RailComponent, Sidebar2Component, IconComponent, InvitationModalComponent, RechercheGlobaleComponent, NouveauMessageComponent, NouveauCanalComponent, CreerProjetComponent, FicheProfilComponent],
+  imports: [RouterOutlet, HeaderComponent, RailComponent, Sidebar2Component, IconComponent, InvitationModalComponent, RechercheGlobaleComponent, NouveauMessageComponent, NouveauCanalComponent, CreerProjetComponent, FicheProfilComponent, ApercuDocumentComponent],
   template: `
     <div class="shell">
       <app-header (search)="bus.openSearch()" />
@@ -57,6 +58,7 @@ const SECTION_TITLES: Record<string, string> = {
     @if (bus.newChannelScope(); as sc) { <app-nouveau-canal [scope]="sc" (closed)="bus.newChannelScope.set(null)" /> }
     @if (bus.createProjectOpen()) { <app-creer-projet (closed)="bus.createProjectOpen.set(false)" (created)="onProjectCreated()" /> }
     @if (bus.profileName(); as pn) { <app-fiche-profil [name]="pn" (closed)="bus.profileName.set(null)" /> }
+    @if (bus.documentName(); as dn) { <app-apercu-document [name]="dn" (closed)="bus.documentName.set(null)" /> }
   `,
   styles: [`
     .shell { height: 100vh; display: flex; flex-direction: column; overflow: hidden; background: var(--nx-bg); }

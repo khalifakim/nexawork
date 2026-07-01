@@ -1,10 +1,11 @@
-import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output, computed, inject, signal } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { RouterLink, RouterLinkActive } from '@angular/router';
-import { toSignal } from '@angular/core/rxjs-interop';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 import { ProjectsService } from '@core/services/projects.service';
+import { SessionService } from '@core/services/session.service';
 import { Project } from '@core/models/project.models';
+import { workspaceSignal } from '@core/util/workspace-signal';
 
 /** Sidebar 2 body — contextual sub-navigation for the active rail section. */
 @Component({
@@ -129,12 +130,17 @@ import { Project } from '@core/models/project.models';
         <app-icon class="row__i" name="archive" [size]="15" /><span>Projets archivés</span>
       </button>
       <button class="primary" (click)="createProject.emit()"><app-icon name="plus" [size]="16" />Nouveau projet</button>
-      <button class="search"><app-icon name="search" [size]="15" /><input placeholder="Rechercher un projet…" /></button>
+      <button class="search">
+        <app-icon name="search" [size]="15" />
+        <input [value]="projQ()" (input)="projQ.set($any($event.target).value)" placeholder="Rechercher un projet…" aria-label="Rechercher un projet" />
+      </button>
       <div class="head">Tous les projets</div>
-      @for (p of projects(); track p.id) {
+      @for (p of filteredProjects(); track p.id) {
         <a class="row" [routerLink]="['/app/projets', p.id]" routerLinkActive="row--on">
           <span class="dot" [style.background]="p.color"></span><span style="flex:1">{{ p.name }}</span><span class="row__pct">{{ p.progress }}%</span>
         </a>
+      } @empty {
+        <div class="empty">Aucun projet trouvé.</div>
       }
     </ng-template>
   `,
@@ -166,6 +172,8 @@ import { Project } from '@core/models/project.models';
     .row--arch span { flex: none; }
     .search { width: 100%; display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 11px; margin: 2px 2px 8px; border: none; border-radius: 8px; background: var(--nx-surface-2); color: var(--nx-text-400); }
     .search input { flex: 1; min-width: 0; border: none; outline: none; background: transparent; font-family: inherit; font-size: 13px; color: var(--nx-text); }
+    .search input::placeholder { color: var(--nx-text-400); }
+    .empty { padding: 10px 12px; font-size: 12.5px; color: var(--nx-text-400); }
     .row--group { font-weight: 600; }
     .row--actifs { margin-bottom: 2px; }
     .conv { width: 100%; display: flex; align-items: center; gap: 10px; padding: 8px; border: none; background: transparent; border-radius: 9px; cursor: pointer; text-align: left; margin-bottom: 1px; text-decoration: none; }
@@ -186,7 +194,16 @@ export class Sidebar2Component {
   @Output() newChannel = new EventEmitter<'org' | 'project'>();
 
   private projectsSvc = inject(ProjectsService);
-  projects = toSignal(this.projectsSvc.list(), { initialValue: [] as Project[] });
+  private session = inject(SessionService);
+  projects = workspaceSignal<Project[]>(this.session, () => this.projectsSvc.list(), []);
+  projQ = signal('');
+  /** Project list filtered by the sidebar search query (case-insensitive). */
+  filteredProjects = computed<Project[]>(() => {
+    const q = this.projQ().toLowerCase().trim();
+    const list = this.projects();
+    if (!q) return list;
+    return list.filter(p => p.name.toLowerCase().includes(q));
+  });
   docsProjOpen = signal(true);
   canauxGrp = signal(true);
 

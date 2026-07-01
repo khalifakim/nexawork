@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { SessionService } from '@core/services/session.service';
+import { WorkspaceLoaderService } from '@core/services/workspace-loader.service';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 
 interface WsItem { name: string; sub: string; mono: string; grad: string; }
@@ -59,10 +60,16 @@ interface WsItem { name: string; sub: string; mono: string; grad: string; }
 })
 export class SelecteurEspacesComponent {
   private session = inject(SessionService);
+  private loader = inject(WorkspaceLoaderService);
+
   mine: WsItem[] = [{ name: 'Atelier Nexa', sub: '12 membres · Propriétaire', mono: 'N', grad: 'linear-gradient(135deg,#6C70F0,#4B3FD6)' }];
   joined: WsItem[] = [
     { name: 'Studio Marbre', sub: '8 membres · Membre', mono: 'S', grad: 'linear-gradient(135deg,#3AA9E0,#2E7BC4)' },
     { name: 'Coop Verte', sub: '5 membres · Membre', mono: 'C', grad: 'linear-gradient(135deg,#2BB673,#1E8F57)' },
   ];
-  enter(): void { this.session.enterWorkspace(); }
+
+  enter(): void {
+    this.loader.show();
+    this.session.enterWorkspace();
+  }
 }

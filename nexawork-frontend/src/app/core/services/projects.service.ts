@@ -1,8 +1,9 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { Observable, of } from 'rxjs';
 import { delay } from 'rxjs/operators';
 import { Project } from '@core/models/project.models';
-import { PROJECTS } from '@core/mock/projects';
+import { PROJECTS_BY_WORKSPACE } from '@core/mock/projects';
+import { SessionService } from './session.service';
 
 export abstract class ProjectsService {
   abstract list(): Observable<Project[]>;
@@ -11,6 +12,16 @@ export abstract class ProjectsService {
 
 @Injectable()
 export class ProjectsMockService extends ProjectsService {
-  list(): Observable<Project[]> { return of(PROJECTS).pipe(delay(80)); }
-  byId(id: string): Observable<Project | undefined> { return of(PROJECTS.find(p => p.id === id)); }
+  private readonly session = inject(SessionService);
+
+  list(): Observable<Project[]> {
+    const wsId = this.session.activeWorkspaceId();
+    return of(PROJECTS_BY_WORKSPACE[wsId] ?? []).pipe(delay(80));
+  }
+
+  byId(id: string): Observable<Project | undefined> {
+    const wsId = this.session.activeWorkspaceId();
+    const list = PROJECTS_BY_WORKSPACE[wsId] ?? [];
+    return of(list.find(p => p.id === id));
+  }
 }

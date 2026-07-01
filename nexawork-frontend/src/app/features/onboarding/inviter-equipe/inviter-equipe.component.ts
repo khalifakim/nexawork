@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { SessionService } from '@core/services/session.service';
+import { WorkspaceLoaderService } from '@core/services/workspace-loader.service';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 
 @Component({
@@ -59,7 +60,9 @@ import { IconComponent } from '@shared/ui/icon/icon.component';
 })
 export class InviterEquipeComponent {
   private session = inject(SessionService);
-  emails = signal<string[]>(['camille.roy@gmail.com', 'designer@studio.fr']);
+  private loader = inject(WorkspaceLoaderService);
+
+  emails = signal<string[]>([]);
   draft = signal('');
   role = signal<'Membre' | 'Administrateur'>('Membre');
 
@@ -70,5 +73,8 @@ export class InviterEquipeComponent {
     this.draft.set('');
   }
   remove(i: number): void { this.emails.update(list => list.filter((_, idx) => idx !== i)); }
-  enter(): void { this.session.enterWorkspace(); }
+  enter(): void {
+    this.loader.show();
+    this.session.enterWorkspace();
+  }
 }

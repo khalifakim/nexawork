@@ -5,6 +5,10 @@ import { LogoComponent } from '@shared/ui/logo/logo.component';
 /**
  * Onboarding shell: dark brand panel on the left, the current onboarding screen
  * (router-outlet) on the right. Mirrors `NexaWork Onboarding.dc.html`.
+ *
+ * The workspace entry loader lives in `AppComponent` so it survives the route
+ * transition to `/app` (mirrors the `loaderOverlay` slot at the root of the
+ * prototype).
  */
 @Component({
   selector: 'app-auth-layout',

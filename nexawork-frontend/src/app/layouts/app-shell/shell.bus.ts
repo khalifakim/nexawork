@@ -13,8 +13,10 @@ export class ShellBus {
   readonly createProjectOpen = signal(false);
   readonly newChannelScope = signal<'org' | 'project' | null>(null);
   readonly profileName = signal<string | null>(null);
+  readonly documentName = signal<string | null>(null);
 
   openProfile(name: string): void { this.profileName.set(name); }
+  openDocument(name: string): void { this.documentName.set(name); }
   openInvite(): void { this.inviteOpen.set(true); }
   openSearch(): void { this.searchOpen.set(true); }
   openNewMessage(): void { this.newMessageOpen.set(true); }
