@@ -1,0 +1,24 @@
+.wrap { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.head { flex: none; padding: 22px 28px 6px; display: flex; align-items: flex-start; gap: 12px; }
+.head > div { flex: 1; }
+.t { font-size: 18px; font-weight: 700; letter-spacing: -.015em; }
+.s { font-size: 13px; color: var(--nx-text-500); margin-top: 3px; }
+.empty-btn { display: flex; align-items: center; gap: 7px; height: 34px; padding: 0 13px; border: 1px solid #F2C4C0; border-radius: 9px; background: #fff; color: var(--nx-danger); font-family: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; flex: none; }
+.empty-btn:hover { background: rgba(245,86,78,.06); }
+.tbl { flex: 1; min-height: 0; overflow: auto; margin: 16px 28px 24px; background: #fff; border: 1px solid var(--nx-border); border-radius: 12px; }
+.thead, .row { display: grid; grid-template-columns: 2fr 1fr 1.1fr .8fr .7fr 150px; gap: 14px; align-items: center; padding: 0 18px; }
+.thead { height: 40px; border-bottom: 1px solid #ECEAE4; font-size: 11.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--nx-text-400); }
+.row { height: 56px; border-bottom: 1px solid #F4F2ED; }
+.row:hover { background: var(--nx-surface-3); }
+.name { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.ic { width: 34px; height: 34px; flex: none; border-radius: 9px; background: var(--nx-surface-2); display: flex; align-items: center; justify-content: center; opacity: .55; }
+.nm { font-size: 14px; font-weight: 500; color: var(--nx-text-500); text-decoration: line-through; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.muted { font-size: 13px; color: var(--nx-text-500); }
+.acts { display: flex; gap: 8px; align-items: center; }
+.restore { display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 11px; border: 1px solid var(--nx-border); border-radius: 8px; background: #fff; color: var(--nx-text-600); font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.restore:hover { background: var(--nx-surface-2); }
+.del { width: 30px; height: 30px; flex: none; border: 1px solid #F2C4C0; border-radius: 8px; background: #fff; color: var(--nx-danger); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.del:hover { background: rgba(245,86,78,.06); }
+.empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--nx-text-400); }
+.empty app-icon { color: #c9c5bd; }
+.empty span { font-size: 13.5px; font-weight: 600; }

@@ -1,0 +1,26 @@
+.bar { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+.search { flex: 1; display: flex; align-items: center; gap: 9px; height: 40px; padding: 0 13px; background: #fff; border: 1px solid var(--nx-border); border-radius: 9px; color: var(--nx-text-400); font-size: 13.5px; }
+.mrow { display: flex; align-items: center; gap: 14px; padding: 14px 0; border-top: 1px solid var(--nx-border-card); }
+.mrow--first { border-top: none; }
+.mrow--inactive .n, .mrow--inactive .e { opacity: .45; }
+.mrow--inactive app-avatar { opacity: .45; }
+.b { flex: 1; min-width: 0; }
+.n { font-size: 14px; font-weight: 600; color: var(--nx-text); }
+.you { font-size: 12px; font-weight: 500; color: var(--nx-text-400); }
+.e { font-size: 12.5px; color: var(--nx-text-400); }
+
+/* Toggle switch */
+.toggle { width: 38px; height: 22px; flex: none; border: none; border-radius: 11px; background: #DDD9D1; cursor: pointer; position: relative; padding: 0; transition: background .18s; }
+.toggle--on { background: var(--nx-success); }
+.toggle__knob { position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.2); transition: transform .18s; display: block; }
+.toggle--on .toggle__knob { transform: translateX(16px); }
+
+/* Dots + dropdown */
+.dots { width: 30px; height: 30px; flex: none; border: none; border-radius: 8px; background: transparent; color: var(--nx-text-400); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.dots:hover { background: #EDEBE5; }
+.menu-wrap { position: relative; }
+.bd { position: fixed; inset: 0; z-index: 99; }
+.menu { position: absolute; right: 0; top: 34px; z-index: 100; background: #fff; border: 1px solid var(--nx-border-card); border-radius: 10px; box-shadow: 0 8px 24px rgba(20,15,40,.14); min-width: 190px; padding: 4px; }
+.menu__i { display: flex; align-items: center; gap: 9px; width: 100%; padding: 9px 12px; border: none; background: transparent; border-radius: 7px; font-size: 13.5px; font-weight: 500; cursor: pointer; font-family: inherit; text-align: left; white-space: nowrap; }
+.menu__i--danger { color: var(--nx-danger); }
+.menu__i--danger:hover { background: #FEF2F1; }

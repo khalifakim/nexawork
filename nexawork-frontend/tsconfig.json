@@ -1,8 +1,6 @@
 {
   "compileOnSave": false,
   "compilerOptions": {
-    "baseUrl": "./",
-    "ignoreDeprecations": "6.0",
     "forceConsistentCasingInFileNames": true,
     "strict": true,
     "noImplicitOverride": true,
@@ -22,8 +20,8 @@
     "paths": {
       "@core/*": ["./src/app/core/*"],
       "@store/*": ["./src/app/store/*"],
-      "@views/*": ["./src/app/views/*"],
-      "@common/*": ["./src/app/shared/*"],
+      "@shared/*": ["./src/app/shared/*"],
+      "@features/*": ["./src/app/features/*"],
       "@layouts/*": ["./src/app/layouts/*"],
       "@environment/*": ["./src/environments/*"]
     }

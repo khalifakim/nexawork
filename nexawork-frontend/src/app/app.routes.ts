@@ -1,39 +1,88 @@
 import { Routes } from '@angular/router';
 import { authGuard } from '@core/guards/auth.guard';
-import { workspaceGuard } from '@core/guards/workspace.guard';
 
+/**
+ * Onboarding lives under /auth (split-panel layout). The authenticated app lives
+ * under /app (header + rail + contextual sidebar 2 + content). Each rail section
+ * has real child routes so URLs are shareable and browser-back works.
+ * Section bodies still marked `Placeholder` are delivered in later phases.
+ */
 export const routes: Routes = [
   {
     path: 'auth',
-    loadComponent: () =>
-      import('@layouts/auth-layout/auth-layout.component').then(m => m.AuthLayoutComponent),
+    loadComponent: () => import('@layouts/auth-layout/auth-layout.component').then(m => m.AuthLayoutComponent),
     children: [
-      { path: 'login',    loadComponent: () => import('@views/auth/login/login.component').then(m => m.LoginComponent) },
-      { path: 'register', loadComponent: () => import('@views/auth/register/register.component').then(m => m.RegisterComponent) },
-      { path: '', redirectTo: 'login', pathMatch: 'full' },
+      { path: '', pathMatch: 'full', redirectTo: 'landing' },
+      { path: 'landing',          loadComponent: () => import('@features/onboarding/page-accueil/page-accueil.component').then(m => m.PageAccueilComponent) },
+      { path: 'login',            loadComponent: () => import('@features/onboarding/connexion/connexion.component').then(m => m.ConnexionComponent) },
+      { path: 'forgot/email',     loadComponent: () => import('@features/onboarding/mot-de-passe-oublie/saisie-email.component').then(m => m.MdpSaisieEmailComponent) },
+      { path: 'forgot/sent',      loadComponent: () => import('@features/onboarding/mot-de-passe-oublie/lien-envoye.component').then(m => m.MdpLienEnvoyeComponent) },
+      { path: 'forgot/new',       loadComponent: () => import('@features/onboarding/mot-de-passe-oublie/nouveau-mot-de-passe.component').then(m => m.MdpNouveauComponent) },
+      { path: 'signup',           loadComponent: () => import('@features/onboarding/inscription/inscription.component').then(m => m.InscriptionComponent) },
+      { path: 'verify',           loadComponent: () => import('@features/onboarding/verification-email/verification-email.component').then(m => m.VerificationEmailComponent) },
+      { path: 'workspace/name',   loadComponent: () => import('@features/onboarding/configuration-espace/configuration-espace.component').then(m => m.ConfigurationEspaceComponent) },
+      { path: 'workspace/invite', loadComponent: () => import('@features/onboarding/inviter-equipe/inviter-equipe.component').then(m => m.InviterEquipeComponent) },
+      { path: 'invite',           loadComponent: () => import('@features/onboarding/rejoindre-invitation/rejoindre-invitation.component').then(m => m.RejoindreInvitationComponent) },
+      { path: 'selector',         loadComponent: () => import('@features/onboarding/selecteur-espaces/selecteur-espaces.component').then(m => m.SelecteurEspacesComponent) },
     ],
   },
   {
-    path: '',
+    path: 'app',
     canActivate: [authGuard],
-    loadComponent: () =>
-      import('@layouts/main-layout/main-layout.component').then(m => m.MainLayoutComponent),
+    loadComponent: () => import('@layouts/app-shell/app-shell.component').then(m => m.AppShellComponent),
     children: [
-      { path: 'workspace/setup', loadComponent: () => import('@views/workspace/workspace-setup.component').then(m => m.WorkspaceSetupComponent) },
-      { path: 'dashboard',       canActivate: [workspaceGuard], loadComponent: () => import('@views/dashboard/dashboard.component').then(m => m.DashboardComponent) },
-      { path: 'projects',        canActivate: [workspaceGuard], loadComponent: () => import('@views/projects/kanban/kanban.component').then(m => m.KanbanComponent) },
-      { path: 'teams',           canActivate: [workspaceGuard], loadComponent: () => import('@views/teams/teams.component').then(m => m.TeamsComponent) },
-      { path: 'documents',       canActivate: [workspaceGuard], loadComponent: () => import('@views/ged/ged.component').then(m => m.GedComponent) },
-      { path: 'ged',             redirectTo: 'documents', pathMatch: 'full' },
-      { path: 'channels',        canActivate: [workspaceGuard], loadComponent: () => import('@views/channels/channels.component').then(m => m.ChannelsComponent) },
-      { path: 'conversations',   canActivate: [workspaceGuard], loadComponent: () => import('@views/conversations/conversations.component').then(m => m.ConversationsComponent) },
-      { path: 'messaging',       redirectTo: 'channels', pathMatch: 'full' },
-      { path: 'meetings',        canActivate: [workspaceGuard], loadComponent: () => import('@views/meeting/meeting.component').then(m => m.MeetingComponent) },
-      { path: 'notifications',   canActivate: [workspaceGuard], loadComponent: () => import('@views/notifications/notifications.component').then(m => m.NotificationsComponent) },
-      { path: 'settings',        loadComponent: () => import('@views/settings/settings.component').then(m => m.SettingsComponent) },
-      { path: 'profile',         redirectTo: 'settings', pathMatch: 'full' },
-      { path: '', redirectTo: 'dashboard', pathMatch: 'full' },
+      { path: '', pathMatch: 'full', redirectTo: 'accueil/mes-taches' },
+
+      // --- Accueil ---
+      { path: 'accueil', pathMatch: 'full', redirectTo: 'accueil/mes-taches' },
+      { path: 'accueil/mes-taches',      loadComponent: () => import('@features/accueil/mes-taches/mes-taches.component').then(m => m.MesTachesComponent) },
+      { path: 'accueil/mentions-recues', loadComponent: () => import('@features/accueil/mentions-recues/mentions-recues.component').then(m => m.MentionsRecuesComponent) },
+      { path: 'accueil/tableau-de-bord', loadComponent: () => import('@features/accueil/tableau-de-bord/tableau-de-bord.component').then(m => m.TableauDeBordComponent) },
+
+      // --- Projets ---
+      { path: 'projets', pathMatch: 'full', redirectTo: 'projets/refonte-app-mobile/kanban' },
+      { path: 'projets/archives', loadComponent: () => import('@features/projets/projets-archives/projets-archives.component').then(m => m.ProjetsArchivesComponent) },
+      { path: 'projets/:id', pathMatch: 'full', redirectTo: 'projets/:id/kanban' },
+      { path: 'projets/:id/:tab', loadComponent: () => import('@features/projets/projet-shell/projet-shell.component').then(m => m.ProjetShellComponent) },
+
+      // --- Équipes ---
+      { path: 'equipes', pathMatch: 'full', loadComponent: () => import('@features/equipes/equipes/equipes.component').then(m => m.EquipesComponent) },
+      { path: 'equipes/:teamId', loadComponent: () => import('@features/equipes/equipe-detail/equipe-detail.component').then(m => m.EquipeDetailComponent) },
+
+      // --- Documents (GED) ---
+      { path: 'documents', pathMatch: 'full', redirectTo: 'documents/partage' },
+      { path: 'documents/partage',      loadComponent: () => import('@features/documents/partage/partage.component').then(m => m.DocumentsPartageComponent) },
+      { path: 'documents/corbeille',    loadComponent: () => import('@features/documents/corbeille/corbeille.component').then(m => m.DocumentsCorbeilleComponent) },
+      { path: 'documents/organisation', loadComponent: () => import('@features/documents/organisation/organisation.component').then(m => m.DocumentsOrganisationComponent) },
+      { path: 'documents/projets', pathMatch: 'full', loadComponent: () => import('@features/documents/espace-projets/espace-projets.component').then(m => m.EspaceProjetsComponent) },
+      { path: 'documents/projets/:id',  loadComponent: () => import('@features/documents/documents-projet/documents-projet.component').then(m => m.DocumentsProjetComponent) },
+
+      // --- Canaux ---
+      { path: 'canaux', pathMatch: 'full', redirectTo: 'canaux/annonces' },
+      { path: 'canaux/:id', loadComponent: () => import('@features/canaux/canal/canal.component').then(m => m.CanalComponent) },
+
+      // --- Conversations ---
+      { path: 'conversations', pathMatch: 'full', redirectTo: 'conversations/actifs' },
+      { path: 'conversations/actifs', loadComponent: () => import('@features/conversations/actifs-maintenant/actifs-maintenant.component').then(m => m.ActifsMaintenantComponent) },
+      { path: 'conversations/:id', loadComponent: () => import('@features/conversations/conversation-privee/conversation-privee.component').then(m => m.ConversationPriveeComponent) },
+
+      // --- Réunions ---
+      { path: 'reunions', pathMatch: 'full', redirectTo: 'reunions/lancer' },
+      { path: 'reunions/lancer',          loadComponent: () => import('@features/reunions/lancer/lancer.component').then(m => m.LancerReunionComponent) },
+      { path: 'reunions/historique',      loadComponent: () => import('@features/reunions/historique/historique.component').then(m => m.HistoriqueReunionsComponent) },
+      { path: 'reunions/historique/:id',  loadComponent: () => import('@features/reunions/discussion/discussion.component').then(m => m.DiscussionReunionComponent) },
+
+      // --- Paramètres ---
+      { path: 'parametres', pathMatch: 'full', redirectTo: 'parametres/profil' },
+      { path: 'parametres/profil',      loadComponent: () => import('@features/parametres/profil/profil.component').then(m => m.ParamProfilComponent) },
+      { path: 'parametres/securite',    loadComponent: () => import('@features/parametres/securite/securite.component').then(m => m.ParamSecuriteComponent) },
+      { path: 'parametres/general',     loadComponent: () => import('@features/parametres/general/general.component').then(m => m.ParamGeneralComponent) },
+      { path: 'parametres/membres',     loadComponent: () => import('@features/parametres/membres/membres.component').then(m => m.ParamMembresComponent) },
+      { path: 'parametres/invitations', loadComponent: () => import('@features/parametres/invitations/invitations.component').then(m => m.ParamInvitationsComponent) },
+      { path: 'parametres/espaces',     loadComponent: () => import('@features/parametres/espaces/espaces.component').then(m => m.ParamEspacesComponent) },
     ],
   },
-  { path: '**', redirectTo: '' },
+
+  { path: '', pathMatch: 'full', redirectTo: 'app/accueil/mes-taches' },
+  { path: '**', redirectTo: 'app/accueil/mes-taches' },
 ];

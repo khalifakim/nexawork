@@ -29,14 +29,14 @@ export class AuthEffects {
   loginSuccess$ = createEffect(() =>
     this.actions$.pipe(
       ofType(AuthActions.loginSuccess),
-      tap(() => this.router.navigate(['/dashboard']))
+      tap(() => this.router.navigate(['/app']))
     ), { dispatch: false }
   );
 
   logout$ = createEffect(() =>
     this.actions$.pipe(
       ofType(AuthActions.logout),
-      tap(() => this.router.navigate(['/auth/login']))
+      tap(() => this.router.navigate(['/auth']))
     ), { dispatch: false }
   );
 
@@ -57,7 +57,7 @@ export class AuthEffects {
   registerSuccess$ = createEffect(() =>
     this.actions$.pipe(
       ofType(AuthActions.registerSuccess),
-      tap(() => this.router.navigate(['/auth/login']))
+      tap(() => this.router.navigate(['/auth/verify']))
     ), { dispatch: false }
   );
 }

@@ -1,0 +1,20 @@
+.lbl { display: block; font-size: 12px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; color: var(--nx-text-400); margin-bottom: 7px; }
+.in { width: 100%; box-sizing: border-box; height: 42px; padding: 0 13px; border-radius: 10px; border: 1px solid #DDD9D1; font-family: inherit; font-size: 14px; color: var(--nx-text); outline: none; margin-bottom: 18px; }
+.in:focus { border-color: var(--nx-indigo); box-shadow: 0 0 0 3px rgba(91,95,233,.14); }
+.drop { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 26px; border-radius: 12px; border: 2px dashed #D9D6CE; background: var(--nx-surface-3); color: var(--nx-text-500); margin-bottom: 16px; }
+.drop app-icon { color: var(--nx-text-300); }
+.drop__t { font-size: 13.5px; font-weight: 600; color: var(--nx-text-700); }
+.drop__s { font-size: 12px; }
+.ro { display: flex; align-items: center; gap: 12px; padding: 13px 14px; border: 1px solid #E2DFD8; border-radius: 11px; background: var(--nx-surface-3); }
+.ro--on { background: rgba(91,95,233,.04); }
+.ro__ic { width: 32px; height: 32px; flex: none; border-radius: 8px; background: #fff; border: 1px solid #ECEAE4; color: #7a7682; display: flex; align-items: center; justify-content: center; }
+.ro__t { flex: 1; min-width: 0; }
+.ro__title { font-size: 13.5px; font-weight: 600; color: var(--nx-text); }
+.ro__d { font-size: 12px; color: var(--nx-text-500); margin-top: 1px; }
+.sw { width: 42px; height: 24px; flex: none; border-radius: 13px; border: none; background: #cfccc4; cursor: pointer; position: relative; padding: 0; }
+.sw--on { background: var(--nx-indigo); }
+.knob { position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: left .15s; box-shadow: 0 1px 3px rgba(0,0,0,.25); }
+.sw--on .knob { left: 21px; }
+.ghost { height: 38px; padding: 0 16px; border: 1px solid var(--nx-border); border-radius: var(--nx-r-btn); background: #fff; color: var(--nx-text-600); font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.primary { height: 38px; padding: 0 18px; border: none; border-radius: var(--nx-r-btn); background: var(--nx-indigo); color: #fff; font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.primary:disabled { background: #cfccc4; cursor: not-allowed; }

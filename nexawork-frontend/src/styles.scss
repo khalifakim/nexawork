@@ -1,0 +1,187 @@
+/* ============================================================
+   NexaWork — Global design-system stylesheet
+   Tokens encoded verbatim from "NexaWork Design System.dc.html".
+   Authoritative reference — do NOT invent values outside this list.
+   ============================================================ */
+
+:root {
+  /* --- Brand --- */
+  --nx-indigo: #5B5FE9;          /* Indigo 600 · primaire / action */
+  --nx-indigo-hover: #4D51DC;    /* Indigo 700 · survol */
+  --nx-indigo-50: #EEEDFB;       /* Indigo 50 · surface active */
+  --nx-indigo-text: #3d3aa8;     /* texte sur surface active */
+  --nx-logo-from: #6C70F0;
+  --nx-logo-to: #4B3FD6;
+
+  /* --- Chrome & surfaces --- */
+  --nx-ink: #16131F;             /* chrome (header/rail) + texte fort */
+  --nx-bg: #ECEAE4;              /* fond contenu (pierre) */
+  --nx-surface: #FFFFFF;         /* carte */
+  --nx-surface-2: #F4F2ED;       /* surface 2 */
+  --nx-surface-3: #FBFAF7;       /* panneaux doux */
+  --nx-border-card: #F0EEE9;     /* bordure carte */
+  --nx-border: #E6E3DC;          /* bordure */
+  --nx-divider: #DDD9D1;         /* séparateur */
+  --nx-track: #EFEDE8;           /* piste de progression */
+
+  /* --- Texte --- */
+  --nx-text: #1D1B25;            /* encre */
+  --nx-text-700: #56525C;        /* gris 700 */
+  --nx-text-600: #46434e;
+  --nx-text-500: #86828E;        /* gris 500 */
+  --nx-text-400: #A9A5B0;        /* gris 400 */
+  --nx-text-300: #b4b0bb;
+
+  /* --- Sémantiques --- */
+  --nx-success: #2BB673;
+  --nx-warning: #E89A2C;
+  --nx-danger: #F5564E;
+  --nx-info: #5B8DEF;
+  --nx-danger-strong: #E0497B;
+
+  /* --- Statuts Kanban --- */
+  --nx-status-todo: #8E8AA0;
+  --nx-status-doing: #5B8DEF;
+  --nx-status-review: #E89A2C;
+  --nx-status-done: #2BB673;
+
+  /* --- Rayons --- */
+  --nx-r-pill: 7px;
+  --nx-r-btn: 9px;
+  --nx-r-card: 14px;
+  --nx-r-panel: 18px;
+
+  /* --- Élévation --- */
+  --nx-shadow-rest: 0 1px 2px rgba(20, 15, 40, .05);
+  --nx-shadow-hover: 0 4px 16px rgba(20, 15, 40, .12);
+  --nx-shadow-primary: 0 6px 18px rgba(91, 95, 233, .30);
+  --nx-shadow-pop: 0 12px 32px rgba(20, 15, 40, .16);
+  --nx-shadow-modal: 0 24px 70px rgba(20, 15, 40, .40);
+
+  /* --- Typo --- */
+  --nx-font: 'DM Sans', system-ui, sans-serif;
+  --nx-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  /* --- Z-index --- */
+  --nx-z-header: 30;
+  --nx-z-menu: 60;
+  --nx-z-overlay: 100;
+  --nx-z-modal: 140;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; height: 100%; }
+
+body {
+  font-family: var(--nx-font);
+  background: var(--nx-bg);
+  color: var(--nx-text);
+  -webkit-font-smoothing: antialiased;
+}
+
+button { font-family: inherit; }
+input, textarea, select { font-family: inherit; }
+a { color: inherit; text-decoration: none; }
+
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, .16);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, .28); background-clip: padding-box; }
+
+[contenteditable] { outline: none; }
+[contenteditable][data-ph]:empty:before { content: attr(data-ph); color: var(--nx-text-300); pointer-events: none; }
+
+input::placeholder, textarea::placeholder { color: var(--nx-text-300); }
+
+/* --- Keyframes (repris du prototype) --- */
+@keyframes nxCallPulse {
+  0%   { box-shadow: 0 0 0 0 rgba(43, 182, 115, .55); }
+  70%  { box-shadow: 0 0 0 7px rgba(43, 182, 115, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(43, 182, 115, 0); }
+}
+@keyframes nxCallIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes nxTaskHl {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(91, 95, 233, .20), 0 8px 24px rgba(91, 95, 233, .20); }
+  50%      { box-shadow: 0 0 0 5px rgba(91, 95, 233, .32), 0 10px 28px rgba(91, 95, 233, .28); }
+}
+@keyframes nxFade {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* --- Utilitaires minimaux --- */
+.nx-mono { font-family: var(--nx-mono); }
+.nx-scroll { overflow-y: auto; }
+.nx-elevate { transition: box-shadow .12s, transform .12s; }
+
+/* ============================================================
+   Onboarding form utilities (auth screens)
+   ============================================================ */
+.nxf-back { display: flex; align-items: center; gap: 5px; background: none; border: none;
+  color: var(--nx-text-500); font-size: 13px; font-weight: 600; cursor: pointer; padding: 0; margin-bottom: 24px; }
+.nxf-back:hover { color: var(--nx-text-700); }
+.nxf-h1 { font-size: 26px; font-weight: 700; letter-spacing: -.02em; margin: 0 0 8px; color: var(--nx-text); }
+.nxf-h1--lg { font-size: 28px; }
+.nxf-sub { font-size: 14.5px; color: var(--nx-text-500); line-height: 1.55; margin: 0 0 26px; }
+.nxf-field { margin-bottom: 16px; }
+.nxf-field--last { margin-bottom: 24px; }
+.nxf-label { display: block; font-size: 13px; font-weight: 600; color: var(--nx-text-700); margin-bottom: 7px; }
+.nxf-input { width: 100%; height: 44px; padding: 0 14px; border-radius: var(--nx-r-btn);
+  border: 1px solid var(--nx-border); background: #fff; font-family: inherit; font-size: 14.5px; color: var(--nx-text); outline: none; transition: border-color .15s, box-shadow .15s; }
+.nxf-input:focus { border-color: var(--nx-indigo); box-shadow: 0 0 0 3px rgba(91,95,233,.15); }
+.nxf-primary { width: 100%; height: 46px; border: none; border-radius: var(--nx-r-btn);
+  background: var(--nx-indigo); color: #fff; font-family: inherit; font-size: 15px; font-weight: 600; cursor: pointer; box-shadow: var(--nx-shadow-primary); transition: background .12s; }
+.nxf-primary:hover { background: var(--nx-indigo-hover); }
+.nxf-secondary { width: 100%; height: 46px; margin-top: 12px; border: 1px solid var(--nx-border); border-radius: var(--nx-r-btn);
+  background: #fff; color: var(--nx-text); font-family: inherit; font-size: 15px; font-weight: 600; cursor: pointer; }
+.nxf-secondary:hover { background: var(--nx-surface-2); }
+.nxf-link { background: none; border: none; color: var(--nx-indigo); font-family: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; padding: 0; }
+.nxf-muted-link { width: 100%; background: none; border: none; color: var(--nx-text-500); font-family: inherit;
+  font-size: 13.5px; font-weight: 600; cursor: pointer; padding: 14px 0 0; }
+.nxf-muted-link:hover { color: var(--nx-text-700); }
+.nxf-or { display: flex; align-items: center; gap: 14px; margin: 26px 0; }
+.nxf-or > div { flex: 1; height: 1px; background: var(--nx-divider); }
+.nxf-or > span { font-size: 12px; color: var(--nx-text-400); font-weight: 500; }
+.nxf-foot { text-align: center; font-size: 13.5px; color: var(--nx-text-500); margin: 22px 0 0; }
+.nxf-steps { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+.nxf-steps__label { font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--nx-text-400); }
+.nxf-steps__bars { flex: 1; display: flex; gap: 5px; }
+.nxf-steps__bar { flex: 1; height: 4px; border-radius: 3px; background: var(--nx-divider); }
+.nxf-steps__bar--on { background: var(--nx-indigo); }
+.nxf-circle { width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-bottom: 22px; }
+
+/* ============================================================
+   Settings (Espace Paramètres) utilities
+   ============================================================ */
+.set-page { flex: 1; min-height: 0; overflow-y: auto; background: var(--nx-bg); }
+.set-inner { padding: 28px 40px 60px; max-width: 860px; }
+.set-h1 { font-size: 24px; font-weight: 700; color: var(--nx-text); letter-spacing: -.02em; margin: 0 0 6px; }
+.set-desc { font-size: 14px; color: var(--nx-text-500); margin: 0 0 26px; line-height: 1.5; }
+.set-card { background: #fff; border: 1px solid var(--nx-border); border-radius: var(--nx-r-card); padding: 4px 22px; margin-bottom: 18px; }
+.set-card--danger { border-color: #F2D4D1; }
+.set-row { display: flex; align-items: center; gap: 24px; padding: 18px 0; border-top: 1px solid var(--nx-border-card); }
+.set-row--first { border-top: none; }
+.set-row--top { align-items: flex-start; }
+.set-rlabel { width: 210px; flex: none; }
+.set-row--top .set-rlabel { padding-top: 6px; }
+.set-rlabel b { display: block; font-size: 13.5px; font-weight: 600; color: var(--nx-text); }
+.set-rlabel small { display: block; font-size: 12.5px; color: var(--nx-text-400); margin-top: 3px; line-height: 1.45; }
+.set-rctrl { flex: 1; min-width: 0; }
+.set-input { display: flex; align-items: center; height: 40px; padding: 0 13px; border-radius: var(--nx-r-btn); border: 1px solid var(--nx-border); background: #fff; color: var(--nx-text); font-size: 14px; max-width: 380px; }
+.set-input--locked { background: var(--nx-surface-2); color: var(--nx-text-400); border-color: #EDEBE5; }
+.set-btn { display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 16px; border-radius: var(--nx-r-btn); font-family: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; }
+.set-btn--primary { background: var(--nx-indigo); color: #fff; border: 1px solid var(--nx-indigo); }
+.set-btn--ghost { background: #fff; color: var(--nx-text-600); border: 1px solid var(--nx-border); }
+.set-btn--danger { background: #fff; color: var(--nx-danger); border: 1px solid #F2C4C0; }
+.set-badge { font-size: 11.5px; font-weight: 600; padding: 3px 10px; border-radius: 7px; white-space: nowrap; }
+.set-badge--owner { color: var(--nx-warning); background: #FBF1E2; }
+.set-badge--admin { color: var(--nx-indigo); background: var(--nx-indigo-50); }
+.set-badge--member { color: var(--nx-text-700); background: #EFEDE7; }
+.set-verified { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--nx-success); background: rgba(43,182,115,.12); padding: 5px 11px; border-radius: 20px; }
