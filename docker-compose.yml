@@ -62,6 +62,29 @@ services:
       retries: 10
       start_period: 60s
 
+  # ─── RabbitMQ Init (sidecar one-shot) ───────────────────────────────────────
+  # Applique scripts/init-rabbitmq.sh une fois que RabbitMQ est healthy :
+  # crée l'exchange nexawork.events + les 7 queues métier + leurs bindings.
+  # Le container s'arrête normalement après exécution (restart: no).
+  # Le script rabbitmqadmin est fourni par l'image rabbitmq:3-management.
+  # Voir 6-notes/PLAN_DEV_BACKEND.md §E.1 pour la justification du sidecar.
+  rabbitmq-init:
+    image: rabbitmq:3-management
+    container_name: nexawork-rabbitmq-init
+    depends_on:
+      rabbitmq: { condition: service_healthy }
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_MGMT_PORT: 15672
+      RABBITMQ_USER: ${RABBITMQ_USER}
+      RABBITMQ_PASS: ${RABBITMQ_PASS}
+    volumes:
+      - ./scripts/init-rabbitmq.sh:/init-rabbitmq.sh:ro
+    entrypoint: ["/bin/bash", "/init-rabbitmq.sh"]
+    restart: "no"
+    networks:
+      - default
+
   # ─── MinIO ──────────────────────────────────────────────────────────────────
   minio:
     image: minio/minio:latest
@@ -82,6 +105,30 @@ services:
       interval: 15s
       timeout: 10s
       retries: 5
+
+  # ─── MinIO Init (sidecar one-shot) ──────────────────────────────────────────
+  # Applique scripts/init-minio.sh une fois que MinIO est healthy : crée les
+  # 3 buckets métier en accès privé (voir V5.1 §5.3) :
+  #   - nexawork-documents  (GED + pièces jointes + réunions persistées)
+  #   - nexawork-messaging  (fichiers canaux + conversations + partage réunion)
+  #   - nexawork-users      (avatars, photos de profil)
+  # Utilise l'image officielle du client `mc` — plus légère et prête à l'emploi.
+  # Le container s'arrête normalement après exécution (restart: no).
+  minio-init:
+    image: minio/mc:latest
+    container_name: nexawork-minio-init
+    depends_on:
+      minio: { condition: service_healthy }
+    environment:
+      MINIO_URL: http://minio:9000
+      MINIO_USER: ${MINIO_USER}
+      MINIO_PASS: ${MINIO_PASS}
+    volumes:
+      - ./scripts/init-minio.sh:/init-minio.sh:ro
+    entrypoint: ["/bin/sh", "/init-minio.sh"]
+    restart: "no"
+    networks:
+      - default
 
   # ─── Config Server ──────────────────────────────────────────────────────────
   config-server:

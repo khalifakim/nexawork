@@ -1,66 +1,59 @@
 #!/bin/bash
-# NexaWork — Initialisation de l'exchange et des queues RabbitMQ
-# Ce script est exécuté après le démarrage de RabbitMQ
+# NexaWork — Initialisation de l'exchange et des queues RabbitMQ.
+#
+# Ce script est exécuté par le sidecar `rabbitmq-init` (docker-compose.yml)
+# une fois que le healthcheck du service `rabbitmq` est passé au vert.
+#
+# Les credentials sont lus depuis les variables d'environnement injectées par
+# docker-compose depuis le fichier .env (source unique de vérité). Aucune
+# valeur en dur — corrige l'incohérence historique
+# `nexawork_pass` (underscore) vs `nexawork-passe` (tiret) documentée en
+# `6-notes/PLAN_DEV_BACKEND.md` § B.1.
 
-set -e
+set -euo pipefail
 
-echo "Attente de RabbitMQ..."
-until rabbitmqctl status > /dev/null 2>&1; do
+RABBIT_USER="${RABBITMQ_USER:-nexawork}"
+RABBIT_PASS="${RABBITMQ_PASS:?RABBITMQ_PASS est requis (voir .env)}"
+RABBIT_HOST="${RABBITMQ_HOST:-rabbitmq}"
+RABBIT_MGMT_PORT="${RABBITMQ_MGMT_PORT:-15672}"
+
+# rabbitmqadmin communique via l'API HTTP Management (par défaut :15672)
+RMQADMIN=(rabbitmqadmin --host="$RABBIT_HOST" --port="$RABBIT_MGMT_PORT" --username="$RABBIT_USER" --password="$RABBIT_PASS")
+
+echo "Attente de RabbitMQ Management sur $RABBIT_HOST:$RABBIT_MGMT_PORT..."
+until "${RMQADMIN[@]}" list vhosts >/dev/null 2>&1; do
   sleep 2
 done
-echo "RabbitMQ disponible."
+echo "RabbitMQ Management disponible."
 
-# Exchange principal de type topic
-rabbitmqadmin \
-  --username=nexawork \
-  --password=nexawork_pass \
-  declare exchange name=nexawork.events type=topic durable=true
-
+# ── Exchange principal (topic) ─────────────────────────────────────────────────
+"${RMQADMIN[@]}" declare exchange name=nexawork.events type=topic durable=true
 echo "Exchange nexawork.events créé."
 
-# ── Queues Notification ─────────────────────────────────────────────────────
-rabbitmqadmin --username=nexawork --password=nexawork_pass \
-  declare queue name=nexawork.notification.member-invited durable=true
-rabbitmqadmin --username=nexawork --password=nexawork_pass \
-  declare binding source=nexawork.events \
-  destination=nexawork.notification.member-invited routing_key=member.invited
+# ── Helper : déclare une queue + son binding sur nexawork.events ───────────────
+declare_queue_binding() {
+  local queue="$1"
+  local routing_key="$2"
+  "${RMQADMIN[@]}" declare queue name="$queue" durable=true
+  "${RMQADMIN[@]}" declare binding source=nexawork.events \
+    destination="$queue" routing_key="$routing_key"
+  echo "  ✓ $queue ← $routing_key"
+}
 
-rabbitmqadmin --username=nexawork --password=nexawork_pass \
-  declare queue name=nexawork.notification.task-assigned durable=true
-rabbitmqadmin --username=nexawork --password=nexawork_pass \
-  declare binding source=nexawork.events \
-  destination=nexawork.notification.task-assigned routing_key=task.assigned
+# ── Queues Notification Service ───────────────────────────────────────────────
+echo "Notification queues :"
+declare_queue_binding nexawork.notification.member-invited          member.invited
+declare_queue_binding nexawork.notification.task-assigned           task.assigned
+declare_queue_binding nexawork.notification.livrable-validated      livrable.validated
+declare_queue_binding nexawork.notification.external-guest-invited  external.guest.invited
 
-rabbitmqadmin --username=nexawork --password=nexawork_pass \
-  declare queue name=nexawork.notification.livrable-validated durable=true
-rabbitmqadmin --username=nexawork --password=nexawork_pass \
-  declare binding source=nexawork.events \
-  destination=nexawork.notification.livrable-validated routing_key=livrable.validated
+# ── Queues GED Service ────────────────────────────────────────────────────────
+echo "GED queues :"
+declare_queue_binding nexawork.ged.file-attached                    file.attached.to.task
+declare_queue_binding nexawork.ged.project-created                  project.created
 
-rabbitmqadmin --username=nexawork --password=nexawork_pass \
-  declare queue name=nexawork.notification.external-guest-invited durable=true
-rabbitmqadmin --username=nexawork --password=nexawork_pass \
-  declare binding source=nexawork.events \
-  destination=nexawork.notification.external-guest-invited routing_key=external.guest.invited
-
-# ── Queues GED ──────────────────────────────────────────────────────────────
-rabbitmqadmin --username=nexawork --password=nexawork_pass \
-  declare queue name=nexawork.ged.file-attached durable=true
-rabbitmqadmin --username=nexawork --password=nexawork_pass \
-  declare binding source=nexawork.events \
-  destination=nexawork.ged.file-attached routing_key=file.attached.to.task
-
-rabbitmqadmin --username=nexawork --password=nexawork_pass \
-  declare queue name=nexawork.ged.project-created durable=true
-rabbitmqadmin --username=nexawork --password=nexawork_pass \
-  declare binding source=nexawork.events \
-  destination=nexawork.ged.project-created routing_key=project.created
-
-# ── Queue Messaging ─────────────────────────────────────────────────────────
-rabbitmqadmin --username=nexawork --password=nexawork_pass \
-  declare queue name=nexawork.messaging.call-ended durable=true
-rabbitmqadmin --username=nexawork --password=nexawork_pass \
-  declare binding source=nexawork.events \
-  destination=nexawork.messaging.call-ended routing_key=call.ended
+# ── Queue Messaging Service ───────────────────────────────────────────────────
+echo "Messaging queues :"
+declare_queue_binding nexawork.messaging.call-ended                 call.ended
 
 echo "Toutes les queues et bindings RabbitMQ créés."

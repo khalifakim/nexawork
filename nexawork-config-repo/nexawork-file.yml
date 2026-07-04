@@ -25,8 +25,15 @@ management:
 
 nexawork:
   minio:
-    url: ${MINIO_URL:http://localhost:9000}
-    access-key: ${MINIO_ACCESS_KEY:nexawork}
-    secret-key: ${MINIO_SECRET_KEY:nexawork-passe}
-    bucket-projects: nexawork-projects
-    bucket-chat: nexawork-chat
+    url: ${MINIO_URL:http://minio:9000}
+    access-key: ${MINIO_USER:nexawork}
+    secret-key: ${MINIO_PASS:nexawork-passe}
+    # ─── Modèle à 3 buckets par domaine fonctionnel (voir V5.1 §5.3) ────────
+    # Routage bucket côté BucketRouter selon le contexte d'upload :
+    #   context=avatar               → bucket-users
+    #   context=channel-msg|conv-msg → bucket-messaging
+    #   context=ged|task-attachment|meeting-file → bucket-documents
+    buckets:
+      documents: nexawork-documents   # GED + pièces jointes + réunions persistées
+      messaging: nexawork-messaging   # fichiers canaux + conversations + partage réunion
+      users:     nexawork-users       # avatars, photos de profil
