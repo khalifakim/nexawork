@@ -132,7 +132,9 @@ services:
 
   # ─── Config Server ──────────────────────────────────────────────────────────
   config-server:
-    build: ./nexawork-backend/nexawork-config-server
+    build:
+      context: ./nexawork-backend
+      dockerfile: nexawork-config-server/Dockerfile
     container_name: nexawork-config-server
     ports:
       - "8888:8888"
