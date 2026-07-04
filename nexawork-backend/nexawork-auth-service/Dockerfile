@@ -1,13 +1,14 @@
+# Contexte de build attendu : ./nexawork-backend (racine du multi-module Maven)
 # Build stage
 FROM maven:3.9-eclipse-temurin-21-alpine AS builder
-WORKDIR /app
-COPY pom.xml .
-COPY src ./src
-RUN mvn package -DskipTests --no-transfer-progress
+WORKDIR /build
+# Copie du réacteur complet : le parent POM référence tous les modules
+COPY . .
+RUN mvn -pl nexawork-auth-service -am package -DskipTests --no-transfer-progress
 
 # Run stage
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
-COPY --from=builder /app/target/*.jar app.jar
+COPY --from=builder /build/nexawork-auth-service/target/*.jar app.jar
 EXPOSE 8081
 ENTRYPOINT ["java", "-jar", "app.jar"]

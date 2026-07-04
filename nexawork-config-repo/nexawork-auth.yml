@@ -41,9 +41,14 @@ nexawork:
   mail:
     from: ${SMTP_FROM}
     enabled: true
+    # Base URL du frontend pour la construction des liens transactionnels
+    # (invitation /auth/invite, reset /auth/forgot/new, vérification /auth/verify)
+    frontend-base-url: ${FRONTEND_BASE_URL:http://localhost:4200}
 
 management:
   health:
     group:
       readiness:
-        include: "readinessState,db,rabbit,mail"
+        # `mail` volontairement exclu : l'emailing est asynchrone et best-effort —
+        # une panne SMTP ne doit pas sortir le service de rotation.
+        include: "readinessState,db,rabbit"

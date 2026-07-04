@@ -2,9 +2,8 @@
 # Build stage
 FROM maven:3.9-eclipse-temurin-21-alpine AS builder
 WORKDIR /build
-COPY pom.xml ./
-COPY nexawork-commons ./nexawork-commons
-COPY nexawork-config-server ./nexawork-config-server
+# Copie du réacteur complet : le parent POM référence tous les modules
+COPY . .
 RUN mvn -pl nexawork-config-server -am package -DskipTests --no-transfer-progress
 
 # Run stage

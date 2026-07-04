@@ -27,7 +27,8 @@ spring:
 nexawork:
   jwt:
     base64-secret: ${JWT_SECRET}
-    token-validity-in-seconds: 86400
+    # Access token 15 min (V5.1 §14.9) — le refresh token (7 j) est géré en base (rotation).
+    token-validity-in-seconds: 900
 
 nexawork-cors:
   allowed-origins: "${CORS_ORIGINS:http://localhost:4200}"

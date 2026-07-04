@@ -153,7 +153,9 @@ services:
 
   # ─── Auth Service ───────────────────────────────────────────────────────────
   auth-service:
-    build: ./nexawork-backend/nexawork-auth-service
+    build:
+      context: ./nexawork-backend
+      dockerfile: nexawork-auth-service/Dockerfile
     container_name: nexawork-auth-service
     depends_on:
       postgres: { condition: service_healthy }
@@ -167,6 +169,12 @@ services:
       DB_PASSWORD: ${POSTGRES_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
       RABBITMQ_HOST: rabbitmq
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USERNAME: ${SMTP_USERNAME}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SMTP_FROM: ${SMTP_FROM}
+      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:4200}
     ports:
       - "8081:8081"
     networks:
