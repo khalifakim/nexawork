@@ -188,7 +188,9 @@ services:
 
   # ─── Project Service ────────────────────────────────────────────────────────
   project-service:
-    build: ./nexawork-backend/nexawork-project-service
+    build:
+      context: ./nexawork-backend
+      dockerfile: nexawork-project-service/Dockerfile
     container_name: nexawork-project-service
     depends_on:
       postgres: { condition: service_healthy }
@@ -370,6 +372,7 @@ services:
     depends_on:
       config-server: { condition: service_healthy }
       auth-service: { condition: service_healthy }
+      project-service: { condition: service_healthy }
     environment:
       CONFIG_SERVER_URL: config-server
       JWT_SECRET: ${JWT_SECRET}

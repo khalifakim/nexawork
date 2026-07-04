@@ -12,7 +12,7 @@
 | Phase 1 | Config Server + purge legacy + multi-module Maven | ✅ Livrée | 09dc46c |
 | Phase 2 | Auth Service (template maître) | ✅ Livrée | 58b18f7 |
 | Phase 3 | API Gateway | ✅ Livrée | à venir |
-| Phase 4 | Project Service | ⏳ À faire | — |
+| Phase 4 | Project Service | 🚧 En cours (Lot 4A ✅) | — |
 | Phase 5 | File Service | ⏳ À faire | — |
 | Phase 6 | GED Service | ⏳ À faire | — |
 | Phase 7 | Messaging Service | ⏳ À faire | — |
@@ -52,7 +52,24 @@
 - **Modifs V5.1** : §13 (intro Partie XIII : routage direct par context-path + headers d'identité réels `X-User-Id`/`X-Org-Id`/`X-Org-Role` au lieu de `X-User-Role`/`X-Workspace-Id`), §14.10 (livrables détaillés : starter/préfixe 2025.0.x, secret HMAC partagé, anti-spoofing, liste blanche ; curl d'acceptation corrigé vers le chemin réel + critère CORS).
 - **Commit** : à venir
 
-### Phases 4-9 : ⏳ à faire
+### Phase 4 · Project Service (port 8082) — 🚧 EN COURS (découpée en 5 sous-lots, 1 commit par lot)
+Découpage : **4A** Fondation · **4B** Projets/membres/équipes · **4C** Workflow Kanban · **4D** Tâches (FSM) · **4E** Dashboard/overview.
+
+#### Lot 4A · Fondation — ✅ Livré (build healthy, aucun endpoint métier)
+- **Livrables** :
+  - Module `nexawork-project-service` rattaché au parent `nexawork-backend` (calque Auth). `Dockerfile` multi-module ; service `project-service` dans `docker-compose.yml` en contexte de build multi-module + réintroduit dans le `depends_on` du gateway.
+  - Bootstrap `ProjectServiceApplication` — **scan restreint** à `com.nexawork.project` + `commons.config` + `commons.exceptions` (exclut `commons.security` : pas de secret JWT côté service).
+  - **Sécurité inter-services** : `GatewayIdentityFilter` (servlet) reconstruit un `Claims` depuis `X-User-Id`/`X-Org-Id`/`X-Org-Role` → `SecurityUtils`/`AuditorAwareImpl` de commons fonctionnent tels quels ; `SecurityConfiguration` stateless (actuator/openapi publics, reste authentifié) ; `JpaConfiguration` (audit), `RabbitMQConfiguration` (exchange défensif), `SwaggerConfiguration`.
+  - **9 entités** (`Project`, `Team`, `ProjectMember`, `WorkflowStatus`, `WorkflowTransition`, `Task`, `SubTask`, `TaskComment`, `TaskAttachment`) + **6 enums** + **9 repositories** Spring Data.
+  - Migration Flyway `V1__init.sql` : 9 tables, FK CASCADE/SET NULL/RESTRICT (to_status protégé), CHECK assignation polymorphe, UNIQUE(project_id,user_id) + UNIQUE(from,to) transitions, index.
+- **Tests (live, conteneur healthy)** : Flyway V1 appliqué → 9 tables ; gateway route `/nexawork-project-api-v1/**` (actuator/health public → 200) ; route protégée sans token via gateway → 401 ; chaîne sécurité service active (403 en accès direct sans identité) ; readiness (db+rabbit) → 200.
+- **Décisions / écarts** : QueryDSL du squelette **remplacé** par Spring Data JPA (JPQL/@Query) — plus simple, cohérent template Auth. Event `file.attached.to.task` **abandonné** (retiré de V5.1 §4.3/§7.2) au profit de l'endpoint synchrone task-attachments → Project publie **3 events**.
+- **Modifs V5.1** : §14.11 (9 entités, 3 events + réconciliation `file.attached.to.task`, Spring Data au lieu de QueryDSL, identité via headers Gateway).
+- **Commit** : à venir
+
+#### Lots 4B-4E : ⏳ à faire
+
+### Phases 5-9 : ⏳ à faire
 
 ## Notes d'environnement (à connaître pour reprendre)
 - **Build Maven sur l'hôte Windows** : nécessite `-Djavax.net.ssl.trustStoreType=WINDOWS-ROOT` (proxy TLS d'entreprise qui ré-signe HTTPS ; sans ça, PKIX path building failed sur Maven Central). Le build **Docker** n'est pas affecté (environnement conteneur propre).

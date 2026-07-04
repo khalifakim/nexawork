@@ -23,6 +23,7 @@
         <module>nexawork-config-server</module>
         <module>nexawork-auth-service</module>
         <module>nexawork-api-gateway</module>
+        <module>nexawork-project-service</module>
     </modules>
 
     <properties>
