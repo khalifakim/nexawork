@@ -38,6 +38,13 @@ public class GlobalControllerExceptionHandler {
         return Response.duplicateEntity().setMessage(e.getMessage());
     }
 
+    @ResponseStatus(HttpStatus.CONFLICT)
+    @ExceptionHandler(ConflictException.class)
+    public Response<Object> stateConflict(ConflictException e) {
+        log.error(e.getMessage());
+        return Response.conflict().setMessage(e.getMessage());
+    }
+
     @ResponseStatus(HttpStatus.FORBIDDEN)
     @ExceptionHandler({ForbiddenException.class, ForbiddenActionException.class})
     public Response<Object> forbidden(RuntimeException e) {
