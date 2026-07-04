@@ -22,9 +22,10 @@
 ## Détail par phase livrée
 
 ### Phase 0 · Infrastructure Docker
-- **Livrables** : 4 containers infra healthy (PostgreSQL 17, Redis 7, RabbitMQ 3, MinIO), 7 bases `nexawork_*_db`, exchange `nexawork.events` + 7 queues, 3 buckets privés, SMTP Gmail validé end-to-end, sidecars `rabbitmq-init` + `minio-init`, Nginx purgé de Jitsi.
+- **Livrables** : 4 containers infra healthy (PostgreSQL 17, Redis 7, RabbitMQ 3, MinIO), 7 bases `nexawork_*_db`, exchange `nexawork.events` + 8 queues, 3 buckets privés, SMTP Gmail validé end-to-end, sidecars `rabbitmq-init` + `minio-init`, Nginx purgé de Jitsi.
 - **Modifs V5.1** : §3.8, §5.3, §12.1
 - **Commit** : `5b31ece`
+- **Correctif (pendant Lot 4B)** : `scripts/init-rabbitmq.sh` réconcilié avec V5.1 §7.4 (8 queues). Ajout `nexawork.messaging.project-created` (bloquant Phase 7) et `nexawork.notification.call-ended` ; suppression de `nexawork.ged.file-attached` (event `file.attached.to.task` retiré en V5.1 §4.3/§7.2) ; renommage `nexawork.notification.external-guest-invited` → `...external-guest`. Nettoyage idempotent des queues obsolètes ajouté au script. Appliqué en live (sidecar rejoué) + double routage `project.created` → GED + Messaging vérifié.
 
 ### Phase 1 · Config Server + purge legacy + Maven multi-module
 - **Livrables** : purge du code legacy des 8 services (268 fichiers), parent POM `nexawork-backend` (Spring Boot 3.5.5, Java 21, Spring Cloud 2025.0.2, versions centralisées), module skeleton `nexawork-commons`, `nexawork-config-server` opérationnel (port 8888, profil native, `/nexawork-auth/default` sert la fusion `application.yml` + service). Dockerfiles adaptés au build multi-module.
@@ -67,7 +68,21 @@ Découpage : **4A** Fondation · **4B** Projets/membres/équipes · **4C** Workf
 - **Modifs V5.1** : §14.11 (9 entités, 3 events + réconciliation `file.attached.to.task`, Spring Data au lieu de QueryDSL, identité via headers Gateway).
 - **Commit** : à venir
 
-#### Lots 4B-4E : ⏳ à faire
+#### Lot 4B · Projets + membres + équipes — ✅ Livré
+- **Livrables** :
+  - `CallerContext` (rôles/identité depuis headers Gateway) + `ProjectGuard` (isolation multi-tenant, REF E, contrôle chef de projet/admin) — mutualisés pour les lots suivants.
+  - `commons` : `ConflictException` générique (→ 409) + entrée dans `GlobalControllerExceptionHandler` (réutilisable REF E / REF A).
+  - **Projets** : CRUD + archive/restore + `archived-projects` (list/get). Visibilité liste : admin → tous les projets actifs du workspace, sinon ceux dont l'appelant est membre (R15, requête `findVisible`). Création → l'auteur devient chef de projet (MANAGER, isProjectLead) + publie `project.created`.
+  - **Membres** : list/add/update/remove ; `setAsProjectChief` redéfinit `Project.ownerUserId` ; interdiction de retirer le chef en poste (400).
+  - **Équipes** : list/create.
+  - 5 requests + 3 responses + 3 mappers MapStruct + publisher `project.created` (+ payload) + 4 contrôleurs.
+- **Règles serveur** : **R6/R7** (archive/restore/delete/consultation archivés = ADMIN+OWNER, 403 sinon) · **R9-R21** (gestion membres/équipes = ADMIN+OWNER+chef de projet) · **REF E** (mutation projet archivé → 409) · isolation multi-tenant (404 cross-org).
+- **Tests (live via gateway + service)** : create 201 (+event), list/get (memberCount, ownerUserId), PATCH 200, teams 201, members add/list, setAsProjectChief → ownerUserId mis à jour, REF E PATCH/add-membre archivés → 409, archived-projects OWNER OK, restore 200 ; **R6/R7 : MEMBER → 403** (archive/delete/archived-projects) ; **isolation cross-org → 404** ; event `project.created` routé (queue `nexawork.ged.project-created`).
+- **✅ Écarts infra Phase 0 découverts ET corrigés dans la foulée** (voir Phase 0 · Correctif) : `scripts/init-rabbitmq.sh` réconcilié §7.4 (8 queues), double routage `project.created` → GED + Messaging vérifié en live.
+- **Modifs V5.1** : aucune (réconciliation §14.11 déjà faite au Lot 4A ; le correctif infra aligne le script sur §7.4 déjà correct).
+- **Commit** : à venir
+
+#### Lots 4C-4E : ⏳ à faire
 
 ### Phases 5-9 : ⏳ à faire
 

@@ -40,20 +40,37 @@ declare_queue_binding() {
   echo "  ✓ $queue ← $routing_key"
 }
 
-# ── Queues Notification Service ───────────────────────────────────────────────
+# ── Helper : supprime une queue obsolète si elle existe (idempotent) ───────────
+delete_queue_if_exists() {
+  local queue="$1"
+  if "${RMQADMIN[@]}" delete queue name="$queue" >/dev/null 2>&1; then
+    echo "  ✗ $queue supprimée (obsolète)"
+  fi
+}
+
+# ── Nettoyage des queues obsolètes / renommées (réconciliation V5.1 §7.4) ──────
+# - ged.file-attached : l'événement file.attached.to.task a été retiré (V5.1
+#   §4.3/§7.2) — les pièces jointes de tâches sont tirées en HTTP synchrone.
+# - notification.external-guest-invited : renommée en ...external-guest (§7.4).
+echo "Nettoyage queues obsolètes :"
+delete_queue_if_exists nexawork.ged.file-attached
+delete_queue_if_exists nexawork.notification.external-guest-invited
+
+# ── Queues Notification Service (5) — V5.1 §7.4 ───────────────────────────────
 echo "Notification queues :"
-declare_queue_binding nexawork.notification.member-invited          member.invited
-declare_queue_binding nexawork.notification.task-assigned           task.assigned
-declare_queue_binding nexawork.notification.livrable-validated      livrable.validated
-declare_queue_binding nexawork.notification.external-guest-invited  external.guest.invited
+declare_queue_binding nexawork.notification.member-invited      member.invited
+declare_queue_binding nexawork.notification.task-assigned       task.assigned
+declare_queue_binding nexawork.notification.livrable-validated  livrable.validated
+declare_queue_binding nexawork.notification.call-ended          call.ended
+declare_queue_binding nexawork.notification.external-guest      external.guest.invited
 
-# ── Queues GED Service ────────────────────────────────────────────────────────
+# ── Queue GED Service (1) — V5.1 §7.4 ─────────────────────────────────────────
 echo "GED queues :"
-declare_queue_binding nexawork.ged.file-attached                    file.attached.to.task
-declare_queue_binding nexawork.ged.project-created                  project.created
+declare_queue_binding nexawork.ged.project-created              project.created
 
-# ── Queue Messaging Service ───────────────────────────────────────────────────
+# ── Queues Messaging Service (2) — V5.1 §7.4 ──────────────────────────────────
 echo "Messaging queues :"
-declare_queue_binding nexawork.messaging.call-ended                 call.ended
+declare_queue_binding nexawork.messaging.project-created        project.created
+declare_queue_binding nexawork.messaging.call-ended             call.ended
 
 echo "Toutes les queues et bindings RabbitMQ créés."
