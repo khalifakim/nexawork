@@ -22,6 +22,7 @@
         <module>nexawork-commons</module>
         <module>nexawork-config-server</module>
         <module>nexawork-auth-service</module>
+        <module>nexawork-api-gateway</module>
     </modules>
 
     <properties>

@@ -359,20 +359,21 @@ services:
 
   # ─── API Gateway ────────────────────────────────────────────────────────────
   api-gateway:
-    build: ./nexawork-backend/nexawork-api-gateway
+    build:
+      context: ./nexawork-backend
+      dockerfile: nexawork-api-gateway/Dockerfile
     container_name: nexawork-api-gateway
+    # Les hôtes downstream sont résolus paresseusement (au premier appel routé) ;
+    # seuls config-server (config) et auth-service (seul service métier livré à ce
+    # stade) sont exigés healthy. Les autres depends_on seront réintroduits au fil
+    # des phases 4-9, à mesure que leurs services deviennent buildables.
     depends_on:
-      - auth-service
-      - project-service
-      - messaging-service
-      - meeting-service
-      - notification-service
-      - file-service
-      - ged-service
+      config-server: { condition: service_healthy }
+      auth-service: { condition: service_healthy }
     environment:
       CONFIG_SERVER_URL: config-server
       JWT_SECRET: ${JWT_SECRET}
-      CORS_ORIGINS: ${CORS_ORIGINS}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:4200}
       AUTH_SERVICE_HOST: auth-service
       PROJECT_SERVICE_HOST: project-service
       MESSAGING_SERVICE_HOST: messaging-service

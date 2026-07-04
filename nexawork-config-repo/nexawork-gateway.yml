@@ -4,60 +4,82 @@ server:
 spring:
   cloud:
     gateway:
-      routes:
-        # Chaque service gère son propre context-path — pas de RewritePath nécessaire
+      # Spring Cloud 2025.0.x : les propriétés du gateway WebFlux sont sous
+      # `spring.cloud.gateway.server.webflux.*` (l'ancien préfixe `spring.cloud.gateway.*`
+      # est déprécié). Starter : spring-cloud-starter-gateway-server-webflux.
+      server:
+        webflux:
+          routes:
+            # Chaque service gère son propre context-path (/nexawork-{service}-api-v1)
+            # — routage direct sur le préfixe, pas de RewritePath nécessaire.
 
-        - id: auth-service
-          uri: http://${AUTH_SERVICE_HOST:localhost}:8081
-          predicates:
-            - Path=/nexawork-auth-api-v1/**
+            - id: auth-service
+              uri: http://${AUTH_SERVICE_HOST:localhost}:8081
+              predicates:
+                - Path=/nexawork-auth-api-v1/**
 
-        - id: project-service
-          uri: http://${PROJECT_SERVICE_HOST:localhost}:8082
-          predicates:
-            - Path=/nexawork-project-api-v1/**
+            - id: project-service
+              uri: http://${PROJECT_SERVICE_HOST:localhost}:8082
+              predicates:
+                - Path=/nexawork-project-api-v1/**
 
-        - id: messaging-service
-          uri: http://${MESSAGING_SERVICE_HOST:localhost}:8083
-          predicates:
-            - Path=/nexawork-messaging-api-v1/**
+            - id: messaging-service
+              uri: http://${MESSAGING_SERVICE_HOST:localhost}:8083
+              predicates:
+                - Path=/nexawork-messaging-api-v1/**
 
-        - id: meeting-service
-          uri: http://${MEETING_SERVICE_HOST:localhost}:8084
-          predicates:
-            - Path=/nexawork-meeting-api-v1/**
+            - id: meeting-service
+              uri: http://${MEETING_SERVICE_HOST:localhost}:8084
+              predicates:
+                - Path=/nexawork-meeting-api-v1/**
 
-        - id: notification-service
-          uri: http://${NOTIFICATION_SERVICE_HOST:localhost}:8085
-          predicates:
-            - Path=/nexawork-notification-api-v1/**
+            - id: notification-service
+              uri: http://${NOTIFICATION_SERVICE_HOST:localhost}:8085
+              predicates:
+                - Path=/nexawork-notification-api-v1/**
 
-        - id: file-service
-          uri: http://${FILE_SERVICE_HOST:localhost}:8086
-          predicates:
-            - Path=/nexawork-file-api-v1/**
+            - id: file-service
+              uri: http://${FILE_SERVICE_HOST:localhost}:8086
+              predicates:
+                - Path=/nexawork-file-api-v1/**
 
-        - id: ged-service
-          uri: http://${GED_SERVICE_HOST:localhost}:8087
-          predicates:
-            - Path=/nexawork-ged-api-v1/**
+            - id: ged-service
+              uri: http://${GED_SERVICE_HOST:localhost}:8087
+              predicates:
+                - Path=/nexawork-ged-api-v1/**
 
-        # WebSocket — Messaging
-        - id: messaging-ws
-          uri: ws://${MESSAGING_SERVICE_HOST:localhost}:8083
-          predicates:
-            - Path=/ws/messaging/**
+            # WebSocket — Messaging (STOMP over SockJS)
+            - id: messaging-ws
+              uri: ws://${MESSAGING_SERVICE_HOST:localhost}:8083
+              predicates:
+                - Path=/ws/messaging/**
 
-        # WebSocket — Notifications
-        - id: notification-ws
-          uri: ws://${NOTIFICATION_SERVICE_HOST:localhost}:8085
-          predicates:
-            - Path=/ws/notifications/**
+            # WebSocket — Notifications
+            - id: notification-ws
+              uri: ws://${NOTIFICATION_SERVICE_HOST:localhost}:8085
+              predicates:
+                - Path=/ws/notifications/**
 
-      globalcors:
-        cors-configurations:
-          '[/**]':
-            allowedOriginPatterns: "${CORS_ORIGINS:http://localhost:4200}"
-            allowedMethods: "*"
-            allowedHeaders: "*"
-            allowCredentials: true
+          globalcors:
+            cors-configurations:
+              '[/**]':
+                allowedOriginPatterns: "${CORS_ORIGINS:http://localhost:4200}"
+                allowedMethods: "*"
+                allowedHeaders: "*"
+                allowCredentials: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+  health:
+    livenessState:
+      enabled: true
+    readinessState:
+      enabled: true
