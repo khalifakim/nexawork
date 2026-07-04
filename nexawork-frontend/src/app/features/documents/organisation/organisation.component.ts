@@ -13,10 +13,11 @@ import { GedViewComponent } from '@features/documents/ged-view/ged-view.componen
         <span class="ic"><app-icon name="building" [size]="14" /></span>
         <div><div class="t">Espace Organisation</div><div class="s">Documents et dossiers partagés à l'échelle de l'organisation.</div></div>
       </div>
-      <app-ged-view [project]="null" />
+      <app-ged-view [project]="null" [hideTaskFolder]="true" />
     </div>
   `,
   styles: [`
+    :host { display: flex; flex-direction: column; flex: 1; min-height: 0; }
     .space { flex: 1; display: flex; flex-direction: column; min-height: 0; }
     .head { flex: none; min-height: 52px; padding: 22px 28px 6px; display: flex; align-items: center; gap: 12px; }
     .ic { width: 28px; height: 28px; border-radius: 8px; background: #3d3aa8; color: #fff; display: flex; align-items: center; justify-content: center; flex: none; }

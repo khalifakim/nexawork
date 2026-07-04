@@ -23,6 +23,7 @@ import { Project } from '@core/models/project.models';
     </div>
   `,
   styles: [`
+    :host { display: flex; flex-direction: column; flex: 1; min-height: 0; }
     .space { flex: 1; display: flex; flex-direction: column; min-height: 0; }
     .head { flex: none; min-height: 52px; padding: 22px 28px 6px; display: flex; align-items: center; gap: 12px; }
     .back { width: 34px; height: 34px; border: 1px solid var(--nx-border); border-radius: 9px; background: #fff; color: var(--nx-text-700); cursor: pointer; display: flex; align-items: center; justify-content: center; flex: none; }

@@ -13,19 +13,28 @@ import { FicheTacheComponent } from '@features/projets/modals/fiche-tache/fiche-
 import { CreerTacheComponent } from '@features/projets/modals/creer-tache/creer-tache.component';
 import { StatutsComponent } from '@features/projets/modals/statuts/statuts.component';
 import { WorkflowComponent } from '@features/projets/modals/workflow/workflow.component';
+import { ConfirmDialogComponent } from '@shared/overlays/confirm-dialog/confirm-dialog.component';
 import { ProjectsService } from '@core/services/projects.service';
 import { SessionService } from '@core/services/session.service';
+import { ArchivedProjectsService } from '@core/services/archived-projects.service';
 import { Project } from '@core/models/project.models';
 import { TaskCard } from '@core/models/task.models';
+import { TasksService } from '@core/services/tasks.service';
 import { workspaceSignal } from '@core/util/workspace-signal';
+import { KanbanStore } from '@features/projets/kanban/kanban.store';
 
 interface Tab { key: string; label: string; icon: string; }
+
+type ConfirmKind = 'archive' | 'delete' | 'restore' | 'deleteArchived';
+
+interface ConfirmCfg { title: string; danger: boolean; btn: string; icon: string; lines: string[]; }
 
 @Component({
   selector: 'app-projet-shell',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, IconComponent, KanbanComponent, VueDEnsembleComponent, GanttComponent, CanauxProjetComponent, EquipesComponent, GedViewComponent, FicheTacheComponent, CreerTacheComponent, StatutsComponent, WorkflowComponent],
+  imports: [RouterLink, IconComponent, KanbanComponent, VueDEnsembleComponent, GanttComponent, CanauxProjetComponent, EquipesComponent, GedViewComponent, FicheTacheComponent, CreerTacheComponent, StatutsComponent, WorkflowComponent, ConfirmDialogComponent],
+  providers: [KanbanStore],
   template: `
     <div class="shell">
       <div class="head">
@@ -47,18 +56,18 @@ interface Tab { key: string; label: string; icon: string; }
           }
           <span class="spacer"></span>
 
-          @if (isRo()) {
-            <button class="btn-restore"><app-icon name="restore" [size]="15" />Restaurer</button>
-            <button class="btn-del" (click)="roConfirm.set(true)"><app-icon name="trash" [size]="15" />Supprimer</button>
-          } @else {
+          @if (isRo() && isAdmin()) {
+            <button class="btn-restore" (click)="openConfirm('restore')"><app-icon name="restore" [size]="15" />Restaurer</button>
+            <button class="btn-del" (click)="openConfirm('deleteArchived')"><app-icon name="trash" [size]="15" />Supprimer</button>
+          } @else if (!isRo() && isAdmin()) {
             <div class="setwrap">
               <button class="set" [class.set--on]="setOpen()" (click)="setOpen.set(!setOpen())"><app-icon name="gear" [size]="15" />Paramètres</button>
               @if (setOpen()) {
                 <div class="bd" (click)="setOpen.set(false)"></div>
                 <div class="menu" (click)="$event.stopPropagation()">
-                  <button class="menu__i"><app-icon name="archive" [size]="16" /><span>Archiver le projet</span></button>
+                  <button class="menu__i" (click)="setOpen.set(false); openConfirm('archive')"><app-icon name="archive" [size]="16" /><span>Archiver le projet</span></button>
                   <div class="menu__sep"></div>
-                  <button class="menu__i menu__i--danger" (click)="setOpen.set(false); delConfirm.set(true)"><app-icon name="trash" [size]="16" /><span>Supprimer le projet</span></button>
+                  <button class="menu__i menu__i--danger" (click)="setOpen.set(false); openConfirm('delete')"><app-icon name="trash" [size]="16" /><span>Supprimer le projet</span></button>
                 </div>
               }
             </div>
@@ -91,11 +100,11 @@ interface Tab { key: string; label: string; icon: string; }
       <div class="body">
         @switch (tab()) {
           @case ('vue-d-ensemble') { <app-vue-d-ensemble [readonly]="isRo()" /> }
-          @case ('kanban') { <app-kanban [readonly]="isRo()" (openTask)="openTask($event)" (create)="createCol.set($event)" (openStatuses)="statutsOpen.set(true)" (openWorkflow)="workflowOpen.set(true)" /> }
+          @case ('kanban') { <app-kanban [readonly]="isRo()" [canManageBoard]="isAdmin()" (openTask)="openTask($event)" (create)="createCol.set($event)" (openStatuses)="statutsOpen.set(true)" (openWorkflow)="workflowOpen.set(true)" /> }
           @case ('gantt') { <app-gantt /> }
           @case ('documents') { <app-ged-view [project]="displayName()" [readonly]="isRo()" /> }
-          @case ('equipes') { <app-equipes [readonly]="isRo()" /> }
-          @case ('canaux') { <app-canaux-projet [readonly]="isRo()" /> }
+          @case ('equipes') { <app-equipes [readonly]="isRo()" [canManage]="isAdmin() || isProjectLead()" /> }
+          @case ('canaux') { <app-canaux-projet [readonly]="isRo()" [projectName]="displayName()" /> }
           @default {
             <div class="todo">
               <span class="todo__i"><app-icon name="sparkle" [size]="26" /></span>
@@ -107,57 +116,23 @@ interface Tab { key: string; label: string; icon: string; }
       </div>
     </div>
 
-    @if (selected(); as t) { <app-fiche-tache [task]="t" (closed)="selected.set(null)" /> }
+    @if (selected(); as t) { <app-fiche-tache [task]="t" [loading]="taskLoading()" (closed)="selected.set(null)" (openTask)="switchTask($event)" /> }
     @if (createCol(); as col) { <app-creer-tache [column]="col" [projectName]="displayName()" (closed)="createCol.set(null)" (created)="createCol.set(null)" /> }
     @if (statutsOpen()) { <app-statuts (closed)="statutsOpen.set(false)" /> }
     @if (workflowOpen()) { <app-workflow (closed)="workflowOpen.set(false)" /> }
 
-    @if (roConfirm()) {
-      <div class="overlay" (click)="roConfirm.set(false)">
-        <div class="modal" (click)="$event.stopPropagation()">
-          <div class="modal__bd">
-            <div class="modal__top">
-              <span class="modal__i"><app-icon name="trash" [size]="22" /></span>
-              <div>
-                <div class="modal__title">Supprimer définitivement</div>
-                <div class="modal__sub">{{ displayName() }}</div>
-              </div>
-            </div>
-            <div class="modal__lines">
-              <div class="modal__line"><span class="modal__dot"></span><span>Cette suppression est irréversible.</span></div>
-              <div class="modal__line"><span class="modal__dot"></span><span>Le projet archivé et toutes ses ressources seront définitivement supprimés.</span></div>
-            </div>
-          </div>
-          <div class="modal__ft">
-            <button class="modal__cancel" (click)="roConfirm.set(false)">Annuler</button>
-            <button class="modal__confirm" (click)="doDeleteRo()"><app-icon name="trash" [size]="16" />Supprimer définitivement</button>
-          </div>
-        </div>
-      </div>
-    }
-
-    @if (delConfirm()) {
-      <div class="overlay" (click)="delConfirm.set(false)">
-        <div class="modal" (click)="$event.stopPropagation()">
-          <div class="modal__bd">
-            <div class="modal__top">
-              <span class="modal__i"><app-icon name="trash" [size]="22" /></span>
-              <div>
-                <div class="modal__title">Supprimer définitivement</div>
-                <div class="modal__sub">{{ displayName() }}</div>
-              </div>
-            </div>
-            <div class="modal__lines">
-              <div class="modal__line"><span class="modal__dot"></span><span>Cette suppression est irréversible.</span></div>
-              <div class="modal__line"><span class="modal__dot"></span><span>Le projet et toutes ses ressources associées seront définitivement supprimés.</span></div>
-            </div>
-          </div>
-          <div class="modal__ft">
-            <button class="modal__cancel" (click)="delConfirm.set(false)">Annuler</button>
-            <button class="modal__confirm" (click)="doDelete()"><app-icon name="trash" [size]="16" />Supprimer définitivement</button>
-          </div>
-        </div>
-      </div>
+    @if (confirmKind(); as kind) {
+      @if (confirmCfg(); as cfg) {
+        <app-confirm-dialog
+          [danger]="cfg.danger"
+          [title]="cfg.title"
+          [subtitle]="displayName()"
+          [icon]="cfg.icon"
+          [confirmLabel]="cfg.btn"
+          [lines]="cfg.lines"
+          (confirmed)="runConfirm(kind)"
+          (closed)="confirmKind.set(null)" />
+      }
     }
 
     @if (roToast()) {
@@ -173,19 +148,30 @@ interface Tab { key: string; label: string; icon: string; }
 export class ProjetShellComponent {
   private route    = inject(ActivatedRoute);
   private projectsSvc = inject(ProjectsService);
+  private tasksSvc = inject(TasksService);
   private session = inject(SessionService);
+  private archivedSvc = inject(ArchivedProjectsService);
   private allProjects = workspaceSignal<Project[]>(this.session, () => this.projectsSvc.list(), []);
   router = inject(Router);
+  /** True when current user is ADMIN or OWNER (règles R7, R8). */
+  isAdmin = this.session.isAdmin;
+  /**
+   * True when the current user is chef de projet on this project.
+   * Placeholder: real matching will be done via ProjectsService once backend
+   * provides `chefDeProjet` on the Project entity.
+   */
+  isProjectLead = computed(() => false);
 
   setOpen      = signal(false);
   selected     = signal<(TaskCard & { proj?: string }) | null>(null);
   createCol    = signal<string | null>(null);
   statutsOpen  = signal(false);
   workflowOpen = signal(false);
-  roConfirm    = signal(false);
-  delConfirm   = signal(false);
+  confirmKind  = signal<ConfirmKind | null>(null);
   roToast      = signal<string | null>(null);
+  taskLoading  = signal(false);
   private _t: any;
+  private _taskT: any;
 
   id      = toSignal(this.route.paramMap.pipe(map(p => p.get('id') ?? 'refonte-app-mobile')), { initialValue: 'refonte-app-mobile' });
   tab     = toSignal(this.route.paramMap.pipe(map(p => p.get('tab') ?? 'kanban')),             { initialValue: 'kanban' });
@@ -207,23 +193,95 @@ export class ProjetShellComponent {
 
   openTask(t: TaskCard): void { this.selected.set({ ...t, proj: this.displayName() }); }
 
-  doDelete(): void {
-    this.delConfirm.set(false);
-    this.roToast.set('Projet supprimé définitivement');
-    clearTimeout(this._t);
-    this._t = setTimeout(() => {
-      this.roToast.set(null);
-      this.router.navigate(['/app/projets']);
-    }, 2000);
+  /**
+   * Switch the open task modal to another task referenced by a @@mention.
+   * Shows a short loading overlay so it's clear a *different* task is opening,
+   * then swaps the modal content in place.
+   */
+  switchTask(id: string): void {
+    if (!this.selected() || this.selected()?.id === id) return;
+    const next = this.tasksSvc.cardById(id);
+    if (!next) return;
+    this.taskLoading.set(true);
+    clearTimeout(this._taskT);
+    this._taskT = setTimeout(() => {
+      this.selected.set({ ...next, proj: this.displayName() });
+      this.taskLoading.set(false);
+    }, 650);
   }
 
-  doDeleteRo(): void {
-    this.roConfirm.set(false);
-    this.roToast.set('Projet supprimé définitivement');
+  openConfirm(kind: ConfirmKind): void { this.confirmKind.set(kind); }
+
+  /** Config for the active confirm modal — mirrors the prototype's `confirmProjectModal`. */
+  private readonly CONFIRM: Record<ConfirmKind, ConfirmCfg> = {
+    archive: {
+      title: 'Archiver le projet', danger: false, btn: 'Archiver le projet', icon: 'archive',
+      lines: [
+        "Les données du projet sont conservées en base, mais le projet devient invisible dans l'interface principale.",
+        'Ses canaux et sa GED associée deviennent également invisibles.',
+        'Les données restent récupérables uniquement via une restauration.',
+      ],
+    },
+    delete: {
+      title: 'Supprimer le projet', danger: true, btn: 'Supprimer définitivement', icon: 'trash',
+      lines: [
+        'Cette suppression est irréversible.',
+        'Toutes les ressources liées (documents, canaux, équipes) seront supprimées.',
+        "Les utilisateurs conservent leur compte mais perdent l'accès au projet ; ses canaux deviennent inaccessibles.",
+      ],
+    },
+    restore: {
+      title: 'Restaurer le projet', danger: false, btn: 'Restaurer le projet', icon: 'restore',
+      lines: [
+        "Le projet redevient visible et entièrement modifiable dans l'interface principale.",
+        'Ses canaux et sa GED associée redeviennent accessibles aux membres.',
+      ],
+    },
+    deleteArchived: {
+      title: 'Supprimer définitivement', danger: true, btn: 'Supprimer définitivement', icon: 'trash',
+      lines: [
+        'Cette suppression est irréversible.',
+        'Le projet archivé et toutes ses ressources seront définitivement supprimés.',
+      ],
+    },
+  };
+
+  confirmCfg = computed(() => {
+    const k = this.confirmKind();
+    return k ? this.CONFIRM[k] : null;
+  });
+
+  runConfirm(kind: ConfirmKind): void {
+    this.confirmKind.set(null);
+    switch (kind) {
+      case 'archive':
+        // REF E: mark project archived → its channels + GED are dropped from
+        // the sidebar and its channels flip to readonly automatically.
+        this.archivedSvc.archive(this.id());
+        this.showToast('Projet archivé');
+        this._t = setTimeout(() => this.router.navigate(['/app/projets/archives']), 900);
+        break;
+      case 'restore':
+        // REF E: restore = the project becomes navigable normally again.
+        this.archivedSvc.restore(this.id());
+        this.showToast('Projet restauré');
+        this._t = setTimeout(() => this.router.navigate(['/app/projets', this.id(), 'kanban']), 900);
+        break;
+      case 'delete':
+        this.archivedSvc.restore(this.id());
+        this.showToast('Projet supprimé définitivement');
+        this._t = setTimeout(() => this.router.navigate(['/app/projets']), 900);
+        break;
+      case 'deleteArchived':
+        this.archivedSvc.restore(this.id());
+        this.showToast('Projet supprimé définitivement');
+        this._t = setTimeout(() => this.router.navigate(['/app/projets/archives']), 900);
+        break;
+    }
+  }
+
+  private showToast(msg: string): void {
+    this.roToast.set(msg);
     clearTimeout(this._t);
-    this._t = setTimeout(() => {
-      this.roToast.set(null);
-      this.router.navigate(['/app/projets/archives']);
-    }, 2000);
   }
 }

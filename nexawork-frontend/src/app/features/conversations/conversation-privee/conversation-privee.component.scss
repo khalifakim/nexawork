@@ -1,17 +1,50 @@
+:host { display: flex; flex-direction: column; flex: 1; min-height: 0; height: 100%; }
 .chat { flex: 1; display: flex; flex-direction: column; min-height: 0; }
-.ch { flex: none; height: 52px; padding: 0 28px; background: var(--nx-surface-2); border-bottom: 1px solid #E0DDD6; display: flex; align-items: center; gap: 12px; }
+.ch { flex: none; height: 52px; padding: 0 20px 0 28px; background: var(--nx-surface-2); border-bottom: 1px solid #E0DDD6; display: flex; align-items: center; gap: 10px; }
+.ch__peer { display: flex; align-items: center; gap: 12px; }
+.ch__sp { flex: 1; }
 .av { position: relative; }
 .av__c { width: 34px; height: 34px; border-radius: 50%; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; }
 .av__d { position: absolute; bottom: 0; right: 0; width: 12px; height: 12px; border-radius: 50%; background: var(--nx-success); border: 2px solid var(--nx-surface-2); }
 .ch__n { font-size: 15px; font-weight: 700; }
 .ch__s { font-size: 12px; font-weight: 600; }
 
-.msgs { flex: 1; overflow-y: auto; padding: 24px 28px; display: flex; flex-direction: column; gap: 12px; }
+/* Header : bouton loupe + champ recherche + docs + mentions */
+.hbtn { width: 34px; height: 34px; flex: none; border: none; border-radius: 8px; background: transparent; color: var(--nx-text-500); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.hbtn:hover { background: #E8E5DE; }
+.hbtn--on { background: rgba(91,95,233,.08); color: var(--nx-indigo); }
+.hbtn--on:hover { background: rgba(91,95,233,.14); }
+.sfield { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 10px; background: #fff; border: 1px solid #DDD9D1; border-radius: 9px; min-width: 240px; color: var(--nx-text-300); }
+.sfield input { flex: 1; min-width: 0; border: none; outline: none; background: transparent; font-family: inherit; font-size: 12.5px; color: var(--nx-text); }
+.sfield input::placeholder { color: var(--nx-text-400); }
+.sfield__x { width: 22px; height: 22px; border: none; border-radius: 6px; background: transparent; color: var(--nx-text-400); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.sfield__x:hover { background: var(--nx-surface-2); color: var(--nx-text-600); }
+
+/* Body wrapper positions the shared media / mentions panels absolutely to the right. */
+.body { flex: 1; min-height: 0; display: flex; position: relative; }
+.msgs { flex: 1; min-height: 0; overflow-y: auto; padding: 20px 28px; display: flex; flex-direction: column; gap: 12px; }
+.day { display: flex; align-items: center; gap: 12px; color: var(--nx-text-300); font-size: 12px; font-weight: 600; margin: 4px 0 2px; }
+.day__l { flex: 1; height: 1px; background: var(--nx-divider); }
 .line { display: flex; justify-content: flex-start; }
 .line--me { justify-content: flex-end; }
 .bubble { max-width: 60%; padding: 11px 15px; border-radius: 16px 16px 16px 4px; background: #fff; color: var(--nx-text); font-size: 14px; line-height: 1.45; border: 1px solid var(--nx-border-card); box-shadow: var(--nx-shadow-rest); }
-.bubble--me { border-radius: 16px 16px 4px 16px; background: var(--nx-indigo); color: #fff; border: none; }
-.bubble .t { font-size: 10.5px; margin-top: 5px; opacity: .6; text-align: right; }
+/* Ambre douce — même palette que les canaux, préserve la lisibilité des mentions. */
+.bubble--me { border-radius: 16px 16px 4px 16px; background: #FFF5DC; color: var(--nx-text); border: 1px solid #F4E2A3; }
+.bubble .t { display: flex; align-items: center; justify-content: flex-end; gap: 5px; font-size: 10.5px; margin-top: 5px; color: var(--nx-text-300); }
+.rr { display: inline-flex; align-items: center; color: var(--nx-text-300); }
+.rr--read { color: #2BB673; }
+
+/* File preview inside a message bubble — identical to canaux / fiche-tâche. */
+.cm__files { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.cm__file { display: inline-flex; align-items: center; gap: 7px; height: 26px; padding: 0 9px; border-radius: 7px;
+  background: var(--nx-surface-2); border: 1px solid var(--nx-border-card);
+  font-family: inherit; font-size: 11.5px; font-weight: 600; color: var(--nx-text-700); cursor: pointer; }
+.cm__file:hover { background: var(--nx-surface-3); border-color: var(--nx-indigo); }
+.cm__file app-icon { color: var(--nx-text-500); display: flex; }
+.cm__fn { max-width: 160px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cm__fs { color: var(--nx-text-400); font-weight: 500; }
+.cm__file:hover .cm__dl { color: var(--nx-indigo); }
+.bubble--me .cm__file { background: #fff; border-color: #E9D890; }
 
 .typing { flex: none; padding: 0 28px 6px; font-size: 12px; color: var(--nx-text-300); font-style: italic; }
 

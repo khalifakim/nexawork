@@ -1,6 +1,14 @@
-import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { Router } from '@angular/router';
+import { WorkspaceOnboardingState } from '@core/services/workspace-onboarding.state';
 
+/**
+ * Étape 1 · Création du premier workspace.
+ *
+ * L'état (nom, slug, couleur) vit dans `WorkspaceOnboardingState`, ce qui
+ * permet à l'étape 2 (« Inviter votre équipe ») de revenir ici sans perdre
+ * les informations déjà saisies.
+ */
 @Component({
   selector: 'app-configuration-espace',
   standalone: true,
@@ -14,18 +22,29 @@ import { Router } from '@angular/router';
       </div>
     </div>
     <h1 class="nxf-h1">Créez votre espace de travail</h1>
-    <p class="nxf-sub">Donnez un nom à votre espace. Le logo et l'identifiant sont générés automatiquement.</p>
+    <p class="nxf-sub">Donnez un nom à votre espace. L'icône et l'identifiant sont générés automatiquement.</p>
 
     <div class="nxf-field">
       <label class="nxf-label">Nom de l'espace</label>
-      <input class="nxf-input" placeholder="Atelier Nexa" [value]="name()" (input)="onName($any($event.target).value)" />
+      <input class="nxf-input" placeholder="Atelier Nexa" [value]="state.name()" (input)="onName($any($event.target).value)" />
     </div>
 
     <div class="preview">
-      <div class="preview__logo">{{ monogram() }}</div>
+      <div class="preview__logo" [style.background]="state.color()">{{ monogram() }}</div>
       <div style="min-width:0">
-        <div class="preview__name">{{ name() || 'Votre espace' }}</div>
-        <div class="preview__slug">nexawork.app/{{ slug() || 'mon-espace' }}</div>
+        <div class="preview__name">{{ state.name() || 'Votre espace' }}</div>
+        <div class="preview__slug">nexawork.app/{{ state.slug() || 'mon-espace' }}</div>
+      </div>
+    </div>
+
+    <div class="nxf-field">
+      <label class="nxf-label">Couleur de l'icône</label>
+      <div class="palette">
+        @for (c of palette; track c) {
+          <button class="swatch" [class.swatch--on]="state.color() === c" [style.background]="c"
+                  [style.box-shadow]="state.color() === c ? '0 0 0 2.5px #fff, 0 0 0 4.5px ' + c : 'none'"
+                  (click)="state.color.set(c)" [attr.aria-label]="'Couleur ' + c"></button>
+        }
       </div>
     </div>
 
@@ -33,7 +52,7 @@ import { Router } from '@angular/router';
       <label class="nxf-label">Identifiant de l'espace (URL)</label>
       <div class="slug">
         <span>nexawork.app/</span>
-        <input [value]="slug()" (input)="onSlug($any($event.target).value)" placeholder="mon-espace" />
+        <input [value]="state.slug()" (input)="onSlug($any($event.target).value)" placeholder="mon-espace" />
       </div>
     </div>
 
@@ -41,9 +60,12 @@ import { Router } from '@angular/router';
   `,
   styles: [`
     .preview { display: flex; align-items: center; gap: 13px; padding: 13px; border: 1px solid var(--nx-border);
-      border-radius: 12px; background: #fff; margin-bottom: 18px; }
+      border-radius: 12px; background: #fff; margin-bottom: 14px; }
     .preview__logo { width: 46px; height: 46px; flex: none; border-radius: 12px;
-      background: linear-gradient(135deg,#6C70F0,#4B3FD6); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 19px; font-weight: 700; }
+      color: #fff; display: flex; align-items: center; justify-content: center; font-size: 19px; font-weight: 700; transition: background .15s; }
+    .palette { display: flex; gap: 10px; flex-wrap: wrap; }
+    .swatch { width: 30px; height: 30px; border-radius: 50%; border: none; cursor: pointer; padding: 0; transition: box-shadow .12s; }
+    .swatch:hover { transform: scale(1.08); }
     .preview__name { font-size: 14.5px; font-weight: 600; }
     .preview__slug { font-size: 12px; color: var(--nx-text-500); font-family: var(--nx-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .slug { display: flex; align-items: center; height: 44px; border: 1px solid var(--nx-border); border-radius: var(--nx-r-btn); background: #fff; overflow: hidden; }
@@ -52,14 +74,14 @@ import { Router } from '@angular/router';
   `],
 })
 export class ConfigurationEspaceComponent {
-  name = signal('');
-  slug = signal('');
-  private slugTouched = false;
+  state = inject(WorkspaceOnboardingState);
+  private router = inject(Router);
 
-  constructor(private router: Router) {}
+  /** Palette identique à celle du prototype. */
+  readonly palette = ['#6C70F0', '#5B8DEF', '#2BB673', '#F5A623', '#F2693C', '#F5564E', '#E0497B', '#3AA9E0', '#8E5AD6', '#8E8AA0'];
 
   monogram(): string {
-    const n = this.name().trim();
+    const n = this.state.name().trim();
     return n ? n.split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase() : 'N';
   }
 
@@ -69,9 +91,9 @@ export class ConfigurationEspaceComponent {
   }
 
   onName(v: string): void {
-    this.name.set(v);
-    if (!this.slugTouched) this.slug.set(this.slugify(v));
+    this.state.name.set(v);
+    if (!this.state.slugTouched()) this.state.slug.set(this.slugify(v));
   }
-  onSlug(v: string): void { this.slug.set(this.slugify(v)); this.slugTouched = true; }
+  onSlug(v: string): void { this.state.slug.set(this.slugify(v)); this.state.slugTouched.set(true); }
   next(): void { this.router.navigate(['/auth/workspace/invite']); }
 }

@@ -7,8 +7,9 @@ import { Workspace } from '@core/models/workspace.models';
  */
 export const WORKSPACES: Workspace[] = [
   { id: 'atelier-nexa',     name: 'Atelier Nexa',     color: '#6C70F0', role: 'OWNER',  members: 12 },
+  { id: 'projets-perso',    name: 'Projets Perso',    color: '#E0497B', role: 'OWNER',  members: 3  },
   { id: 'studio-lumen',     name: 'Studio Lumen',     color: '#2BB673', role: 'MEMBER', members: 8  },
-  { id: 'projets-perso',    name: 'Projets Perso',    color: '#E0497B', role: 'ADMIN',  members: 3  },
+  { id: 'collectif-sahel',  name: 'Collectif Sahel',  color: '#3AA9E0', role: 'ADMIN',  members: 24 },
 ];
 
 /** Lookup helper — returns the workspace matching the given id, or undefined. */

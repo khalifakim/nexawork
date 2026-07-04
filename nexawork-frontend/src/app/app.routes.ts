@@ -1,5 +1,7 @@
 import { Routes } from '@angular/router';
 import { authGuard } from '@core/guards/auth.guard';
+import { adminGuard } from '@core/guards/admin.guard';
+import { channelAccessGuard } from '@core/guards/channel-access.guard';
 
 /**
  * Onboarding lives under /auth (split-panel layout). The authenticated app lives
@@ -37,11 +39,11 @@ export const routes: Routes = [
       { path: 'accueil', pathMatch: 'full', redirectTo: 'accueil/mes-taches' },
       { path: 'accueil/mes-taches',      loadComponent: () => import('@features/accueil/mes-taches/mes-taches.component').then(m => m.MesTachesComponent) },
       { path: 'accueil/mentions-recues', loadComponent: () => import('@features/accueil/mentions-recues/mentions-recues.component').then(m => m.MentionsRecuesComponent) },
-      { path: 'accueil/tableau-de-bord', loadComponent: () => import('@features/accueil/tableau-de-bord/tableau-de-bord.component').then(m => m.TableauDeBordComponent) },
+      { path: 'accueil/tableau-de-bord', canActivate: [adminGuard], loadComponent: () => import('@features/accueil/tableau-de-bord/tableau-de-bord.component').then(m => m.TableauDeBordComponent) },
 
       // --- Projets ---
       { path: 'projets', pathMatch: 'full', redirectTo: 'projets/refonte-app-mobile/kanban' },
-      { path: 'projets/archives', loadComponent: () => import('@features/projets/projets-archives/projets-archives.component').then(m => m.ProjetsArchivesComponent) },
+      { path: 'projets/archives', canActivate: [adminGuard], loadComponent: () => import('@features/projets/projets-archives/projets-archives.component').then(m => m.ProjetsArchivesComponent) },
       { path: 'projets/:id', pathMatch: 'full', redirectTo: 'projets/:id/kanban' },
       { path: 'projets/:id/:tab', loadComponent: () => import('@features/projets/projet-shell/projet-shell.component').then(m => m.ProjetShellComponent) },
 
@@ -50,7 +52,8 @@ export const routes: Routes = [
       { path: 'equipes/:teamId', loadComponent: () => import('@features/equipes/equipe-detail/equipe-detail.component').then(m => m.EquipeDetailComponent) },
 
       // --- Documents (GED) ---
-      { path: 'documents', pathMatch: 'full', redirectTo: 'documents/partage' },
+      { path: 'documents', pathMatch: 'full', redirectTo: 'documents/mes-documents' },
+      { path: 'documents/mes-documents', loadComponent: () => import('@features/documents/mes-documents/mes-documents.component').then(m => m.MesDocumentsComponent) },
       { path: 'documents/partage',      loadComponent: () => import('@features/documents/partage/partage.component').then(m => m.DocumentsPartageComponent) },
       { path: 'documents/corbeille',    loadComponent: () => import('@features/documents/corbeille/corbeille.component').then(m => m.DocumentsCorbeilleComponent) },
       { path: 'documents/organisation', loadComponent: () => import('@features/documents/organisation/organisation.component').then(m => m.DocumentsOrganisationComponent) },
@@ -59,7 +62,7 @@ export const routes: Routes = [
 
       // --- Canaux ---
       { path: 'canaux', pathMatch: 'full', redirectTo: 'canaux/annonces' },
-      { path: 'canaux/:id', loadComponent: () => import('@features/canaux/canal/canal.component').then(m => m.CanalComponent) },
+      { path: 'canaux/:id', canActivate: [channelAccessGuard], loadComponent: () => import('@features/canaux/canal/canal.component').then(m => m.CanalComponent) },
 
       // --- Conversations ---
       { path: 'conversations', pathMatch: 'full', redirectTo: 'conversations/actifs' },
@@ -76,9 +79,9 @@ export const routes: Routes = [
       { path: 'parametres', pathMatch: 'full', redirectTo: 'parametres/profil' },
       { path: 'parametres/profil',      loadComponent: () => import('@features/parametres/profil/profil.component').then(m => m.ParamProfilComponent) },
       { path: 'parametres/securite',    loadComponent: () => import('@features/parametres/securite/securite.component').then(m => m.ParamSecuriteComponent) },
-      { path: 'parametres/general',     loadComponent: () => import('@features/parametres/general/general.component').then(m => m.ParamGeneralComponent) },
-      { path: 'parametres/membres',     loadComponent: () => import('@features/parametres/membres/membres.component').then(m => m.ParamMembresComponent) },
-      { path: 'parametres/invitations', loadComponent: () => import('@features/parametres/invitations/invitations.component').then(m => m.ParamInvitationsComponent) },
+      { path: 'parametres/general',     canActivate: [adminGuard], loadComponent: () => import('@features/parametres/general/general.component').then(m => m.ParamGeneralComponent) },
+      { path: 'parametres/membres',     canActivate: [adminGuard], loadComponent: () => import('@features/parametres/membres/membres.component').then(m => m.ParamMembresComponent) },
+      { path: 'parametres/invitations', canActivate: [adminGuard], loadComponent: () => import('@features/parametres/invitations/invitations.component').then(m => m.ParamInvitationsComponent) },
       { path: 'parametres/espaces',     loadComponent: () => import('@features/parametres/espaces/espaces.component').then(m => m.ParamEspacesComponent) },
     ],
   },

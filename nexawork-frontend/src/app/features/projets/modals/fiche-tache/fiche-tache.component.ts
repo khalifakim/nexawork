@@ -1,14 +1,16 @@
-import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, EventEmitter, Input, Output, ViewChild, computed, effect, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 import { CommentComposerComponent } from '@shared/ui/comment-composer/comment-composer.component';
 import { MentionChipComponent, MentionChipEvent } from '@shared/ui/mention-chip/mention-chip.component';
 import { ShellBus } from '@layouts/app-shell/shell.bus';
 import { TaskCard } from '@core/models/task.models';
+import { chipTabFor as chipTabForUtil, RichPart } from '@core/util/mention.util';
+import { downloadAttachedFile } from '@core/util/download.util';
 
 interface SubTask { id: string; title: string; done: boolean; }
 
-interface CommentPart { type: 't' | 'person' | 'task' | 'doc' | 'channel'; val: string; }
+type CommentPart = RichPart;
 
 interface AttachedFile { id: number; name: string; size: number; }
 
@@ -21,25 +23,6 @@ interface Comment {
   mine?: boolean;
 }
 
-/** Split a comment text into renderable parts (mention tokens become chips). */
-function parseComment(text: string): CommentPart[] {
-  const out: CommentPart[] = [];
-  const re = /(@@[A-Za-z0-9._-]+|@@@[^\s]+|@[A-Za-zÀ-ÿ][A-Za-z0-9À-ÿ ._-]*|#[\w-]+)/g;
-  let last = 0;
-  for (const m of text.matchAll(re)) {
-    const start = m.index ?? 0;
-    if (start > last) out.push({ type: 't', val: text.slice(last, start) });
-    const tok = m[0];
-    if (tok.startsWith('@@@'))      out.push({ type: 'doc',     val: tok.slice(3) });
-    else if (tok.startsWith('@@'))   out.push({ type: 'task',    val: tok.slice(2) });
-    else if (tok.startsWith('#'))    out.push({ type: 'channel', val: tok.slice(1) });
-    else                              out.push({ type: 'person',  val: tok.slice(1) });
-    last = start + tok.length;
-  }
-  if (last < text.length) out.push({ type: 't', val: text.slice(last) });
-  return out;
-}
-
 /** Fiche de tâche — modal unique (détail + commentaires), fidèle au prototype. */
 @Component({
   selector: 'app-fiche-tache',
@@ -49,6 +32,12 @@ function parseComment(text: string): CommentPart[] {
   template: `
     <div class="ov" (click)="closed.emit()">
       <div class="modal" (click)="$event.stopPropagation()">
+       @if (loading) {
+         <div class="loading">
+           <span class="loading__spin"></span>
+           <span class="loading__t">Ouverture de la tâche…</span>
+         </div>
+       }
        <div class="modal__inner">
         <!-- LEFT -->
         <div class="left">
@@ -129,7 +118,7 @@ function parseComment(text: string): CommentPart[] {
         <div class="right">
           <div class="rh"><span class="rh__t">Commentaires</span><span class="count">{{ comments().length }}</span>
             <span class="spacer"></span><button class="x" (click)="closed.emit()"><app-icon name="x" [size]="17" /></button></div>
-          <div class="thread">
+          <div class="thread" #threadEl>
             @for (c of comments(); track c.id) {
               <div class="cm" [class.cm--mine]="c.mine">
                 <span class="av" [style.background]="c.color">{{ ini(c.author) }}</span>
@@ -159,11 +148,12 @@ function parseComment(text: string): CommentPart[] {
                   @if (c.files.length > 0) {
                     <div class="cm__files">
                       @for (f of c.files; track f.id) {
-                        <span class="cm__file">
+                        <button class="cm__file" title="Télécharger" (click)="downloadFile(f.name, f.size)">
                           <app-icon name="file" [size]="13" />
                           <span class="cm__fn">{{ f.name }}</span>
                           <span class="cm__fs">{{ sizeOf(f.size) }}</span>
-                        </span>
+                          <app-icon class="cm__dl" name="download" [size]="13" />
+                        </button>
                       }
                     </div>
                   }
@@ -189,16 +179,36 @@ function parseComment(text: string): CommentPart[] {
 export class FicheTacheComponent {
   @Input({ required: true }) task!: TaskCard & { proj?: string; due?: string };
   @Input() readonly = false;
+  /** When true, shows a loading overlay over the modal (used when switching tasks via a mention). */
+  @Input() loading = false;
   @Output() closed = new EventEmitter<void>();
   /** Emitted when the user clicks a `@@task` mention in a comment. */
   @Output() openTask = new EventEmitter<string>();
 
   private router = inject(Router);
-  private bus = inject(ShellBus);
+  protected bus = inject(ShellBus);
+
+  @ViewChild('threadEl') private threadEl?: ElementRef<HTMLDivElement>;
 
   status = { name: 'En cours', color: '#5B8DEF', bg: 'rgba(91,141,239,.16)' };
   adding = signal(false);
   draft = signal('');
+
+  constructor() {
+    // Pin the comments thread to the bottom whenever the list changes:
+    // opening the modal (initial render → last comment visible) and each new
+    // comment sent by the user. Mirrors the canal / conversation behaviour.
+    effect(() => {
+      this.comments();
+      // Wait one frame so the newly-appended DOM node has been measured.
+      requestAnimationFrame(() => this.scrollThreadToBottom());
+    });
+  }
+
+  private scrollThreadToBottom(): void {
+    const el = this.threadEl?.nativeElement;
+    if (el) el.scrollTop = el.scrollHeight;
+  }
 
   protected subtasks = signal<SubTask[]>([
     { id: 'MOB-094-1', title: 'Préparer les variantes de l’écran', done: false },
@@ -206,12 +216,18 @@ export class FicheTacheComponent {
 
   protected comments = signal<Comment[]>([
     { id: 1, author: 'Sarah Diallo', color: '#F2693C', time: '16 juin · 09:30',
-      parts: parseComment('@Akim peux-tu valider la maquette du profil avant ce soir ?'), files: [] },
+      parts: [{ type: 'person', val: 'Akim' }, { type: 't', val: ' peux-tu valider la maquette du profil avant ce soir ?' }], files: [] },
     { id: 2, author: 'Moussa Bâ', color: '#6C70F0', time: '16 juin · 11:05',
-      parts: parseComment('J’ai poussé les composants liés à @@MOB-094, RAS de mon côté. Specs dans @@@Specs fonctionnelles.pdf.'),
+      parts: [
+        { type: 't', val: 'J’ai poussé les composants liés à ' },
+        { type: 'task', val: 'MOB-094' },
+        { type: 't', val: ', RAS de mon côté. Specs dans ' },
+        { type: 'doc', val: 'Specs fonctionnelles.pdf' },
+        { type: 't', val: '.' },
+      ],
       files: [{ id: 101, name: 'Specs-ecran-profil.pdf', size: 880 * 1024 }] },
     { id: 3, author: 'Akim Koné', color: '#F5A623', time: '16 juin · 11:24', mine: true,
-      parts: parseComment('Parfait, je relis ça cet après-midi et je valide le statut. 👍'), files: [] },
+      parts: [{ type: 't', val: 'Parfait, je relis ça cet après-midi et je valide le statut. 👍' }], files: [] },
   ]);
 
   private nextCommentId = 4;
@@ -227,9 +243,12 @@ export class FicheTacheComponent {
     return (bytes / (1024 * 1024)).toFixed(1).replace('.0', '') + ' Mo';
   }
 
+  /** Attached files (comments) trigger a direct download, not the GED preview overlay. */
+  downloadFile(name: string, size: number): void { downloadAttachedFile(name, size); }
+
   /** Maps a parsed comment part to the corresponding MentionTab. */
   chipTabFor(type: 'person' | 'task' | 'doc' | 'channel'): 'personnes' | 'taches' | 'documents' | 'canaux' {
-    return ({ person: 'personnes', task: 'taches', doc: 'documents', channel: 'canaux' } as const)[type];
+    return chipTabForUtil(type);
   }
 
   addSub(): void {
@@ -250,7 +269,7 @@ export class FicheTacheComponent {
     this.subtasks.update(l => l.map(s => s.id === id ? { ...s, done: !s.done } : s));
   }
 
-  onNewComment(payload: { text: string; files: AttachedFile[] }): void {
+  onNewComment(payload: { parts: CommentPart[]; files: AttachedFile[] }): void {
     const now = new Date();
     const hh = String(now.getHours()).padStart(2, '0');
     const mm = String(now.getMinutes()).padStart(2, '0');
@@ -258,7 +277,7 @@ export class FicheTacheComponent {
     this.comments.update(list => [
       ...list,
       { id: this.nextCommentId++, author: 'Akim Koné', color: '#F5A623', time: date,
-        parts: parseComment(payload.text), files: payload.files, mine: true },
+        parts: payload.parts, files: payload.files, mine: true },
     ]);
   }
 

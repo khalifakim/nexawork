@@ -39,19 +39,26 @@
 .box { width: 18px; height: 18px; flex: none; border-radius: 5px; border: 2px solid #cfccc4; background: transparent; color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; }
 .box--on { background: var(--nx-indigo); border-color: var(--nx-indigo); }
 .name { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.ic { width: 34px; height: 34px; flex: none; border-radius: 9px; background: var(--nx-surface-2); display: flex; align-items: center; justify-content: center; }
+.ic { position: relative; width: 34px; height: 34px; flex: none; border-radius: 9px; background: #F4F2ED; display: flex; align-items: center; justify-content: center; }
+.ic--folder { background: rgba(232,154,44,.12); }
 .ic--sys { background: rgba(91,95,233,.12); }
+.ic__lock { position: absolute; top: -5px; right: -5px; width: 17px; height: 17px; border-radius: 50%; background: var(--nx-indigo); color: #fff; border: 2px solid #fff; display: flex; align-items: center; justify-content: center; }
 .nm { font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lk { width: 24px; height: 24px; flex: none; border: none; border-radius: 6px; background: transparent; color: #7a7682; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.lk--priv { color: #9b6dd6; }
+.lk:hover { background: #F0EEE8; }
 .nm--folder { font-weight: 600; }
 .muted { font-size: 13px; color: var(--nx-text-500); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mod__a { display: block; font-size: 13px; color: var(--nx-text-600); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mod__b { display: block; font-size: 11.5px; color: var(--nx-text-300); }
-.task { display: flex; align-items: center; gap: 7px; min-width: 0; }
+/* Chip cliquable qui ouvre le modal de détail de la tâche associée */
+.task { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 4px 6px; border: none; border-radius: 6px; background: transparent; cursor: pointer; font-family: inherit; text-align: left; }
+.task:hover { background: rgba(91,95,233,.06); }
 .task__id { flex: none; font-size: 11px; font-weight: 700; color: var(--nx-indigo); background: rgba(91,95,233,.1); padding: 2px 6px; border-radius: 5px; }
 .task__t { font-size: 13px; font-weight: 600; color: var(--nx-indigo); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.act { display: flex; justify-content: flex-end; }
+.act { position: relative; display: flex; justify-content: flex-end; }
 .dots, .open { width: 32px; height: 32px; border: none; border-radius: 7px; background: transparent; color: var(--nx-text-400); cursor: pointer; display: flex; align-items: center; justify-content: center; }
-.dots:hover, .open:hover { background: #F0EEE8; color: var(--nx-indigo); }
+.dots:hover, .open:hover, .dots--on { background: #EDEBE5; color: var(--nx-indigo); }
 .empty { padding: 40px; text-align: center; font-size: 13.5px; color: var(--nx-text-400); }
 
 .gtoast { position: fixed; right: 24px; top: 72px; z-index: 200; display: flex; align-items: center; gap: 11px; padding: 12px 16px; background: var(--nx-ink); color: #fff; border-radius: 11px; box-shadow: var(--nx-shadow-modal); animation: nxCallIn .2s ease; }

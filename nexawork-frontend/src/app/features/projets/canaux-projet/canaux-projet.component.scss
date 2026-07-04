@@ -8,10 +8,19 @@
 .spacer { flex: 1; }
 .create { display: flex; align-items: center; gap: 7px; height: 38px; padding: 0 15px; border: none; border-radius: 9px; background: var(--nx-indigo); color: #fff; font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; box-shadow: var(--nx-shadow-primary); }
 .tbl { flex: 1; min-height: 0; overflow: auto; margin: 0 28px 24px; background: #fff; border: 1px solid var(--nx-border); border-radius: 12px; }
-.thead, .row { display: grid; grid-template-columns: 1fr 230px 110px 140px; gap: 14px; align-items: center; padding: 0 18px; }
+.thead, .row { display: grid; grid-template-columns: 1fr 230px 110px 140px 150px; gap: 14px; align-items: center; padding: 0 18px; }
 .thead { height: 38px; border-bottom: 1px solid #ECEAE4; font-size: 11.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--nx-text-400); }
 .row { height: 56px; border-bottom: 1px solid #F4F2ED; cursor: pointer; }
 .row:hover { background: var(--nx-surface-3); }
+
+/* Direct actions column — Modifier / Gérer les accès / Supprimer.
+   Fidèle au prototype : 3 boutons 32×30 alignés à droite, le bouton de
+   suppression a une bordure rouge. */
+.acts { display: flex; justify-content: flex-end; gap: 6px; }
+.act { width: 32px; height: 30px; display: flex; align-items: center; justify-content: center; border: 1px solid #D9D6CE; border-radius: 8px; background: #fff; color: #56525c; cursor: pointer; padding: 0; }
+.act:hover { background: var(--nx-surface-2); }
+.act--danger { border-color: #F2C4C0; color: var(--nx-danger); }
+.act--danger:hover { background: rgba(245,86,78,.06); }
 .name { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .ic { width: 34px; height: 34px; flex: none; border-radius: 9px; background: #EFEDE7; color: var(--nx-text-500); display: flex; align-items: center; justify-content: center; font-size: 17px; font-weight: 700; }
 .ic--bell { background: rgba(232,154,44,.14); color: var(--nx-warning); }

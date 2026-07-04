@@ -1,7 +1,15 @@
-import { ChangeDetectionStrategy, Component, EventEmitter, HostListener, Output, computed, signal } from '@angular/core';
+import {
+  AfterViewInit, ChangeDetectionStrategy, Component, ElementRef, EventEmitter,
+  HostListener, Output, QueryList, ViewChild, ViewChildren, computed, effect, inject, signal,
+} from '@angular/core';
+import { Router } from '@angular/router';
 import { IconComponent } from '@shared/ui/icon/icon.component';
-
-interface Result { type: string; name: string; ctx: string; date: string; mono?: string; avatar?: string; color?: string; icon?: string; hash?: boolean; radio?: string; }
+import { SearchService } from '@core/services/search.service';
+import { SessionService } from '@core/services/session.service';
+import { SearchResult as Result } from '@core/models/search.models';
+import { workspaceSignal } from '@core/util/workspace-signal';
+import { slugify } from '@core/util/ui.util';
+import { ShellBus } from '@layouts/app-shell/shell.bus';
 
 @Component({
   selector: 'app-recherche-globale',
@@ -13,20 +21,21 @@ interface Result { type: string; name: string; ctx: string; date: string; mono?:
       <div class="panel" (click)="$event.stopPropagation()">
         <div class="in">
           <app-icon name="search" [size]="20" [stroke]="2" />
-          <input autofocus placeholder="Rechercher une tâche, un document, un projet…" [value]="q()" (input)="q.set($any($event.target).value)" />
-          <button class="esc" (click)="closed.emit()">Échap</button>
+          <input #searchInput placeholder="Recherche globale…" [value]="query()"
+                 (input)="onInput($any($event.target).value)" />
         </div>
         <div class="filters">
           @for (f of filters; track f.key) {
-            <button class="chip" [class.chip--on]="filter()===f.key" (click)="filter.set(f.key)">
+            <button class="chip" [class.chip--on]="filter()===f.key" (click)="setFilter(f.key)">
               @if (f.icon) { <app-icon [name]="f.icon" [size]="15" /> }{{ f.label }}
             </button>
           }
         </div>
-        <div class="results">
+        <div class="results" #resList>
           <div class="rh">{{ shown().length }} résultat{{ shown().length > 1 ? 's' : '' }}</div>
           @for (r of shown(); track r.name; let i = $index) {
-            <div class="res" [class.res--first]="i===0">
+            <div class="res" #resRow [class.res--on]="i===highlight()"
+                 (mouseenter)="highlight.set(i)" (click)="open(r)">
               @if (r.avatar) { <span class="res__av" [style.background]="r.color">{{ r.avatar }}</span> }
               @else if (r.radio) { <span class="res__radio" [style.border-color]="r.radio"></span> }
               @else if (r.hash) { <span class="res__hash">#</span> }
@@ -38,10 +47,13 @@ interface Result { type: string; name: string; ctx: string; date: string; mono?:
               </div>
               <span class="res__d">{{ r.date }}</span>
             </div>
+          } @empty {
+            <div class="res-empty">Aucun résultat pour votre recherche.</div>
           }
         </div>
         <div class="foot">
           <span><span class="k">↑</span><span class="k">↓</span> naviguer</span>
+          <span><span class="k">←</span><span class="k">→</span> onglets</span>
           <span><span class="k">↵</span> ouvrir</span>
           <span><span class="k">Échap</span> fermer</span>
         </div>
@@ -50,10 +62,12 @@ interface Result { type: string; name: string; ctx: string; date: string; mono?:
   `,
   styleUrl: './recherche-globale.component.scss',
 })
-export class RechercheGlobaleComponent {
+export class RechercheGlobaleComponent implements AfterViewInit {
   @Output() closed = new EventEmitter<void>();
-  q = signal('');
+  query = signal('');
   filter = signal('tous');
+  /** Index of the highlighted result row within `shown()`. */
+  highlight = signal(0);
 
   filters = [
     { key: 'tous', label: 'Tous', icon: '' },
@@ -65,23 +79,124 @@ export class RechercheGlobaleComponent {
     { key: 'personnes', label: 'Personnes', icon: 'teams' },
   ];
 
-  private all: Result[] = [
-    { type: 'projets', icon: 'projects', color: '#6C70F0', name: 'Refonte App Mobile', ctx: 'Projet', date: 'il y a 3 j' },
-    { type: 'taches', mono: 'MOB-101', name: 'Wireframes écran onboarding', ctx: 'Tâche · Refonte App Mobile', date: "aujourd'hui", radio: '#8E8AA0' },
-    { type: 'taches', mono: 'MOB-094', name: 'Intégration écran profil utilisateur', ctx: 'Tâche · Refonte App Mobile', date: 'il y a 1 j', radio: '#5B8DEF' },
-    { type: 'documents', icon: 'file', color: '#F5564E', name: 'Specs fonctionnelles.pdf', ctx: 'Document · Refonte App Mobile', date: 'hier' },
-    { type: 'canaux', hash: true, name: 'annonces', ctx: 'Canal · Organisation', date: 'il y a 2 h' },
-    { type: 'canaux', hash: true, name: 'dev-frontend', ctx: 'Canal · Refonte App Mobile', date: 'il y a 2 j' },
-    { type: 'messages', icon: 'comment', color: '#F2693C', name: 'Sarah Diallo : la maquette du profil est prête', ctx: 'Message · Conversation', date: 'il y a 14 min' },
-    { type: 'personnes', avatar: 'SD', color: '#F2693C', name: 'Sarah Diallo', ctx: 'Chef de projet', date: 'En ligne' },
-    { type: 'personnes', avatar: 'MB', color: '#6C70F0', name: 'Moussa Bâ', ctx: 'Développeur', date: 'En ligne' },
-  ];
+  private session = inject(SessionService);
+  private searchSvc = inject(SearchService);
+  private router = inject(Router);
+  private bus = inject(ShellBus);
+  /** All searchable entries of the active workspace (filtered client-side below). */
+  private all = workspaceSignal<Result[]>(this.session, () => this.searchSvc.all(), []);
 
   shown = computed(() => {
     const f = this.filter();
-    const q = this.q().toLowerCase().trim();
-    return this.all.filter(r => (f === 'tous' || r.type === f) && (!q || r.name.toLowerCase().includes(q)));
+    const q = this.query().toLowerCase().trim();
+    return this.all().filter(r =>
+      (f === 'tous' || r.type === f) &&
+      (!q || r.name.toLowerCase().includes(q) || (r.mono ?? '').toLowerCase().includes(q) || r.ctx.toLowerCase().includes(q)),
+    );
   });
 
-  @HostListener('document:keydown.escape') onEsc(): void { this.closed.emit(); }
+  @ViewChildren('resRow') private rows!: QueryList<ElementRef<HTMLDivElement>>;
+  @ViewChild('searchInput', { static: true }) private searchInput!: ElementRef<HTMLInputElement>;
+
+  constructor() {
+    // Reset highlight and scroll to top when the filter or the query changes:
+    // the previous row index may not exist in the new result set.
+    effect(() => {
+      this.shown();
+      this.highlight.set(0);
+      queueMicrotask(() => this.scrollRowIntoView(0));
+    });
+    // Keep the highlighted row visible when the user navigates with arrows.
+    effect(() => this.scrollRowIntoView(this.highlight()));
+  }
+
+  ngAfterViewInit(): void {
+    // First render: make sure the initial row is visible.
+    queueMicrotask(() => this.scrollRowIntoView(this.highlight()));
+    // Immediately focus the search input so the user can start typing without
+    // clicking. `autofocus` is unreliable for elements inserted via `@if`, so we
+    // do it explicitly.
+    queueMicrotask(() => this.searchInput?.nativeElement.focus());
+  }
+
+  onInput(v: string): void { this.query.set(v); }
+
+  setFilter(key: string): void {
+    if (this.filter() === key) return;
+    this.filter.set(key);
+  }
+
+  /** Move the filter chip left/right (loops at both ends). */
+  private cycleFilter(delta: 1 | -1): void {
+    const keys = this.filters.map(f => f.key);
+    const i = keys.indexOf(this.filter());
+    const next = (i + delta + keys.length) % keys.length;
+    this.filter.set(keys[next]);
+  }
+
+  private scrollRowIntoView(index: number): void {
+    const el = this.rows?.get(index)?.nativeElement;
+    if (!el) return;
+    // `nearest` keeps the row on screen without jumping when it's already visible.
+    el.scrollIntoView({ block: 'nearest' });
+  }
+
+  /** Close then navigate to the concerned element (mirrors the prototype's navigateResult). */
+  open(r: Result): void {
+    this.closed.emit();
+    switch (r.type) {
+      case 'taches':
+        if (r.mono) this.bus.openTask(r.mono);
+        break;
+      case 'documents': this.bus.openDocument(r.name); break;
+      case 'projets':   this.router.navigate(['/app/projets', slugify(r.name), 'kanban']); break;
+      case 'canaux':    this.router.navigate(['/app/canaux', slugify(r.name)]); break;
+      case 'messages':  this.router.navigate(['/app/conversations', 'sarah-diallo']); break;
+      case 'personnes': this.bus.openProfile(r.name); break;
+    }
+  }
+
+  /**
+   * Global keyboard navigation. Fires from `document` so it works while the
+   * input is focused (the input doesn't consume arrow keys anyway).
+   * - Arrow Up/Down navigate results (loop).
+   * - Arrow Left/Right switch the filter tab (loop).
+   * - Enter opens the highlighted result.
+   * - Escape closes the modal.
+   */
+  @HostListener('document:keydown', ['$event'])
+  onKeydown(ev: KeyboardEvent): void {
+    if (ev.key === 'Escape') { ev.preventDefault(); this.closed.emit(); return; }
+
+    if (ev.key === 'ArrowDown') {
+      ev.preventDefault();
+      const n = this.shown().length;
+      if (n === 0) return;
+      this.highlight.set((this.highlight() + 1) % n);
+      return;
+    }
+    if (ev.key === 'ArrowUp') {
+      ev.preventDefault();
+      const n = this.shown().length;
+      if (n === 0) return;
+      this.highlight.set((this.highlight() - 1 + n) % n);
+      return;
+    }
+    if (ev.key === 'ArrowRight') {
+      ev.preventDefault();
+      this.cycleFilter(1);
+      return;
+    }
+    if (ev.key === 'ArrowLeft') {
+      ev.preventDefault();
+      this.cycleFilter(-1);
+      return;
+    }
+    if (ev.key === 'Enter') {
+      const list = this.shown();
+      const r = list[this.highlight()];
+      if (r) { ev.preventDefault(); this.open(r); }
+      return;
+    }
+  }
 }

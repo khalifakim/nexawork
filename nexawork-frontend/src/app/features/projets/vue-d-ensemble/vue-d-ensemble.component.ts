@@ -1,8 +1,8 @@
-import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Input, computed, inject } from '@angular/core';
+import { ActivatedRoute, Router } from '@angular/router';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 
 interface Seg { l: string; v: number; c: string; }
-interface Alert { t: string; s: string; sev: 'critique' | 'surveiller' | 'normal'; }
 interface Deadline { t: string; who: string; due: string; urgent: boolean; }
 
 @Component({
@@ -30,49 +30,62 @@ interface Deadline { t: string; who: string; due: string; urgent: boolean; }
           <div class="kpi__big"><span class="v" style="color:var(--nx-success)">28</span><span class="t">/ 45</span></div>
           <div class="kpi__sub">17 tâches restantes</div>
         </div>
-        <div class="card kpi">
+        <button type="button" class="card kpi kpi--btn" (click)="goToLateTasks()" title="Voir les tâches en retard">
           <div class="kpi__l">Tâches en retard</div>
           <div class="kpi__num" style="color:var(--nx-danger)">4</div>
           <div class="kpi__sub">à traiter en priorité</div>
-        </div>
-        <div class="card kpi">
+          <span class="kpi__cta"><app-icon name="chevronRight" [size]="14" [stroke]="2.2" /></span>
+        </button>
+        <button type="button" class="card kpi kpi--btn" (click)="goToTeam()" title="Voir les membres du projet">
           <div class="kpi__l">Membres du projet</div>
           <div class="kpi__big"><span class="v">8</span><span class="t">membres</span></div>
           <div class="kpi__sub">répartis dans 3 équipes</div>
-        </div>
+          <span class="kpi__cta"><app-icon name="chevronRight" [size]="14" [stroke]="2.2" /></span>
+        </button>
       </div>
 
-      <!-- donut + alertes -->
-      <div class="row2">
-        <div class="card pad rowfix">
-          <div class="card__t">Répartition des tâches par statut</div>
-          <div class="donut">
-            <div class="donut__g">
-              <svg width="160" height="160" viewBox="0 0 160 160">
-                <circle cx="80" cy="80" r="56" fill="none" stroke="#F0EEE8" stroke-width="22"></circle>
-                @for (s of ring(); track $index) {
-                  <circle cx="80" cy="80" r="56" fill="none" [attr.stroke]="s.c" stroke-width="22"
-                          [attr.stroke-dasharray]="s.dash" [attr.stroke-dashoffset]="s.off" transform="rotate(-90 80 80)"></circle>
-                }
-              </svg>
-              <div class="donut__c"><span class="n">{{ total }}</span><span class="l">tâches</span></div>
+      <!-- Répartition (pleine largeur) -->
+      <div class="card pad rep">
+        <div class="rep__head">
+          <div>
+            <div class="card__t">Répartition des tâches par statut</div>
+            <div class="card__s">Vue globale de l'avancement des {{ total }} tâches du projet.</div>
+          </div>
+          <div class="rep__totals">
+            <div class="rep__stat">
+              <span class="rep__stat__v">{{ done }}</span>
+              <span class="rep__stat__l">Terminées</span>
             </div>
-            <div class="legend">
-              @for (s of segs; track s.l) {
-                <div class="lg"><span class="lg__d" [style.background]="s.c"></span><span class="lg__l">{{ s.l }}</span><span class="lg__v">{{ s.v }}</span></div>
-              }
+            <div class="rep__stat">
+              <span class="rep__stat__v">{{ inProgress }}</span>
+              <span class="rep__stat__l">En cours</span>
+            </div>
+            <div class="rep__stat">
+              <span class="rep__stat__v">{{ todo }}</span>
+              <span class="rep__stat__l">À faire</span>
             </div>
           </div>
         </div>
 
-        <div class="card pad rowfix">
-          <div class="card__t">Alertes</div>
-          <div class="alerts">
-            @for (a of alerts; track a.t) {
-              <div class="al" [class]="'al--' + a.sev">
-                <span class="al__d"></span>
-                <div class="al__b"><div class="al__t">{{ a.t }}</div><div class="al__s">{{ a.s }}</div></div>
-                <app-icon name="chevronRight" [size]="16" [stroke]="2.2" />
+        <div class="donut">
+          <div class="donut__g">
+            <svg width="180" height="180" viewBox="0 0 160 160">
+              <circle cx="80" cy="80" r="56" fill="none" stroke="#F0EEE8" stroke-width="22"></circle>
+              @for (s of ring(); track $index) {
+                <circle cx="80" cy="80" r="56" fill="none" [attr.stroke]="s.c" stroke-width="22"
+                        [attr.stroke-dasharray]="s.dash" [attr.stroke-dashoffset]="s.off" transform="rotate(-90 80 80)"></circle>
+              }
+            </svg>
+            <div class="donut__c"><span class="n">{{ total }}</span><span class="l">tâches</span></div>
+          </div>
+          <div class="legend">
+            @for (s of segs; track s.l) {
+              <div class="lg">
+                <span class="lg__d" [style.background]="s.c"></span>
+                <span class="lg__l">{{ s.l }}</span>
+                <span class="lg__bar"><span class="lg__bar__f" [style.width.%]="pct(s.v)" [style.background]="s.c"></span></span>
+                <span class="lg__v">{{ s.v }}</span>
+                <span class="lg__p">{{ pct(s.v) }}%</span>
               </div>
             }
           </div>
@@ -99,6 +112,26 @@ interface Deadline { t: string; who: string; due: string; urgent: boolean; }
 export class VueDEnsembleComponent {
   @Input() readonly = false;
 
+  private router = inject(Router);
+  private route = inject(ActivatedRoute);
+
+  /** Current project id from the route (projet-shell owns `/app/projets/:id/...`). */
+  private projectId(): string {
+    return this.route.snapshot.paramMap.get('id')
+      ?? this.route.parent?.snapshot.paramMap.get('id')
+      ?? 'refonte-app-mobile';
+  }
+
+  /** Kanban tab of the current project, with the "en retard" échéance filter pre-applied. */
+  goToLateTasks(): void {
+    this.router.navigate(['/app/projets', this.projectId(), 'kanban'], { queryParams: { ech: 'retard' } });
+  }
+
+  /** Équipes tab of the current project. */
+  goToTeam(): void {
+    this.router.navigate(['/app/projets', this.projectId(), 'equipes']);
+  }
+
   segs: Seg[] = [
     { l: 'À faire', v: 8, c: '#8E8AA0' },
     { l: 'En cours', v: 7, c: '#5B8DEF' },
@@ -106,14 +139,10 @@ export class VueDEnsembleComponent {
     { l: 'Terminé', v: 28, c: '#2BB673' },
   ];
   total = this.segs.reduce((a, s) => a + s.v, 0);
+  done = this.segs.find(s => s.l === 'Terminé')?.v ?? 0;
+  inProgress = this.segs.find(s => s.l === 'En cours')?.v ?? 0;
+  todo = this.segs.find(s => s.l === 'À faire')?.v ?? 0;
 
-  alerts: Alert[] = [
-    { t: '4 tâches en retard', s: 'réparties sur le projet', sev: 'critique' },
-    { t: '2 tâches bloquées', s: 'en attente de validation', sev: 'critique' },
-    { t: 'Backend API — aucune activité', s: 'depuis 5 jours', sev: 'surveiller' },
-    { t: 'Échéance principale à J-3', s: '30 sept. 2025', sev: 'surveiller' },
-    { t: '2 commentaires sans réponse', s: 'depuis hier', sev: 'normal' },
-  ];
   deadlines: Deadline[] = [
     { t: 'Valider les maquettes UI', who: 'Aïda Ndiaye', due: 'Demain', urgent: true },
     { t: 'API Login', who: 'Moussa Bâ', due: 'Demain', urgent: true },
@@ -121,6 +150,8 @@ export class VueDEnsembleComponent {
     { t: 'Documentation API', who: 'Moussa Bâ', due: 'Dans 3 jours', urgent: false },
     { t: 'Tests finaux', who: 'Yacine Sow', due: 'Dans 5 jours', urgent: false },
   ];
+
+  pct(v: number): number { return Math.round((v / this.total) * 100); }
 
   ring(): { c: string; dash: string; off: number }[] {
     const C = 2 * Math.PI * 56;

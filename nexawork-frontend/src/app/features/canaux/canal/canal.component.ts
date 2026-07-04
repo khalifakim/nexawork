@@ -1,46 +1,133 @@
-import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
-import { ActivatedRoute } from '@angular/router';
-import { toSignal } from '@angular/core/rxjs-interop';
-import { map } from 'rxjs/operators';
+import { ChangeDetectionStrategy, Component, ElementRef, Input, ViewChild, computed, effect, inject, signal } from '@angular/core';
+import { ActivatedRoute, Router } from '@angular/router';
+import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop';
+import { map, switchMap } from 'rxjs/operators';
 import { IconComponent } from '@shared/ui/icon/icon.component';
+import { CommentComposerComponent } from '@shared/ui/comment-composer/comment-composer.component';
+import { MentionChipComponent, MentionChipEvent } from '@shared/ui/mention-chip/mention-chip.component';
+import { HighlightComponent } from '@shared/ui/highlight/highlight.component';
+import { ThreadMediaPanelComponent, SharedMediaItem } from '@shared/overlays/thread-media-panel/thread-media-panel.component';
+import { ThreadMentionsPanelComponent, ThreadMention, MentionKind } from '@shared/overlays/thread-mentions-panel/thread-mentions-panel.component';
 import { ShellBus } from '@layouts/app-shell/shell.bus';
+import { ChannelsService } from '@core/services/channels.service';
+import { ArchivedProjectsService } from '@core/services/archived-projects.service';
+import { ChannelFile, ChannelMessage } from '@core/models/channel.models';
+import { chipTabFor, RichPart } from '@core/util/mention.util';
+import { downloadAttachedFile } from '@core/util/download.util';
 
-interface Part { type: 'text' | 'task' | 'channel' | 'person'; v: string; }
-interface ChMsg { author: string; color: string; time: string; parts: Part[]; }
+interface AttachedFile { id: number; name: string; size: number; }
+type ChMsg = ChannelMessage;
 
 @Component({
   selector: 'app-canal',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IconComponent],
+  imports: [
+    IconComponent,
+    CommentComposerComponent,
+    MentionChipComponent,
+    HighlightComponent,
+    ThreadMediaPanelComponent,
+    ThreadMentionsPanelComponent,
+  ],
   template: `
     <div class="chat">
       <div class="ch">
-        @if (isAnnonce()) { <app-icon name="bell" [size]="20" /> } @else { <span class="hash">#</span> }
+        @if (kind() === 'bell') {
+          <app-icon class="ch__i ch__i--bell" name="bell" [size]="20" />
+        } @else {
+          <span class="hash">#</span>
+        }
         <span class="ch__n">{{ name() }}</span>
-        @if (archived()) { <span class="badge"><app-icon name="lock" [size]="12" />archivé</span> }
-        <span class="ch__s">{{ readonly() ? '· Lecture seule · écriture réservée aux admins et chef de projet' : '· Lecture et écriture pour tous les membres' }}</span>
+        @if (isPrivate()) {
+          <span class="pill pill--priv"><app-icon name="lock" [size]="12" />Privé</span>
+        }
+        @if (archived()) {
+          <span class="pill pill--arch"><app-icon name="lock" [size]="12" />archivé</span>
+        }
+        @if (readonly()) {
+          <span class="ch__s">· Lecture seule · écriture réservée aux admins et chef de projet</span>
+        }
+        <span class="ch__sp"></span>
+
+        @if (searchOpen()) {
+          <div class="sfield">
+            <app-icon name="search" [size]="14" />
+            <input #sinput [value]="searchQ()" (input)="searchQ.set($any($event.target).value)"
+                   (keydown.escape)="closeSearch()"
+                   placeholder="Rechercher dans le canal…" />
+            <button class="sfield__x" (click)="closeSearch()" title="Fermer">
+              <app-icon name="x" [size]="14" />
+            </button>
+          </div>
+        }
+        <button class="hbtn" [class.hbtn--on]="searchOpen()" title="Rechercher"
+                (click)="toggleSearch()">
+          <app-icon name="search" [size]="17" />
+        </button>
+        <button class="hbtn" [class.hbtn--on]="mentionsOpen()" title="Éléments mentionnés"
+                (click)="toggleMentions()">
+          <app-icon name="at" [size]="17" />
+        </button>
+        <button class="hbtn" [class.hbtn--on]="mediaOpen()" title="Fichiers joints"
+                (click)="toggleMedia()">
+          <app-icon name="file" [size]="17" />
+        </button>
       </div>
 
-      <div class="msgs">
-        <div class="day"><div class="day__l"></div><span>Aujourd'hui</span><div class="day__l"></div></div>
-        @for (m of msgs; track $index) {
-          <div class="msg">
-            <span class="av" [style.background]="m.color" style="cursor:pointer" (click)="bus.openProfile(m.author)">{{ ini(m.author) }}</span>
-            <div class="b">
-              <div class="h"><span class="n" style="cursor:pointer" (click)="bus.openProfile(m.author)">{{ m.author }}</span><span class="t">{{ m.time }}</span></div>
-              <div class="x">
-                @for (p of m.parts; track $index) {
-                  @switch (p.type) {
-                    @case ('task') { <span class="chip chip--task nx-mono">{{ p.v }}</span> }
-                    @case ('channel') { <span class="chip chip--chan">#{{ p.v }}</span> }
-                    @case ('person') { <span class="mention">{{ '@' + p.v }}</span> }
-                    @default { <span>{{ p.v }}</span> }
+      <div class="body">
+        <div class="msgs" #msgsEl>
+          <div class="day"><div class="day__l"></div><span>Aujourd'hui</span><div class="day__l"></div></div>
+          @for (m of visible(); track $index) {
+            <div class="msg" [class.msg--me]="m.mine">
+              @if (!m.mine) {
+                <span class="av" [style.background]="m.color" style="cursor:pointer" (click)="bus.openProfile(m.author)">{{ ini(m.author) }}</span>
+              }
+              <div class="b" [class.b--me]="m.mine">
+                <div class="h">
+                  @if (!m.mine) {
+                    <span class="n" style="cursor:pointer" (click)="bus.openProfile(m.author)">
+                      <app-highlight [text]="m.author" [query]="searchQ()" />
+                    </span>
                   }
+                  <span class="t">{{ m.time }}</span>
+                </div>
+                @if (m.parts.length > 0) {
+                  <div class="x">
+                    @for (p of m.parts; track $index) {
+                      @if (p.type === 't') {
+                        <app-highlight [text]="p.val" [query]="searchQ()" />
+                      } @else {
+                        <app-mention-chip [tab]="chipTabFor(p.type)" [value]="p.val" (opened)="onChipOpen($event)" />
+                      }
+                    }
+                  </div>
+                }
+                @if (m.files?.length) {
+                  <div class="cm__files">
+                    @for (f of m.files!; track f.id) {
+                      <button class="cm__file" title="Télécharger" (click)="downloadFile(f.name, f.size)">
+                        <app-icon name="file" [size]="13" />
+                        <span class="cm__fn"><app-highlight [text]="f.name" [query]="searchQ()" /></span>
+                        <span class="cm__fs">{{ sizeOf(f.size) }}</span>
+                        <app-icon class="cm__dl" name="download" [size]="13" />
+                      </button>
+                    }
+                  </div>
                 }
               </div>
             </div>
-          </div>
+          }
+        </div>
+
+        @if (mediaOpen()) {
+          <app-thread-media-panel [items]="sharedMedia()" (closed)="mediaOpen.set(false)" />
+        }
+        @if (mentionsOpen()) {
+          <app-thread-mentions-panel
+            [mentions]="threadMentions()"
+            (closed)="mentionsOpen.set(false)"
+            (picked)="onMentionPicked($event)" />
         }
       </div>
 
@@ -48,17 +135,9 @@ interface ChMsg { author: string; color: string; time: string; parts: Part[]; }
         <div class="ro"><app-icon name="lock" [size]="16" /><span>{{ archived() ? 'Projet archivé — canal en lecture seule.' : 'Canal en lecture seule — écriture réservée aux administrateurs.' }}</span></div>
       } @else {
         <div class="composer">
-          <div class="box">
-            <div class="in" contenteditable="true" [attr.data-ph]="'Écrire dans #' + name() + '…'"></div>
-            <div class="bar">
-              <button class="cbtn"><app-icon name="paperclip" [size]="18" /></button>
-              <button class="cbtn"><app-icon name="at" [size]="18" /></button>
-              <button class="cbtn"><app-icon name="smile" [size]="18" /></button>
-              <span class="spacer"></span>
-              <button class="send"><app-icon name="send" [size]="17" /></button>
-            </div>
-          </div>
-          <div class="legend">@ personnes · &#64;&#64; tâches · &#64;&#64;&#64; documents · # canaux</div>
+          <app-comment-composer
+            [placeholder]="'Écrire dans #' + name() + '…'"
+            (submitted)="onSend($event)" />
         </div>
       }
     </div>
@@ -67,17 +146,178 @@ interface ChMsg { author: string; color: string; time: string; parts: Part[]; }
 })
 export class CanalComponent {
   private route = inject(ActivatedRoute);
+  private router = inject(Router);
   bus = inject(ShellBus);
-  name = toSignal(this.route.paramMap.pipe(map(p => p.get('id') ?? 'annonces')), { initialValue: 'annonces' });
 
-  isAnnonce = computed(() => this.name() === 'annonces' || this.name() === 'annonces-projet');
-  readonly = computed(() => this.isAnnonce());
-  archived = computed(() => false);
+  /**
+   * Optional channel id passed by a parent (e.g. `CanauxProjetComponent`) that
+   * embeds this component inline. When set, it takes precedence over the route
+   * `:id` param — this is how the archived-project Canaux tab opens a channel
+   * under the project header without navigating away.
+   */
+  @Input() set channelId(v: string | null | undefined) { this._embeddedId.set(v ?? null); }
+  private _embeddedId = signal<string | null>(null);
+  private routeName = toSignal(this.route.paramMap.pipe(map(p => p.get('id') ?? 'annonces')), { initialValue: 'annonces' });
+  name = computed<string>(() => this._embeddedId() ?? this.routeName());
 
-  msgs: ChMsg[] = [
-    { author: 'Sarah Diallo', color: '#F2693C', time: '09:12', parts: [{ type: 'text', v: 'Bonjour à tous. La nouvelle version du board Kanban est en ligne, pensez à mettre à jour vos tâches.' }] },
-    { author: 'Moussa Bâ', color: '#6C70F0', time: '09:18', parts: [{ type: 'text', v: 'Super, je m’en occupe ce matin. ' }, { type: 'task', v: 'MOB-094' }, { type: 'text', v: ' est presque terminée.' }] },
-    { author: 'Aïda Ndiaye', color: '#2BB673', time: '09:24', parts: [{ type: 'text', v: 'De mon côté la maquette du profil est prête, je partage le lien dans ' }, { type: 'channel', v: 'design-veille' }, { type: 'text', v: '. ' }, { type: 'person', v: 'Akim' }, { type: 'text', v: ' jette un œil quand tu peux.' }] },
-  ];
+  private channelsSvc = inject(ChannelsService);
+
+  private channels = toSignal(this.channelsSvc.list(), { initialValue: [] });
+  private archivedSvc = inject(ArchivedProjectsService);
+  kind = computed<'bell' | 'hash'>(() => this.channels().find(c => c.id === this.name())?.kind ?? 'hash');
+  /**
+   * True when the channel belongs to an archived project (REF E). Deriving
+   * this from the channel's owning project + `ArchivedProjectsService` means
+   * archiving a project instantly flips its channels to read-only mode without
+   * having to touch each channel.
+   */
+  archived = computed<boolean>(() => {
+    const c = this.channels().find(x => x.id === this.name());
+    if (!c || c.scope !== 'project' || !c.project) return false;
+    return this.archivedSvc.isArchived(this.slugifyProject(c.project));
+  });
+  /** Readonly = intrinsic channel flag OR belongs to an archived project. */
+  readonly = computed(() => this.channelsSvc.isReadonly(this.name()) || this.archived());
+  isPrivate = computed(() => this.channelsSvc.isPrivate(this.name()));
+
+  private slugifyProject(name: string): string {
+    return name.trim().toLowerCase()
+      .normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/[^a-z0-9\s-]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-');
+  }
+
+  chipTabFor = chipTabFor;
+
+  /** Message thread of the active channel (reloads when the channel changes). */
+  msgs = signal<ChMsg[]>([]);
+
+  /** Header search — open flag and query text. */
+  searchOpen = signal(false);
+  searchQ = signal('');
+  /** Right-side panels — only one can be open at a time (mutually exclusive). */
+  mediaOpen = signal(false);
+  mentionsOpen = signal(false);
+
+  /** Messages filtered by the header search query (case-insensitive). */
+  visible = computed<ChMsg[]>(() => {
+    const q = this.searchQ().toLowerCase().trim();
+    const all = this.msgs();
+    if (!q) return all;
+    return all.filter(m =>
+      m.author.toLowerCase().includes(q) ||
+      m.parts.some(p => p.type === 't' && p.val.toLowerCase().includes(q)) ||
+      (m.files ?? []).some(f => f.name.toLowerCase().includes(q)),
+    );
+  });
+
+  /** Attached files from every message = shared documents / media. */
+  sharedMedia = computed<SharedMediaItem[]>(() =>
+    this.msgs()
+      .flatMap(m => (m.files ?? []).map(f => ({
+        id: `${m.time}-${f.id}`,
+        name: f.name,
+        size: f.size,
+        meta: m.author,
+      })))
+      .reverse(),
+  );
+
+  /** Mentions detected in the thread — feeds the 4-tab mentions panel. */
+  threadMentions = computed<ThreadMention[]>(() => {
+    const out: ThreadMention[] = [];
+    for (const m of this.msgs()) {
+      for (const p of m.parts) {
+        if (p.type === 'person')  out.push({ kind: 'person',  value: p.val });
+        else if (p.type === 'task')    out.push({ kind: 'task',    value: p.val });
+        else if (p.type === 'doc')     out.push({ kind: 'doc',     value: p.val });
+        else if (p.type === 'channel') out.push({ kind: 'channel', value: p.val });
+      }
+    }
+    return out;
+  });
+
+  @ViewChild('msgsEl') private msgsEl?: ElementRef<HTMLDivElement>;
+  @ViewChild('sinput') private searchInput?: ElementRef<HTMLInputElement>;
+
+  constructor() {
+    toObservable(this.name)
+      .pipe(switchMap(id => this.channelsSvc.thread(id)), takeUntilDestroyed())
+      .subscribe(thread => {
+        this.msgs.set(thread);
+        this.searchQ.set('');
+      });
+    // Pin the scroll to the bottom whenever the visible thread changes
+    // (open a channel, switch channel, or send a new message).
+    effect(() => {
+      this.visible();
+      // Wait one frame so the newly-appended DOM node is measurable.
+      requestAnimationFrame(() => this.scrollToBottom());
+    });
+    // Autofocus the header search field as soon as it opens.
+    effect(() => {
+      if (this.searchOpen()) {
+        queueMicrotask(() => this.searchInput?.nativeElement.focus());
+      }
+    });
+  }
+  private scrollToBottom(): void {
+    const el = this.msgsEl?.nativeElement;
+    if (el) el.scrollTop = el.scrollHeight;
+  }
+
   ini(n: string): string { return n.split(/\s+/).map(w => w[0]).join('').slice(0, 2); }
+
+  /** Human-readable file size (Ko / Mo) — mirrors the fiche tâche formatter. */
+  sizeOf(bytes: number): string {
+    if (bytes < 1024) return bytes + ' o';
+    if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + ' Ko';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' Mo';
+  }
+
+  /** Attached files trigger a direct download (not the GED preview overlay). */
+  downloadFile(name: string, size: number): void { downloadAttachedFile(name, size); }
+
+  toggleSearch(): void {
+    this.searchOpen.update(v => !v);
+    if (!this.searchOpen()) this.searchQ.set('');
+  }
+  closeSearch(): void { this.searchOpen.set(false); this.searchQ.set(''); }
+
+  toggleMedia(): void {
+    this.mentionsOpen.set(false);
+    this.mediaOpen.update(v => !v);
+  }
+  toggleMentions(): void {
+    this.mediaOpen.set(false);
+    this.mentionsOpen.update(v => !v);
+  }
+
+  onSend(payload: { parts: RichPart[]; files: AttachedFile[] }): void {
+    if (!payload.parts.length && !payload.files.length) return;
+    const now = new Date();
+    const time = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+    const files: ChannelFile[] | undefined = payload.files.length ? payload.files.map(f => ({ id: f.id, name: f.name, size: f.size })) : undefined;
+    this.msgs.update(list => [...list, { author: 'Akim Koné', color: '#F5A623', time, parts: payload.parts, mine: true, files }]);
+  }
+
+  onChipOpen(ev: MentionChipEvent): void {
+    switch (ev.type) {
+      case 'person':   this.bus.openProfile(ev.name); break;
+      case 'document': this.bus.openDocument(ev.name); break;
+      case 'task':     this.bus.openTask(ev.id); break;
+      case 'channel':  this.router.navigate(['/app/canaux', ev.slug]); break;
+    }
+  }
+
+  /** A pick from the mentions side panel — routed exactly like an inline chip. */
+  onMentionPicked(ev: { kind: MentionKind; value: string }): void {
+    switch (ev.kind) {
+      case 'person':  this.bus.openProfile(ev.value); break;
+      case 'task':    this.bus.openTask(ev.value); break;
+      case 'doc':     this.bus.openDocument(ev.value); break;
+      case 'channel': this.router.navigate(['/app/canaux', ev.value]); break;
+    }
+  }
 }

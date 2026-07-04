@@ -73,6 +73,11 @@ const TABS: Array<{ key: MentionTab; label: string }> = [
           </button>
         }
       </div>
+      <div class="mp__sh">
+        @for (s of SHORTCUTS; track s.tab) {
+          <span class="mp__scut" (click)="onTab(s.tab)"><code>{{ s.code }}</code><span>{{ s.label }}</span></span>
+        }
+      </div>
     </div>
   `,
   styles: [`
@@ -114,6 +119,12 @@ const TABS: Array<{ key: MentionTab; label: string }> = [
     .mp__n--mono { font-family: var(--nx-mono); }
     .mp__s { font-size: 11.5px; color: var(--nx-text-500);
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .mp__sh { border-top: 1px solid var(--nx-border-card); padding: 6px 12px 7px;
+      display: flex; gap: 10px; flex-wrap: wrap; }
+    .mp__scut { display: inline-flex; align-items: center; gap: 4px; cursor: pointer;
+      font-size: 11px; font-weight: 600; color: var(--nx-text-400); }
+    .mp__scut code { font-family: var(--nx-mono); background: var(--nx-surface-3);
+      padding: 1px 4px; border-radius: 4px; font-size: 10.5px; color: var(--nx-text-600); }
   `],
 })
 export class MentionPickerComponent {
@@ -127,6 +138,13 @@ export class MentionPickerComponent {
   @Output() browse    = new EventEmitter<MentionTab>();
 
   protected readonly tabs = TABS;
+  /** Always-visible shortcut hints (click to jump to a tab), like the prototype. */
+  protected readonly SHORTCUTS: Array<{ code: string; label: string; tab: MentionTab }> = [
+    { code: '@',   label: 'personnes', tab: 'personnes' },
+    { code: '@@',  label: 'tâches',    tab: 'taches'    },
+    { code: '@@@', label: 'documents', tab: 'documents' },
+    { code: '#',   label: 'canaux',    tab: 'canaux'    },
+  ];
   protected readonly active = signal<MentionTab>('personnes');
   protected readonly query = signal('');
   protected readonly hover = signal(0);

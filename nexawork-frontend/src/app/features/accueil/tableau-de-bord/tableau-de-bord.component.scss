@@ -22,37 +22,30 @@
 .kpi__big .pct { margin-left: auto; font-size: 13px; font-weight: 700; color: var(--nx-success); }
 .kpi__num { font-size: 30px; font-weight: 700; letter-spacing: -.02em; line-height: 1; }
 .kpi__sub { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--nx-text-400); font-weight: 500; margin-top: 6px; }
-.kpi__sub .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--nx-success); }
+.kpi__go { margin-left: auto; color: var(--nx-text-300); }
 .bar { height: 7px; border-radius: 6px; background: #EFEDE8; overflow: hidden; }
 .bar__f { height: 100%; border-radius: 6px; }
 
-.mid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+/* Cartes-boutons cliquables (Tâches en retard, Membres) */
+.kpi--btn { display: block; width: 100%; text-align: left; font-family: inherit; cursor: pointer; transition: box-shadow .15s, border-color .15s, transform .12s; }
+.kpi--btn:hover { border-color: var(--nx-indigo); box-shadow: var(--nx-shadow-hover); transform: translateY(-1px); }
+.kpi--btn:hover .kpi__go { color: var(--nx-indigo); }
 
-.charge { padding: 18px 20px; height: 330px; display: flex; flex-direction: column; }
+.charge { padding: 18px 20px; height: 330px; display: flex; flex-direction: column; margin-bottom: 16px; }
 .charge__rows { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; margin-top: 16px; }
-.cb { display: flex; align-items: center; gap: 12px; height: 30px; }
+.cb { width: 100%; font-family: inherit; background: transparent; border: none; cursor: pointer; display: flex; align-items: center; gap: 12px; height: 30px; padding: 0 6px; border-radius: 8px; transition: background .12s; }
+.cb:hover { background: var(--nx-surface-3); }
 .cb__n { width: 124px; flex: none; font-size: 12.5px; font-weight: 600; color: var(--nx-text-600); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cb__track { flex: 1; height: 20px; border-radius: 6px; background: var(--nx-surface-2); display: flex; align-items: center; min-width: 0; }
 .cb__f { height: 100%; border-radius: 6px; flex: none; }
 .cb__v { margin-left: 8px; font-size: 12.5px; font-weight: 700; flex: none; }
 
-.alerts { padding: 18px 20px; height: 330px; display: flex; flex-direction: column; }
-.alerts__l { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 9px; margin-top: 14px; }
-.al { display: flex; align-items: center; gap: 12px; padding: 11px 12px; border-radius: 11px; background: rgba(232,154,44,.14); border: 1px solid rgba(232,154,44,.35); cursor: pointer; transition: transform .12s; }
-.al:hover { transform: translateX(3px); }
-.al--d { background: rgba(245,86,78,.10); border-color: rgba(245,86,78,.30); }
-.al__i { width: 32px; height: 32px; border-radius: 9px; background: rgba(232,154,44,.22); color: #E89A2C; display: flex; align-items: center; justify-content: center; flex: none; }
-.al--d .al__i { background: rgba(245,86,78,.18); color: #F5564E; }
-.al__b { flex: 1; min-width: 0; }
-.al__t { font-size: 13.5px; font-weight: 600; }
-.al__s { font-size: 11.5px; color: var(--nx-text-500); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.al app-icon:last-child { color: var(--nx-text-300); }
-
 .projs { overflow: hidden; }
 .projs__h { padding: 16px 20px; border-bottom: 1px solid var(--nx-border-card); display: flex; align-items: center; justify-content: space-between; }
 .projs__c { font-size: 12px; font-weight: 600; color: var(--nx-text-400); }
-.projs__body { max-height: 312px; overflow-y: auto; }
-.pr { padding: 15px 20px; border-top: 1px solid #F4F2ED; }
+.projs__body { max-height: 420px; overflow-y: auto; }
+.pr { display: block; width: 100%; text-align: left; font-family: inherit; background: transparent; cursor: pointer; padding: 15px 20px; border: none; border-top: 1px solid #F4F2ED; transition: background .12s; }
+.pr:hover { background: var(--nx-surface-3); }
 .pr:first-child { border-top: none; }
 .pr__r1 { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
 .pr__dot { width: 10px; height: 10px; border-radius: 3px; flex: none; }
@@ -68,4 +61,23 @@
 .pr__r3 app-icon { color: var(--nx-text-400); }
 .pr__r3 .sep { color: #d4d0c7; }
 
-@media (max-width: 1100px) { .kpis { grid-template-columns: repeat(2, 1fr); } .mid { grid-template-columns: 1fr; } }
+/* ── Modal : projets concernés par les tâches en retard ─────────────────── */
+.ov { position: fixed; inset: 0; z-index: 60; background: rgba(20,15,40,.42); display: flex; align-items: center; justify-content: center; padding: 24px; }
+.ov__card { width: 100%; max-width: 460px; background: #fff; border-radius: var(--nx-r-card); box-shadow: var(--nx-shadow-modal); overflow: hidden; }
+.ov__h { display: flex; align-items: center; justify-content: space-between; padding: 18px 20px; border-bottom: 1px solid var(--nx-border-card); }
+.ov__hl { display: flex; align-items: center; gap: 12px; }
+.ov__ic { width: 38px; height: 38px; border-radius: 11px; background: rgba(245,86,78,.14); color: var(--nx-danger); display: flex; align-items: center; justify-content: center; flex: none; }
+.ov__t { font-size: 16px; font-weight: 700; }
+.ov__s { font-size: 12.5px; color: var(--nx-text-500); margin-top: 2px; }
+.ov__x { width: 32px; height: 32px; border: none; border-radius: 8px; background: transparent; color: var(--nx-text-400); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.ov__x:hover { background: var(--nx-surface-3); }
+.ov__body { padding: 10px; max-height: 60vh; overflow-y: auto; }
+.op { width: 100%; font-family: inherit; text-align: left; background: transparent; border: none; cursor: pointer; display: flex; align-items: center; gap: 12px; padding: 12px 12px; border-radius: 10px; transition: background .12s; }
+.op:hover { background: var(--nx-surface-3); }
+.op__dot { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.op__n { font-size: 14px; font-weight: 600; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.op__c { font-size: 12px; font-weight: 700; color: var(--nx-danger); background: rgba(245,86,78,.10); padding: 3px 10px; border-radius: 20px; flex: none; }
+.op app-icon { color: var(--nx-text-300); flex: none; }
+.op__empty { padding: 28px 12px; text-align: center; font-size: 13.5px; color: var(--nx-text-400); }
+
+@media (max-width: 1100px) { .kpis { grid-template-columns: repeat(2, 1fr); } }

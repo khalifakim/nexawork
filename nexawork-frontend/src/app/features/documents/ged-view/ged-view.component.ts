@@ -3,9 +3,13 @@ import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { switchMap } from 'rxjs/operators';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 import { ApercuDocumentComponent } from '@shared/overlays/apercu-document/apercu-document.component';
+import { FilterChipComponent, FilterOption } from '@shared/ui/filter-chip/filter-chip.component';
+import { DocMenuComponent, DocMenuItem } from '@shared/ui/doc-menu/doc-menu.component';
 import { NouveauDossierComponent } from '@features/documents/modals/nouveau-dossier/nouveau-dossier.component';
 import { ImporterFichierComponent } from '@features/documents/modals/importer-fichier/importer-fichier.component';
 import { GedService } from '@core/services/ged.service';
+import { GedOverlayBus } from '@core/services/ged-overlay.bus';
+import { ShellBus } from '@layouts/app-shell/shell.bus';
 import { GedItem, GedType } from '@core/models/ged.models';
 import { GED_COLOR, GED_ICON, TASK_FOLDER } from '@core/util/ui.util';
 
@@ -13,13 +17,14 @@ import { GED_COLOR, GED_ICON, TASK_FOLDER } from '@core/util/ui.util';
   selector: 'app-ged-view',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IconComponent, ApercuDocumentComponent, NouveauDossierComponent, ImporterFichierComponent],
+  imports: [IconComponent, ApercuDocumentComponent, FilterChipComponent, DocMenuComponent, NouveauDossierComponent, ImporterFichierComponent],
   template: `
     <div class="ged">
       <!-- toolbar -->
       <div class="toolbar">
         <div class="search"><app-icon name="search" [size]="16" /><input placeholder="Rechercher un document ou un dossier…" [value]="q()" (input)="q.set($any($event.target).value)" /></div>
-        <button class="chip">Type<app-icon name="chevronDown" [size]="13" [stroke]="2.4" /></button>
+        <app-filter-chip label="Type" [options]="TYPE_OPTS" [value]="fType()" (valueChange)="fType.set($event)" />
+        <app-filter-chip label="Date" [options]="DATE_OPTS" [value]="fDate()" (valueChange)="fDate.set($event)" />
         <span class="spacer"></span>
         @if (!readonly) {
           <button class="btn btn--ghost" [disabled]="inSystem()" [title]="inSystem() ? 'Indisponible dans le dossier système' : ''" (click)="newFolder.set(true)"><app-icon name="folderPlus" [size]="16" />Nouveau dossier</button>
@@ -68,20 +73,44 @@ import { GED_COLOR, GED_ICON, TASK_FOLDER } from '@core/util/ui.util';
           <div class="trow" [style.grid-template-columns]="grid()" [class.trow--sel]="isSel(it.name)" (click)="rowClick(it)">
             <span class="cb">@if (!it.system && !inSystem() && !readonly) { <button class="box" [class.box--on]="isSel(it.name)" (click)="toggleSel(it.name); $event.stopPropagation()">@if (isSel(it.name)) { <app-icon name="check" [size]="12" [stroke]="2.6" /> }</button> }</span>
             <span class="name">
-              <span class="ic" [class.ic--sys]="it.system" [style.color]="it.system ? 'var(--nx-indigo)' : color(it.type)"><app-icon [name]="it.system ? 'folder' : icon(it.type)" [size]="18" /></span>
+              <span class="ic" [class.ic--sys]="it.system" [class.ic--folder]="it.type==='folder' && !it.system" [style.color]="it.system ? 'var(--nx-indigo)' : color(it.type)" [title]="it.system ? 'Dossier système — lecture seule' : ''">
+                <app-icon [name]="it.system ? 'folder' : icon(it.type)" [size]="18" />
+                @if (it.system) { <span class="ic__lock"><app-icon name="lock" [size]="9" /></span> }
+              </span>
               <span class="nm" [class.nm--folder]="it.type==='folder'">{{ it.name }}</span>
+              @if (!it.system && gedOverlay.hasRestriction(it.name)) {
+                <button class="lk" [class.lk--priv]="gedOverlay.restrictionOf(it.name).mode === 'private'"
+                        title="Accès restreint — gérer les accès"
+                        (click)="gedOverlay.openAccess(it.name); $event.stopPropagation()">
+                  <app-icon name="lock" [size]="13" />
+                </button>
+              }
             </span>
             @if (inSystem()) {
-              <span class="task"><span class="task__id nx-mono">{{ it.task?.id }}</span><span class="task__t">{{ it.task?.title }}</span></span>
+              <button type="button" class="task" title="Ouvrir la tâche associée"
+                      (click)="openTaskChip(it.task?.id, $event)">
+                <span class="task__id nx-mono">{{ it.task?.id }}</span>
+                <span class="task__t">{{ it.task?.title }}</span>
+              </button>
               <span class="muted">{{ it.owner }}</span>
               <span class="muted">{{ it.size }}</span>
               <span class="muted">{{ it.added }}</span>
-              <span class="act"><button class="open" title="Ouvrir la tâche associée" (click)="$event.stopPropagation()"><app-icon name="external" [size]="16" /></button></span>
+              <span class="act">
+                <button class="dots" [class.dots--on]="menu() === it.name" title="Actions" (click)="toggleMenu(it.name, $event)"><app-icon name="dots" [size]="16" /></button>
+                @if (menu() === it.name) {
+                  <app-doc-menu [items]="sysMenuItems(it)" (action)="onAction($event, it)" (closed)="menu.set(null)" />
+                }
+              </span>
             } @else {
               <span class="muted">{{ it.system ? '—' : it.owner }}</span>
               <span class="muted">{{ it.size }}</span>
               <span class="mod">@if (!it.system) { <span class="mod__a">{{ it.mod }}</span><span class="mod__b">par {{ it.by }}</span> } @else { <span class="muted">—</span> }</span>
-              <span class="act">@if (!it.system && !readonly) { <button class="dots" (click)="$event.stopPropagation()"><app-icon name="dots" [size]="16" /></button> }</span>
+              <span class="act">@if (!it.system && !readonly) {
+                <button class="dots" [class.dots--on]="menu() === it.name" (click)="toggleMenu(it.name, $event)"><app-icon name="dots" [size]="16" /></button>
+                @if (menu() === it.name) {
+                  <app-doc-menu [items]="rowMenuItems(it)" (action)="onAction($event, it)" (closed)="menu.set(null)" />
+                }
+              }</span>
             }
           </div>
         } @empty {
@@ -91,8 +120,8 @@ import { GED_COLOR, GED_ICON, TASK_FOLDER } from '@core/util/ui.util';
     </div>
 
     @if (preview(); as p) { <app-apercu-document [name]="p" (closed)="preview.set(null)" /> }
-    @if (newFolder()) { <app-nouveau-dossier (closed)="newFolder.set(false)" (created)="toast('Dossier « ' + $event + ' » créé'); newFolder.set(false)" /> }
-    @if (upload()) { <app-importer-fichier (closed)="upload.set(false)" (imported)="toast('Fichier importé'); upload.set(false)" /> }
+    @if (newFolder()) { <app-nouveau-dossier [scope]="modalScope()" (closed)="newFolder.set(false)" (created)="toast('Dossier « ' + $event + ' » créé'); newFolder.set(false)" /> }
+    @if (upload()) { <app-importer-fichier [scope]="modalScope()" (closed)="upload.set(false)" (imported)="toast('Fichier importé'); upload.set(false)" /> }
 
     @if (toastMsg(); as t) { <div class="gtoast"><span class="gtoast__i"><app-icon name="check" [size]="14" /></span>{{ t }}</div> }
   `,
@@ -101,18 +130,42 @@ import { GED_COLOR, GED_ICON, TASK_FOLDER } from '@core/util/ui.util';
 export class GedViewComponent {
   @Input() project: string | null = null;
   @Input() readonly = false;
+  /** Hide the system "Pièces jointes aux tâches" folder (used by the org space). */
+  @Input() hideTaskFolder = false;
+
+  /** R16 — the scope passed to the create/import modals: project vs org. */
+  modalScope = computed<'org' | 'project'>(() => this.project ? 'project' : 'org');
 
   path = signal<string[]>([]);
   q = signal('');
+  fType = signal<string | null>(null);
+  fDate = signal<string | null>(null);
   selected = signal<string[]>([]);
   deleted = signal<string[]>([]);
   preview = signal<string | null>(null);
   newFolder = signal(false);
   upload = signal(false);
+  menu = signal<string | null>(null);
   toastMsg = signal<string | null>(null);
   private toastTimer: ReturnType<typeof setTimeout> | undefined;
 
+  readonly TYPE_OPTS: FilterOption[] = [
+    { value: 'pdf', label: 'PDF', dot: '#F5564E' },
+    { value: 'doc', label: 'Document', dot: '#5B8DEF' },
+    { value: 'img', label: 'Image', dot: '#2BB673' },
+    { value: 'fig', label: 'Figma', dot: '#6C70F0' },
+    { value: 'sheet', label: 'Tableur', dot: '#E89A2C' },
+  ];
+  readonly DATE_OPTS: FilterOption[] = [
+    { value: 'today', label: "Aujourd'hui" },
+    { value: 'week', label: 'Cette semaine' },
+    { value: 'month', label: 'Ce mois' },
+    { value: 'older', label: 'Plus ancien' },
+  ];
+
   private ged = inject(GedService);
+  protected gedOverlay = inject(GedOverlayBus);
+  private bus = inject(ShellBus);
   inSystem = computed(() => this.path()[this.path().length - 1] === TASK_FOLDER);
 
   private current = toSignal(
@@ -123,7 +176,27 @@ export class GedViewComponent {
   shown = computed(() => {
     const q = this.q().toLowerCase().trim();
     const del = this.deleted();
-    return this.current().filter(it => it.name.toLowerCase().includes(q) && !del.includes(it.name));
+    const ft = this.fType();
+    const fd = this.fDate();
+    return this.current().filter(it => {
+      if (this.hideTaskFolder && it.system) return false;
+      if (!it.name.toLowerCase().includes(q)) return false;
+      if (del.includes(it.name)) return false;
+      // REF G — filter out documents the current user cannot access.
+      // System (task-attachment) rows are always visible: they inherit the
+      // access rules of their originating task (handled by the Project Service).
+      if (!it.system && !this.gedOverlay.hasAccess(it.name, it.owner)) return false;
+      // Type filter never hides folders (matches the prototype).
+      if (ft && it.type !== 'folder' && it.type !== ft) return false;
+      if (fd && it.mod) {
+        const m = it.mod.toLowerCase();
+        if (fd === 'today' && !m.includes("aujourd'hui")) return false;
+        if (fd === 'week' && !(m.includes("aujourd'hui") || m.includes('hier'))) return false;
+        if (fd === 'month' && (m.includes('semaine') || m.includes('mois'))) return false;
+        if (fd === 'older' && (m.includes("aujourd'hui") || m.includes('hier') || m.includes('2 j') || m.includes('3 j'))) return false;
+      }
+      return true;
+    });
   });
 
   cols = computed(() => this.inSystem()
@@ -141,13 +214,87 @@ export class GedViewComponent {
   selCount = computed(() => this.shown().filter(it => this.selected().includes(it.name)).length);
   allSel = computed(() => { const names = this.shown().filter(it => !it.system).map(it => it.name); return names.length > 0 && names.every(n => this.selected().includes(n)); });
   toggleAll(): void { const names = this.shown().filter(it => !it.system).map(it => it.name); this.selected.set(this.allSel() ? [] : names); }
-  bulkDelete(): void { this.deleted.update(d => [...d, ...this.selected()]); this.selected.set([]); this.toast('Déplacé vers la corbeille'); }
+  bulkDelete(): void {
+    // R12 — keep only the items the current user is allowed to delete.
+    const bag = this.shown();
+    const allowed = this.selected().filter(name => {
+      const it = bag.find(x => x.name === name);
+      return this.gedOverlay.canDelete(name, it?.owner);
+    });
+    const skipped = this.selected().length - allowed.length;
+    if (!allowed.length) {
+      this.toast('Aucun élément supprimable dans votre sélection.');
+      return;
+    }
+    this.deleted.update(d => [...d, ...allowed]);
+    this.selected.set([]);
+    if (skipped > 0) {
+      this.toast(allowed.length + ' déplacé' + (allowed.length > 1 ? 's' : '') + ' vers la corbeille · ' + skipped + ' ignoré' + (skipped > 1 ? 's' : '') + ' (droits insuffisants)');
+    } else {
+      this.toast('Déplacé vers la corbeille');
+    }
+  }
+
+  // ── Row 3-dots menu ────────────────────────────────────────────────────────
+  toggleMenu(name: string, ev: Event): void { ev.stopPropagation(); this.menu.set(this.menu() === name ? null : name); }
+
+  /** Menu for a standard file/folder (matches the prototype's `gedRowMenu`). */
+  rowMenuItems(it: GedItem): DocMenuItem[] {
+    const isFile = it.type !== 'folder';
+    const items: DocMenuItem[] = [
+      isFile
+        ? { action: 'preview', label: 'Aperçu', icon: 'image' }
+        : { action: 'open', label: 'Ouvrir', icon: 'folder' },
+      { action: 'download', label: isFile ? 'Télécharger' : 'Télécharger (.zip)', icon: 'download' },
+    ];
+    if (isFile) items.push({ action: 'versions', label: 'Historique des versions', icon: 'clock' });
+    items.push({ action: 'access', label: 'Gérer les accès', icon: 'lock', sep: true });
+    items.push({ action: 'rename', label: 'Renommer', icon: 'edit' });
+    // R12 — Supprimer only for the creator or an admin.
+    if (this.gedOverlay.canDelete(it.name, it.owner)) {
+      items.push({ action: 'delete', label: 'Supprimer', icon: 'trash', danger: true, sep: true });
+    }
+    return items;
+  }
+
+  /** Menu inside the system task-attachments folder (aperçu / télécharger / voir la tâche). */
+  sysMenuItems(_it: GedItem): DocMenuItem[] {
+    return [
+      { action: 'preview', label: 'Aperçu', icon: 'image' },
+      { action: 'download', label: 'Télécharger', icon: 'download' },
+      { action: 'task', label: 'Voir la tâche associée', icon: 'external' },
+    ];
+  }
+
+  onAction(action: string, it: GedItem): void {
+    switch (action) {
+      case 'preview':  this.preview.set(it.name); break;
+      case 'open':     this.path.update(p => [...p, it.name]); break;
+      case 'download': this.toast('Téléchargement de « ' + it.name + ' »…'); break;
+      case 'versions': this.gedOverlay.openVersions(it.name); break;
+      case 'access':   this.gedOverlay.openAccess(it.name); break;
+      case 'rename':   this.toast('Renommer « ' + it.name + ' »'); break;
+      case 'delete':   this.deleted.update(d => [...d, it.name]); this.toast('« ' + it.name + ' » déplacé vers la corbeille'); break;
+      case 'task':     this.openTaskChip(it.task?.id, null); break;
+    }
+  }
 
   rowClick(it: GedItem): void {
     if (it.type === 'folder') this.path.update(p => [...p, it.name]);
     else this.preview.set(it.name);
   }
   goTo(i: number): void { this.path.update(p => p.slice(0, i + 1)); }
+
+  /**
+   * Open the task detail modal from either the "Tâche associée" chip in the
+   * TASK_ATTACHMENTS folder, or the "Voir la tâche associée" menu action.
+   */
+  openTaskChip(taskId: string | undefined, ev: Event | null): void {
+    if (ev) ev.stopPropagation();
+    if (!taskId) return;
+    this.bus.openTask(taskId);
+    this.menu.set(null);
+  }
 
   toast(msg: string): void {
     this.toastMsg.set(msg);

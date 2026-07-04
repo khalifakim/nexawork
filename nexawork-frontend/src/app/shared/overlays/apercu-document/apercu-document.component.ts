@@ -1,5 +1,6 @@
-import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output, inject } from '@angular/core';
 import { IconComponent } from '@shared/ui/icon/icon.component';
+import { ToastService } from '@core/services/toast.service';
 
 @Component({
   selector: 'app-apercu-document',
@@ -12,9 +13,10 @@ import { IconComponent } from '@shared/ui/icon/icon.component';
         <div class="head">
           <div class="bc"><app-icon name="folder" [size]="15" /><span>Documents</span><span class="s">/</span><span class="f">Refonte App Mobile</span></div>
           <span class="spacer"></span>
+          <button class="dl" (click)="download()"><app-icon name="download" [size]="15" />Télécharger</button>
           <button class="x" (click)="closed.emit()"><app-icon name="x" [size]="16" /></button>
         </div>
-        <div class="title"><span class="ic" [style.background]="previewable ? '#F5564E' : '#86828E'">{{ ext.toUpperCase() }}</span><span class="t">{{ name }}</span></div>
+        <div class="title"><span class="ic" [style.background]="previewable ? '#F5564E' : '#86828E'">{{ extLabel }}</span><span class="t">{{ name }}</span></div>
         @if (previewable) {
           <div class="pv"><app-icon name="image" [size]="34" /><span class="nx-mono">aperçu du document</span></div>
         } @else {
@@ -36,6 +38,9 @@ import { IconComponent } from '@shared/ui/icon/icon.component';
     .bc .s { color: #cfcbc2; }
     .bc .f { color: var(--nx-text); font-weight: 700; }
     .spacer { flex: 1; }
+    .dl { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 13px; border: 1px solid var(--nx-border); border-radius: 8px; background: #fff; color: var(--nx-text-700); font-family: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+    .dl app-icon { color: var(--nx-text-500); display: flex; }
+    .dl:hover { background: var(--nx-surface-2); }
     .x { width: 30px; height: 30px; border: none; border-radius: 8px; background: transparent; color: var(--nx-text-400); cursor: pointer; display: flex; align-items: center; justify-content: center; }
     .x:hover { background: var(--nx-surface-2); }
     .title { display: flex; align-items: center; gap: 12px; padding: 16px 20px 14px; }
@@ -52,6 +57,11 @@ export class ApercuDocumentComponent {
   @Input({ required: true }) name!: string;
   @Output() closed = new EventEmitter<void>();
 
+  private toast = inject(ToastService);
+
   get ext(): string { return (this.name.split('.').pop() ?? 'doc').toLowerCase(); }
+  get extLabel(): string { return (this.ext || 'doc').toUpperCase().slice(0, 4); }
   get previewable(): boolean { return ['pdf', 'png', 'jpg', 'jpeg', 'gif'].includes(this.ext); }
+
+  download(): void { this.toast.show({ message: 'Téléchargement de « ' + this.name + ' »…' }); }
 }

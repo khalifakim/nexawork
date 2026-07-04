@@ -1,9 +1,10 @@
-import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 import { FicheTacheComponent } from '@features/projets/modals/fiche-tache/fiche-tache.component';
-
-interface Row { id: string; t: string; proj: string; prio: [string, string]; due: string; }
-interface Section { cat: string; color: string; tasks: Row[]; }
+import { AccueilService } from '@core/services/accueil.service';
+import { SessionService } from '@core/services/session.service';
+import { MyTaskRow as Row, MyTaskSection as Section } from '@core/models/accueil.models';
+import { workspaceSignal } from '@core/util/workspace-signal';
 
 const PRIO_BG: Record<string, string> = { 'Haute': '#FDECEB', 'Moyenne': '#FBF1E2', 'Basse': '#E6F6EE' };
 
@@ -19,7 +20,7 @@ const PRIO_BG: Record<string, string> = { 'Haute': '#FDECEB', 'Moyenne': '#FBF1E
         <p>Vos tâches prioritaires dont l'échéance est aujourd'hui ou déjà dépassée, tous projets confondus.</p>
       </div>
 
-      @for (s of sections; track s.cat) {
+      @for (s of sections(); track s.cat) {
         <div class="sec">
           <button class="sec__h" (click)="toggle(s.cat)">
             <span class="sec__cv" [style.transform]="collapsed().includes(s.cat) ? 'rotate(-90deg)' : ''"><app-icon name="chevronDown" [size]="16" /></span>
@@ -62,25 +63,16 @@ const PRIO_BG: Record<string, string> = { 'Haute': '#FDECEB', 'Moyenne': '#FBF1E
   styleUrl: './mes-taches.component.scss',
 })
 export class MesTachesComponent {
+  private session = inject(SessionService);
+  private accueil = inject(AccueilService);
+
   collapsed = signal<string[]>([]);
   showAll   = signal<string[]>([]);
   done      = signal<string[]>([]);
   openTask  = signal<any>(null);
 
-  sections: Section[] = [
-    { cat: "Aujourd'hui", color: '#5B8DEF', tasks: [
-      { id: 'MOB-094', t: 'Intégration écran profil utilisateur',  proj: 'Refonte App Mobile',    prio: ['Haute',   '#F5564E'], due: "Aujourd'hui" },
-      { id: 'MKT-210', t: 'Valider le brief créatif',              proj: 'Campagne Q3 Marketing', prio: ['Moyenne', '#E89A2C'], due: "Aujourd'hui" },
-      { id: 'DS-014',  t: 'Revue des composants boutons',          proj: 'Design System Nexa',    prio: ['Basse',   '#2BB673'], due: "Aujourd'hui" },
-      { id: 'MOB-088', t: 'Préparer la démo client',               proj: 'Refonte App Mobile',    prio: ['Haute',   '#F5564E'], due: "Aujourd'hui" },
-      { id: 'WEB-061', t: 'Relire les textes de la page tarifs',   proj: 'Site Vitrine 2025',     prio: ['Basse',   '#2BB673'], due: "Aujourd'hui" },
-      { id: 'DS-022',  t: 'Exporter les icônes en SVG',            proj: 'Design System Nexa',    prio: ['Moyenne', '#E89A2C'], due: "Aujourd'hui" },
-    ]},
-    { cat: 'En retard', color: '#F5564E', tasks: [
-      { id: 'BCK-030', t: 'Migration table utilisateurs',   proj: 'Migration Backend', prio: ['Haute',   '#F5564E'], due: 'Il y a 2 j' },
-      { id: 'WEB-077', t: 'Optimiser images page accueil', proj: 'Site Vitrine 2025', prio: ['Moyenne', '#E89A2C'], due: 'Hier' },
-    ]},
-  ];
+  /** Tasks of the active workspace (reload on workspace switch). */
+  sections = workspaceSignal<Section[]>(this.session, () => this.accueil.myTasks(), []);
 
   visible(s: Section): Row[] { return this.showAll().includes(s.cat) ? s.tasks : s.tasks.slice(0, 3); }
   toggle(c: string): void    { this.collapsed.update(l => l.includes(c) ? l.filter(x => x !== c) : [...l, c]); }
@@ -98,7 +90,7 @@ export class MesTachesComponent {
 
   /** Reuse the local task list to find a clicked mention. Falls back to a stub card. */
   onChipOpenTask(id: string): void {
-    const all = this.sections.flatMap(s => s.tasks);
+    const all = this.sections().flatMap(s => s.tasks);
     const row = all.find(t => t.id === id);
     this.openTask.set(row ? this.toCard(row) : {
       id, title: 'Tâche ' + id, proj: '', due: '',

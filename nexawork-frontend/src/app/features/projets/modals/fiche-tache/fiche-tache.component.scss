@@ -1,6 +1,12 @@
 .ov { position: fixed; inset: 0; z-index: var(--nx-z-modal); background: rgba(22,19,31,.55); backdrop-filter: blur(2px); display: flex; align-items: center; justify-content: center; padding: 40px; }
 .modal { width: 1120px; max-width: 96vw; height: 86vh; max-height: 880px; background: #fff; border-radius: var(--nx-r-panel); box-shadow: var(--nx-shadow-modal); display: flex; position: relative; animation: nxFade .18s ease; }
 .modal__inner { flex: 1; min-height: 0; display: flex; overflow: hidden; border-radius: inherit; }
+
+/* Loading overlay shown while switching to another task (mention click) */
+.loading { position: absolute; inset: 0; z-index: 5; border-radius: inherit; background: rgba(255,255,255,.82); backdrop-filter: blur(2px); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; animation: nxFade .12s ease; }
+.loading__spin { width: 38px; height: 38px; border: 3.5px solid #E6E3DC; border-top-color: var(--nx-indigo); border-radius: 50%; animation: nxSpin .7s linear infinite; }
+.loading__t { font-size: 13.5px; font-weight: 600; color: var(--nx-text-500); }
+@keyframes nxSpin { to { transform: rotate(360deg); } }
 .spacer { flex: 1; }
 .count { font-size: 11.5px; font-weight: 700; color: var(--nx-text-400); background: #E2DFD8; border-radius: 9px; padding: 1px 8px; }
 
@@ -81,10 +87,12 @@
 .cm__del:hover { background: #FBE9E7; color: var(--nx-danger); }
 .cm__x { font-size: 12.5px; color: var(--nx-text-600); line-height: 1.5; }
 .cm__files { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-.cm__file { display: inline-flex; align-items: center; gap: 7px; height: 26px; padding: 0 9px; border-radius: 7px; background: var(--nx-surface-2); border: 1px solid var(--nx-border-card); font-size: 11.5px; font-weight: 600; color: var(--nx-text-700); }
+.cm__file { display: inline-flex; align-items: center; gap: 7px; height: 26px; padding: 0 9px; border-radius: 7px; background: var(--nx-surface-2); border: 1px solid var(--nx-border-card); font-family: inherit; font-size: 11.5px; font-weight: 600; color: var(--nx-text-700); cursor: pointer; }
+.cm__file:hover { background: var(--nx-surface-3); border-color: var(--nx-indigo); }
 .cm__file app-icon { color: var(--nx-text-500); display: flex; }
 .cm__fn { max-width: 160px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cm__fs { color: var(--nx-text-400); font-weight: 500; }
+.cm__file:hover .cm__dl { color: var(--nx-indigo); }
 .composer { flex: none; padding: 12px 16px 16px; }
 
 @media (max-width: 900px) { .right { display: none; } .left { border-right: none; } }

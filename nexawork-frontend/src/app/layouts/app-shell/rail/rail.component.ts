@@ -25,13 +25,15 @@ interface RailItem { label: string; icon: string; link: string; }
           </a>
         }
       </div>
-      <div class="rail__bottom">
-        <div class="rail__sep"></div>
-        <button class="rail__invite" title="Inviter des membres" (click)="invite.emit()">
-          <app-icon name="invite" [size]="21" />
-          <span>Inviter</span>
-        </button>
-      </div>
+      @if (canInvite) {
+        <div class="rail__bottom">
+          <div class="rail__sep"></div>
+          <button class="rail__invite" title="Inviter des membres" (click)="invite.emit()">
+            <app-icon name="invite" [size]="21" />
+            <span>Inviter</span>
+          </button>
+        </div>
+      }
     </nav>
   `,
   styles: [`
@@ -56,6 +58,8 @@ interface RailItem { label: string; icon: string; link: string; }
 })
 export class RailComponent {
   @Input() collapsed = false;
+  /** True when current user can invite members (ADMIN or OWNER — règle R4). */
+  @Input() canInvite = false;
   @Output() invite = new EventEmitter<void>();
   @Output() expand = new EventEmitter<void>();
 

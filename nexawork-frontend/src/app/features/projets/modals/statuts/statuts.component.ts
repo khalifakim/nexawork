@@ -3,15 +3,15 @@ import {
 } from '@angular/core';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { IconComponent } from '@shared/ui/icon/icon.component';
-
-interface St { id: string; name: string; color: string; cat: string; }
+import { KanbanColumn } from '@core/models/task.models';
+import { KanbanStore, StatusCat } from '@features/projets/kanban/kanban.store';
 
 const CATS = [
   { id: 'notstarted', label: 'Not started' },
   { id: 'active',     label: 'Active'      },
   { id: 'done',       label: 'Done'        },
   { id: 'closed',     label: 'Closed'      },
-];
+] as const;
 
 const CAT_COLORS: Record<string, string> = {
   notstarted: '#8E8AA0',
@@ -53,7 +53,7 @@ const PALETTE = [
     <!-- Left panel -->
     <div class="left">
       <div class="left__t">Statuts personnalisés</div>
-      <p class="left__p">Renommez, recolorez et déplacez les statuts par glisser-déposer entre les quatre catégories.</p>
+      <p class="left__p">Renommez, recolorez et déplacez les statuts par glisser-déposer entre les quatre catégories. L'ordre des statuts définit l'ordre des colonnes du tableau.</p>
       <div class="left__sep"></div>
       <div class="left__leg">
         @for (cat of CATS; track cat.id) {
@@ -317,17 +317,11 @@ export class StatutsComponent {
   @Output() closed = new EventEmitter<void>();
 
   private sanitizer = inject(DomSanitizer);
+  private store = inject(KanbanStore);
 
   readonly CATS      = CATS;
   readonly CAT_COLORS = CAT_COLORS;
   readonly PALETTE   = PALETTE;
-
-  statuses = signal<St[]>([
-    { id: 's1', name: 'À faire',     color: '#8E8AA0', cat: 'notstarted' },
-    { id: 's2', name: 'En cours',    color: '#5B8DEF', cat: 'active'     },
-    { id: 's3', name: 'En révision', color: '#E89A2C', cat: 'active'     },
-    { id: 's4', name: 'Validé',      color: '#2BB673', cat: 'done'       },
-  ]);
 
   colorOpenId = signal<string | null>(null);
   menuOpenId  = signal<string | null>(null);
@@ -337,30 +331,18 @@ export class StatutsComponent {
   dropCat   = signal<string | null>(null);
   dropBefore = signal<string | null>(null);
 
-  // ── Queries ──────────────────────────────────────────────────────────────
-  byCat(cat: string): St[] { return this.statuses().filter(s => s.cat === cat); }
+  // ── Queries (backed by the shared store) ───────────────────────────────────
+  byCat(cat: string): KanbanColumn[] { return this.store.byCat(cat as StatusCat); }
 
   // ── Mutations ────────────────────────────────────────────────────────────
-  rename(id: string, v: string): void {
-    this.statuses.update(l => l.map(s => s.id === id ? { ...s, name: v } : s));
-  }
+  rename(id: string, v: string): void { this.store.renameColumn(id, v); }
   del(id: string): void {
-    this.statuses.update(l => l.filter(s => s.id !== id));
+    this.store.deleteColumn(id);
     this.menuOpenId.set(null);
   }
-  addStatus(cat: string): void {
-    const id = 'st-' + Date.now().toString(36);
-    this.statuses.update(arr => {
-      const a = [...arr];
-      let last = -1;
-      a.forEach((c, i) => { if (c.cat === cat) last = i; });
-      const nc: St = { id, name: '', color: '#6C70F0', cat };
-      if (last < 0) a.push(nc); else a.splice(last + 1, 0, nc);
-      return a;
-    });
-  }
+  addStatus(cat: string): void { this.store.addColumn(cat as StatusCat); }
   setColor(id: string, color: string): void {
-    this.statuses.update(l => l.map(s => s.id === id ? { ...s, color } : s));
+    this.store.setColor(id, color);
     this.colorOpenId.set(null);
   }
 
@@ -397,24 +379,7 @@ export class StatutsComponent {
   private doMove(cat: string, beforeId: string | null): void {
     const di = this.dragId();
     if (!di) return;
-    this.statuses.update(arr => {
-      const a = [...arr];
-      const idx = a.findIndex(c => c.id === di);
-      if (idx < 0) return arr;
-      const moved = { ...a[idx], cat };
-      a.splice(idx, 1);
-      let at: number;
-      if (beforeId && beforeId !== moved.id) {
-        at = a.findIndex(c => c.id === beforeId);
-        if (at < 0) at = a.length;
-      } else {
-        let last = -1;
-        a.forEach((c, i) => { if (c.cat === cat) last = i; });
-        at = last + 1;
-      }
-      a.splice(at, 0, moved);
-      return a;
-    });
+    this.store.moveStatus(di, cat as StatusCat, beforeId);
     this.dragId.set(null); this.dropCat.set(null); this.dropBefore.set(null);
   }
 

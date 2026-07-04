@@ -6,7 +6,14 @@ import { ChangeDetectionStrategy, Component, EventEmitter, Output, signal } from
  * external library — keeps the bundle slim and works in every browser).
  */
 const EMOJI_CATEGORIES: Array<{ label: string; glyphs: string[] }> = [
-  { label: 'Réactions', glyphs: ['👍', '👏', '🙏', '👌', '✅', '🎉', '🔥', '💯', '⭐', '❤️', '🤝', '👀'] },
+  { label: 'Réactions', glyphs: [
+    '👍', '👎', '👏', '🙏', '👌', '✅', '❌', '☑️', '❎',
+    '🎉', '🔥', '💯', '⭐', '🌟', '✨', '❤️', '🧡', '💛',
+    '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '💖', '💗',
+    '🤝', '👀', '💪', '🙌', '🫶', '🫡', '🤲', '👊', '✊',
+    '💥', '💫', '🌈', '☀️', '🌙', '⚡', '💡', '🎯', '🏆',
+    '🥇', '🥈', '🥉',
+  ] },
   { label: 'Visages',    glyphs: ['😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🥳', '🤩', '🥺', '😢', '😭', '😤', '😠', '😡', '🤯', '😳', '🥵', '🥶', '😱', '😨', '😰', '😥', '😓', '🤗', '🤔', '🤭', '🤫', '🤥'] },
   { label: 'Gestes',     glyphs: ['👋', '🤚', '🖐', '✋', '🖖', '👌', '🤌', '🤏', '✌', '🤞', '🤟', '🤘', '🤙', '👈', '👉', '👆', '🖕', '👇', '☝', '👍', '👎', '✊', '👊', '🤛', '🤜', '👏', '🙌', '👐', '🤲', '🤝', '🙏', '✍', '💪'] },
   { label: 'Objets',     glyphs: ['📌', '📎', '📏', '📐', '✏', '✒', '🖊', '🖋', '🖌', '🖍', '📝', '📒', '📓', '📔', '📕', '📖', '📗', '📘', '📙', '📚', '📁', '📂', '🗂', '📅', '📆', '🗒', '🗓', '📇', '📈', '📉', '📊', '📋', '📌', '📍', '📎', '🖇', '📏', '📐', '✂', '🗃', '🗄', '🗑', '🔒', '🔓', '🔑', '🔨', '🛠', '⚙', '💻', '📱', '☎', '📞', '📟', '📠'] },
@@ -28,23 +35,34 @@ const EMOJI_CATEGORIES: Array<{ label: string; glyphs: string[] }> = [
         }
       </div>
       <div class="ep__grid">
-        @for (g of categories[active()].glyphs; track g) {
+        @for (g of categories[active()].glyphs; track $index) {
           <button class="ep__g" (click)="pick(g)">{{ g }}</button>
         }
       </div>
     </div>
   `,
   styles: [`
-    .ep { width: 296px; max-height: 296px; display: flex; flex-direction: column;
-      background: #fff; border-radius: 12px; border: 1px solid var(--nx-border);
-      box-shadow: 0 12px 32px rgba(20,15,40,.18); overflow: hidden; }
-    .ep__tabs { display: flex; gap: 2px; padding: 6px; border-bottom: 1px solid var(--nx-border-card); background: var(--nx-surface-3); }
-    .ep__t { flex: 1; height: 28px; border: none; border-radius: 7px; background: transparent; color: var(--nx-text-500);
-      font-family: inherit; font-size: 11.5px; font-weight: 600; cursor: pointer; }
-    .ep__t--on { background: #fff; color: var(--nx-text); box-shadow: 0 1px 3px rgba(20,15,40,.08); }
-    .ep__grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; padding: 8px; overflow-y: auto; }
-    .ep__g { height: 32px; border: none; border-radius: 7px; background: transparent; font-size: 19px; line-height: 1;
-      cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    /* Same footprint as the mention popup: full width of the composer, fixed
+       height so switching between categories never resizes the popup. */
+    .ep { width: 100%; height: 280px; display: flex; flex-direction: column;
+      background: #fff; border-radius: 11px; border: 1px solid var(--nx-border);
+      box-shadow: 0 16px 40px rgba(20,15,40,.18); overflow: hidden; }
+    /* Tabs — no scrollbar of any kind; matches the mention picker layout. */
+    .ep__tabs { flex: none; display: flex; gap: 2px; padding: 4px 12px 0;
+      border-bottom: 1px solid var(--nx-border-card); overflow: hidden; }
+    .ep__t { padding: 8px 10px; border: none; background: transparent;
+      color: var(--nx-text-500); font-family: inherit; font-size: 12px; font-weight: 500;
+      cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px;
+      white-space: nowrap; }
+    .ep__t--on { font-weight: 700; color: var(--nx-text); border-bottom-color: var(--nx-indigo); }
+    /* The grid fills the remaining space and is the only scrollable area — vertical only. */
+    .ep__grid { flex: 1; min-height: 0;
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(38px, 1fr));
+      grid-auto-rows: 38px; gap: 2px; padding: 8px 10px;
+      overflow-x: hidden; overflow-y: auto; }
+    .ep__g { border: none; border-radius: 8px; background: transparent;
+      font-size: 22px; line-height: 1; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; }
     .ep__g:hover { background: var(--nx-surface-2); }
   `],
 })

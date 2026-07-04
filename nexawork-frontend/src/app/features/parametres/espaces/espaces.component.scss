@@ -1,14 +1,29 @@
-.grp { display: flex; align-items: baseline; gap: 9px; margin: 0 4px 11px; }
-.grp b { font-size: 13px; font-weight: 700; color: var(--nx-text); }
-.grp span { font-size: 12px; font-weight: 600; color: var(--nx-text-400); }
+/* Group heading (title + count + subtitle) */
+.grp { margin: 0 4px 11px; }
+.grp--mt { margin-top: 10px; }
+.grp__r { display: flex; align-items: baseline; gap: 9px; }
+.grp__t { font-size: 13px; font-weight: 700; color: var(--nx-text); }
+.grp__c { font-size: 12px; font-weight: 600; color: var(--nx-text-400); }
+.grp__s { font-size: 12.5px; color: var(--nx-text-400); margin-top: 3px; }
 .grp + .set-card { margin-bottom: 18px; }
+
+/* Row */
 .wrow { display: flex; align-items: center; gap: 14px; padding: 15px 0; border-top: 1px solid var(--nx-border-card); }
 .wrow--first { border-top: none; }
 .wlogo { width: 40px; height: 40px; border-radius: 11px; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px; flex: none; }
 .b { flex: 1; min-width: 0; }
-.n { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; }
+.n { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; color: var(--nx-text); flex-wrap: wrap; }
 .cur { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700; color: var(--nx-success); background: rgba(43,182,115,.12); padding: 2px 8px 2px 7px; border-radius: 7px; }
 .cur__d { width: 6px; height: 6px; border-radius: 50%; background: var(--nx-success); }
 .s { font-size: 12.5px; color: var(--nx-text-400); margin-top: 2px; }
+
+/* Role badge (Propriétaire / Administrateur / Membre) */
+.badge { font-size: 10.5px; font-weight: 600; padding: 2px 9px; border-radius: 6px; white-space: nowrap; flex: none; }
+.badge--owner  { color: var(--nx-warning); background: #FBF1E2; }
+.badge--admin  { color: var(--nx-indigo);  background: var(--nx-indigo-50); }
+.badge--member { color: var(--nx-text-700); background: #EFEDE7; }
+
+/* Actions */
+.act { display: flex; align-items: center; gap: 10px; flex: none; }
 .gear { width: 36px; height: 36px; flex: none; border: 1px solid var(--nx-border); border-radius: 9px; background: #fff; color: var(--nx-text-700); display: flex; align-items: center; justify-content: center; cursor: pointer; }
 .gear:hover { background: var(--nx-surface-2); color: var(--nx-indigo); }

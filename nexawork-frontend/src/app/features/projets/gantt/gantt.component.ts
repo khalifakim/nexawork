@@ -1,5 +1,5 @@
-import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
-import { IconComponent } from '@shared/ui/icon/icon.component';
+import { ChangeDetectionStrategy, Component, computed, signal } from '@angular/core';
+import { FilterChipComponent, FilterOption } from '@shared/ui/filter-chip/filter-chip.component';
 
 interface Row { id: string; name: string; who: string; start: number; span: number; prog: number; c: string; }
 
@@ -7,11 +7,12 @@ interface Row { id: string; name: string; who: string; start: number; span: numb
   selector: 'app-gantt',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IconComponent],
+  imports: [FilterChipComponent],
   template: `
     <div class="wrap">
       <div class="pbar">
-        <button class="chip chip--on">Assigné à<app-icon name="chevronDown" [size]="13" [stroke]="2.4" /></button>
+        <app-filter-chip label="Assigné à" [options]="ASSIGNE_OPTS" [value]="assigne()"
+                         (valueChange)="assigne.set($event)" />
         <div class="seg">
           @for (p of periods; track p) { <button [class.seg--on]="period()===p" (click)="period.set(p)">{{ p }}</button> }
         </div>
@@ -22,7 +23,7 @@ interface Row { id: string; name: string; who: string; start: number; span: numb
             <div class="tlh__name">Tâche</div>
             @for (c of cols; track c) { <div class="tlh__col">{{ c }}</div> }
           </div>
-          @for (r of rows; track r.id; let i = $index) {
+          @for (r of shown(); track r.id; let i = $index) {
             <div class="gr" [class.gr--alt]="i % 2 === 1">
               <div class="gr__name">
                 <span class="av" [style.background]="r.who"></span>
@@ -38,6 +39,8 @@ interface Row { id: string; name: string; who: string; start: number; span: numb
                 </div>
               </div>
             </div>
+          } @empty {
+            <div class="gempty">Aucune tâche ne correspond à ce filtre.</div>
           }
         </div>
       </div>
@@ -48,6 +51,7 @@ interface Row { id: string; name: string; who: string; start: number; span: numb
 export class GanttComponent {
   periods = ['Aujourd’hui', 'Jour', 'Semaine', 'Mois', 'Trimestre', 'Année'];
   period = signal('Mois');
+  assigne = signal<string | null>(null);
   cols = ['Sem. 36', 'Sem. 37', 'Sem. 38', 'Sem. 39', 'Sem. 40', 'Sem. 41'];
   colW = 132;
   rows: Row[] = [
@@ -59,4 +63,19 @@ export class GanttComponent {
     { id: 'MOB-061', name: 'Système de design tokens', who: '#6C70F0', start: 0.5, span: 2.5, prog: 100, c: '#2BB673' },
     { id: 'MOB-140', name: 'Tests E2E parcours achat', who: '#F2693C', start: 4, span: 2, prog: 10, c: '#5B8DEF' },
   ];
+
+  /** Assignee options (color → name), identical to the prototype's colorToName. */
+  readonly ASSIGNE_OPTS: FilterOption[] = [
+    { value: '#F2693C', label: 'Sarah Diallo', dot: '#F2693C' },
+    { value: '#6C70F0', label: 'Moussa Bâ', dot: '#6C70F0' },
+    { value: '#2BB673', label: 'Aïda Ndiaye', dot: '#2BB673' },
+    { value: '#E0497B', label: 'Yacine Sow', dot: '#E0497B' },
+    { value: '#3AA9E0', label: 'Omar Cissé', dot: '#3AA9E0' },
+    { value: '#F5A623', label: 'Akim Koné', dot: '#F5A623' },
+  ];
+
+  shown = computed<Row[]>(() => {
+    const a = this.assigne();
+    return a ? this.rows.filter(r => r.who === a) : this.rows;
+  });
 }

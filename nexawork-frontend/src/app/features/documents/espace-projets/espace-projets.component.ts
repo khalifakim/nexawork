@@ -28,6 +28,7 @@ import { Project } from '@core/models/project.models';
     </div>
   `,
   styles: [`
+    :host { display: flex; flex-direction: column; flex: 1; min-height: 0; }
     .wrap { flex: 1; display: flex; flex-direction: column; min-height: 0; }
     .head { flex: none; padding: 22px 28px 6px; }
     .t { font-size: 18px; font-weight: 700; letter-spacing: -.015em; }

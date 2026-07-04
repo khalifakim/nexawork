@@ -1,6 +1,9 @@
 ﻿import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { IconComponent } from '@shared/ui/icon/icon.component';
+import { ConfirmDialogComponent } from '@shared/overlays/confirm-dialog/confirm-dialog.component';
+import { FilterChipComponent, FilterOption } from '@shared/ui/filter-chip/filter-chip.component';
+import { ShellBus } from '@layouts/app-shell/shell.bus';
 
 interface Arch { n: string; dot: string; chef: string; members: number; date: string; }
 
@@ -8,7 +11,7 @@ interface Arch { n: string; dot: string; chef: string; members: number; date: st
   selector: 'app-projets-archives',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IconComponent],
+  imports: [IconComponent, ConfirmDialogComponent, FilterChipComponent],
   template: `
     <div class="wrap">
       <div class="head">
@@ -21,8 +24,8 @@ interface Arch { n: string; dot: string; chef: string; members: number; date: st
         <p>Réservé à l'administrateur. Restaurez un projet pour le réactiver, ou supprimez-le définitivement.</p>
         <div class="filters">
           <div class="search"><app-icon name="search" [size]="16" /><input placeholder="Rechercher un projet archivé…" [value]="q()" (input)="q.set($any($event.target).value)" /></div>
-          <button class="chip">Chef de projet<app-icon name="chevronDown" [size]="13" [stroke]="2.4" /></button>
-          <button class="chip">Date d'archivage<app-icon name="chevronDown" [size]="13" [stroke]="2.4" /></button>
+          <app-filter-chip label="Chef de projet" [options]="CHEF_OPTS" [value]="chefFilter()" (valueChange)="chefFilter.set($event)" />
+          <app-filter-chip label="Date d'archivage" [options]="DATE_OPTS" [value]="dateFilter()" (valueChange)="dateFilter.set($event)" />
         </div>
       </div>
       <div class="tbl">
@@ -42,28 +45,19 @@ interface Arch { n: string; dot: string; chef: string; members: number; date: st
       </div>
     </div>
 
-    @if (confirmTarget()) {
-      <div class="overlay" (click)="confirmTarget.set(null)">
-        <div class="modal" (click)="$event.stopPropagation()">
-          <div class="modal__bd">
-            <div class="modal__top">
-              <span class="modal__i"><app-icon name="trash" [size]="22" /></span>
-              <div>
-                <div class="modal__title">Supprimer définitivement</div>
-                <div class="modal__sub">{{ confirmTarget() }}</div>
-              </div>
-            </div>
-            <div class="modal__lines">
-              <div class="modal__line"><span class="modal__dot"></span><span>Cette suppression est irréversible.</span></div>
-              <div class="modal__line"><span class="modal__dot"></span><span>Le projet archivé et toutes ses ressources seront définitivement supprimés.</span></div>
-            </div>
-          </div>
-          <div class="modal__ft">
-            <button class="modal__cancel" (click)="confirmTarget.set(null)">Annuler</button>
-            <button class="modal__confirm" (click)="doDelete()"><app-icon name="trash" [size]="16" />Supprimer définitivement</button>
-          </div>
-        </div>
-      </div>
+    @if (confirmTarget(); as target) {
+      <app-confirm-dialog
+        [danger]="true"
+        title="Supprimer définitivement"
+        [subtitle]="target"
+        icon="trash"
+        confirmLabel="Supprimer définitivement"
+        [lines]="[
+          'Cette suppression est irréversible.',
+          'Le projet archivé et toutes ses ressources seront définitivement supprimés.'
+        ]"
+        (confirmed)="doDelete()"
+        (closed)="confirmTarget.set(null)" />
     }
 
     @if (toastMsg()) {
@@ -78,23 +72,72 @@ interface Arch { n: string; dot: string; chef: string; members: number; date: st
 })
 export class ProjetsArchivesComponent {
   private router = inject(Router);
+  private bus = inject(ShellBus);
   q = signal('');
   private removed = signal<string[]>([]);
   confirmTarget = signal<string | null>(null);
   toastMsg = signal<string | null>(null);
   private _t: any;
 
+  chefFilter = signal<string | null>(null);
+  dateFilter = signal<string | null>(null);
+
+  readonly CHEF_OPTS: FilterOption[] = [
+    { value: 'Sarah Diallo', label: 'Sarah Diallo', dot: '#F2693C' },
+    { value: 'Moussa Bâ',    label: 'Moussa Bâ',    dot: '#6C70F0' },
+    { value: 'Aïda Ndiaye',  label: 'Aïda Ndiaye',  dot: '#2BB673' },
+    { value: 'Akim Koné',    label: 'Akim Koné',    dot: '#F5A623' },
+  ];
+  readonly DATE_OPTS: FilterOption[] = [
+    { value: '7j',  label: '7 derniers jours' },
+    { value: '30j', label: '30 derniers jours' },
+    { value: '90j', label: '3 derniers mois' },
+  ];
+
   all: Arch[] = [
     { n: 'Ancienne Landing 2024', dot: '#8E8AA0', chef: 'Akim Koné',   members: 5, date: '12 mars 2025' },
     { n: 'Refonte Newsletter',     dot: '#8E8AA0', chef: 'Sarah Diallo', members: 4, date: '3 févr. 2025' },
   ];
 
-  shown = computed(() =>
-    this.all.filter(p => p.n.toLowerCase().includes(this.q().toLowerCase().trim()) && !this.removed().includes(p.n))
-  );
+  shown = computed(() => {
+    const q = this.q().toLowerCase().trim();
+    const chef = this.chefFilter();
+    const date = this.dateFilter();
+    const rm = this.removed();
+    return this.all.filter(p => {
+      if (rm.includes(p.n)) return false;
+      if (q && !p.n.toLowerCase().includes(q)) return false;
+      if (chef && p.chef !== chef) return false;
+      if (date && !this.withinDate(p.date, date)) return false;
+      return true;
+    });
+  });
+
+  /** French month → 0-based index, for the "Date d'archivage" filter (mirrors the prototype). */
+  private static readonly MONTHS: Record<string, number> = {
+    'janv.': 0, 'févr.': 1, 'mars': 2, 'avr.': 3, 'mai': 4, 'juin': 5,
+    'juil.': 6, 'août': 7, 'sept.': 8, 'oct.': 9, 'nov.': 10, 'déc.': 11,
+  };
+
+  private withinDate(dateStr: string, bucket: string): boolean {
+    const parts = dateStr.split(' ');
+    if (parts.length < 3) return true;
+    const d = new Date(+parts[2], ProjetsArchivesComponent.MONTHS[parts[1]] ?? 0, +parts[0]);
+    const diff = (Date.now() - d.getTime()) / 86_400_000;
+    if (bucket === '7j')  return diff <= 7;
+    if (bucket === '30j') return diff <= 30;
+    if (bucket === '90j') return diff <= 90;
+    return true;
+  }
 
   remove(n: string): void { this.removed.update(l => [...l, n]); }
-  back(): void { this.router.navigate(['/app/projets']); }
+  /**
+   * Return from the archived-projects area back to the active projects list.
+   * Force sidebar 2 to expand — the user asked to "see all active projects",
+   * which are listed there. The section itself doesn't change (still `projets`)
+   * so the router-level auto-expand wouldn't fire.
+   */
+  back(): void { this.bus.openSidebar(); this.router.navigate(['/app/projets']); }
 
   openProj(p: Arch): void {
     const slug = p.n.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');

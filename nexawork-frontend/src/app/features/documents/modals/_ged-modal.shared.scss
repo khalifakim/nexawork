@@ -15,6 +15,8 @@
 .sw--on { background: var(--nx-indigo); }
 .knob { position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: left .15s; box-shadow: 0 1px 3px rgba(0,0,0,.25); }
 .sw--on .knob { left: 21px; }
+/* Options « Privé / Partagé » displayed below the "Restreindre l'accès" toggle. */
+.opt-block { margin-top: 14px; }
 .ghost { height: 38px; padding: 0 16px; border: 1px solid var(--nx-border); border-radius: var(--nx-r-btn); background: #fff; color: var(--nx-text-600); font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
 .primary { height: 38px; padding: 0 18px; border: none; border-radius: var(--nx-r-btn); background: var(--nx-indigo); color: #fff; font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
 .primary:disabled { background: #cfccc4; cursor: not-allowed; }

@@ -29,14 +29,11 @@ export type MentionChipEvent =
   imports: [IconComponent],
   template: `
     @if (tab === 'personnes') {
-      <span class="mc mc--person" (click)="onClick($event)">@{{ value }}</span>
+      <span class="mc mc--person" [class.mc--on-dark]="onDark" (click)="onClick($event)">@{{ value }}</span>
     } @else {
       <span class="mc mc--chip" [class.mc--task]="tab === 'taches'" [style.background]="palette.bg" [style.color]="palette.fg" (click)="onClick($event)">
-        <span class="mc__ic">
-          @if (tab === 'taches')    { <app-icon name="taskCheck" [size]="12" [stroke]="2.1" /> }
-          @else if (tab === 'documents') { <app-icon name="file"     [size]="12" [stroke]="2.1" /> }
-          @else                     { <app-icon name="hash"      [size]="12" [stroke]="2.1" /> }
-        </span>
+        @if (tab === 'taches') { <span class="mc__ic"><app-icon name="taskCheck" [size]="12" [stroke]="2.1" /></span> }
+        @else if (tab === 'documents') { <span class="mc__ic"><app-icon name="file" [size]="12" [stroke]="2.1" /></span> }
         <span class="mc__lbl">{{ label }}</span>
       </span>
     }
@@ -44,6 +41,7 @@ export type MentionChipEvent =
   styles: [`
     .mc { cursor: pointer; }
     .mc--person { color: var(--nx-indigo, #5B5FE9); font-weight: 600; }
+    .mc--person.mc--on-dark { color: #fff; text-decoration: underline; text-underline-offset: 2px; }
     .mc--chip { display: inline-flex; align-items: center; gap: 4px; vertical-align: baseline;
       height: 20px; padding: 0 7px 0 5px; margin: 0 1px; border-radius: 6px;
       font-size: 12.5px; font-weight: 600; white-space: nowrap; }
@@ -55,10 +53,13 @@ export type MentionChipEvent =
 export class MentionChipComponent {
   @Input({ required: true }) tab!: Exclude<MentionTab, 'personnes'> | 'personnes';
   @Input({ required: true }) value!: string;
+  /** Render on a dark bubble (white person mention). */
+  @Input() onDark = false;
   @Output() opened = new EventEmitter<MentionChipEvent>();
 
   get label(): string {
-    if (this.tab === 'canaux') return '#' + this.value;
+    // Strip any leading '#' in the stored value so the channel chip shows a single '#'.
+    if (this.tab === 'canaux') return '#' + this.value.replace(/^#+/, '');
     return this.value;
   }
 

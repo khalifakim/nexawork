@@ -1,13 +1,10 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { FicheTacheComponent } from '@features/projets/modals/fiche-tache/fiche-tache.component';
-
-interface Mention {
-  id: string;
-  a: string; initials: string; c: string;
-  verb: string; snip: string; ctx: string; date: string; kind: string;
-  go: () => void;
-}
+import { AccueilService } from '@core/services/accueil.service';
+import { SessionService } from '@core/services/session.service';
+import { ReceivedMention as Mention } from '@core/models/accueil.models';
+import { workspaceSignal } from '@core/util/workspace-signal';
 
 type FilterKey = 'Toutes' | 'Canaux' | 'Discussions' | 'Commentaires' | 'Non lues';
 
@@ -87,60 +84,38 @@ const TAB_ORDER: FilterKey[] = ['Toutes', 'Canaux', 'Discussions', 'Commentaires
 })
 export class MentionsRecuesComponent {
   private router = inject(Router);
+  private session = inject(SessionService);
+  private accueil = inject(AccueilService);
+
   filter      = signal<FilterKey>('Toutes');
   openedTask  = signal<any>(null);
-  readIds     = signal<string[]>(['m2', 'm4']);
+  /** Ids the user marked read this session (on top of the mock's own `read` flag). */
+  private readIds = signal<string[]>([]);
 
-  private seed: Mention[] = [
-    { id: 'm1', a: 'Sarah Diallo',  initials: 'SD', c: 'linear-gradient(135deg,#F5A623,#F2693C)',
-      verb: 'vous a mentioné dans un commentaire',
-      snip: '@Akim peux-tu valider la maquette du profil avant ce soir ?',
-      ctx: 'Tâche · MOB-094',  date: 'Il y a 12 min', kind: 'Commentaires',
-      go: () => this.openTaskById('MOB-094') },
-    { id: 'm2', a: 'Sarah Diallo',  initials: 'SD', c: 'linear-gradient(135deg,#F5A623,#F2693C)',
-      verb: 'vous a mentioné dans un message privé',
-      snip: "@Akim je t'envoie la maquette du profil ce soir, tu pourras relire ?",
-      ctx: 'Message privé · Sarah Diallo', date: 'Il y a 30 min', kind: 'Discussions',
-      go: () => this.router.navigate(['/app/conversations', 'sarah-diallo']) },
-    { id: 'm3', a: 'Moussa Bâ',     initials: 'MB', c: 'linear-gradient(135deg,#6C70F0,#4B3FD6)',
-      verb: 'vous a mentioné dans #général',
-      snip: 'Bon boulot @Akim sur la mise en place du CI/CD 👏',
-      ctx: 'Canal · #général',  date: 'Il y a 2 h',  kind: 'Canaux',
-      go: () => this.router.navigate(['/app/canaux', 'general']) },
-    { id: 'm4', a: 'Aïda Ndiaye',   initials: 'AN', c: 'linear-gradient(135deg,#2BB673,#1E8F57)',
-      verb: 'vous a mentioné dans un commentaire',
-      snip: "@Akim je te laisse trancher sur la couleur d'accent.",
-      ctx: 'Tâche · MOB-077',   date: 'Hier',         kind: 'Commentaires',
-      go: () => this.openTaskById('MOB-077') },
-    { id: 'm5', a: 'Moussa Bâ',     initials: 'MB', c: 'linear-gradient(135deg,#6C70F0,#4B3FD6)',
-      verb: 'vous a mentioné dans un message privé',
-      snip: '@Akim la PR backend attend ton OK avant le merge 🙏',
-      ctx: 'Message privé · Moussa Bâ', date: 'Hier',         kind: 'Discussions',
-      go: () => this.router.navigate(['/app/conversations', 'moussa-ba']) },
-    { id: 'm6', a: 'Yacine Sow',    initials: 'YS', c: 'linear-gradient(135deg,#E0497B,#B5346A)',
-      verb: 'vous a mentioné dans #dev-frontend',
-      snip: '@Akim la PR est prête pour relecture quand tu veux.',
-      ctx: 'Canal · #dev-frontend',  date: 'Il y a 2 j',  kind: 'Canaux',
-      go: () => this.router.navigate(['/app/canaux', 'dev-frontend']) },
-  ];
+  /** Mentions of the active workspace (reload on workspace switch). */
+  private seed = workspaceSignal<Mention[]>(this.session, () => this.accueil.mentions(), []);
 
   tabs = TAB_ORDER;
 
   visible = computed<Mention[]>(() => {
     const f = this.filter();
-    if (f === 'Toutes')   return this.seed;
-    if (f === 'Non lues') return this.seed.filter(m => !this.isRead(m.id));
-    return this.seed.filter(m => m.kind === f);
+    const list = this.seed();
+    if (f === 'Toutes')   return list;
+    if (f === 'Non lues') return list.filter(m => !this.isRead(m.id));
+    return list.filter(m => m.kind === f);
   });
 
-  unreadCount = computed(() => this.seed.filter(m => !this.isRead(m.id)).length);
+  unreadCount = computed(() => this.seed().filter(m => !this.isRead(m.id)).length);
 
-  isRead(id: string): boolean { return this.readIds().includes(id); }
+  isRead(id: string): boolean {
+    if (this.readIds().includes(id)) return true;
+    return this.seed().find(m => m.id === id)?.read === true;
+  }
 
-  /** Single row open: mark read then run the row's go(). */
+  /** Single row open: mark read then navigate to the concerned element. */
   open(m: Mention): void {
     this.markOneInternal(m.id);
-    m.go();
+    this.goTo(m);
   }
 
   markOne(ev: Event, id: string): void {
@@ -149,13 +124,22 @@ export class MentionsRecuesComponent {
   }
 
   private markOneInternal(id: string): void {
-    if (this.isRead(id)) return;
+    if (this.readIds().includes(id)) return;
     this.readIds.update(ids => [...new Set([...ids, id])]);
   }
 
   /** Mark every mention as read (Toutes). */
   markAllRead(): void {
-    this.readIds.set(this.seed.map(m => m.id));
+    this.readIds.set(this.seed().map(m => m.id));
+  }
+
+  /** Route to the element a mention points at, per its serialisable target. */
+  private goTo(m: Mention): void {
+    switch (m.target.kind) {
+      case 'task':         this.openTaskById(m.target.id); break;
+      case 'conversation': this.router.navigate(['/app/conversations', m.target.slug]); break;
+      case 'channel':      this.router.navigate(['/app/canaux', m.target.slug]); break;
+    }
   }
 
   private openTaskById(id: string): void {
