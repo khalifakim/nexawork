@@ -151,7 +151,21 @@ Découpage : **6A** Fondation + consumer · **6B** Dossiers/Fichiers/corbeille (
 - **Modifs V5.1** : §4.4 (colonnes `access_mode` + `deleted_at` sur GedFolder/GedFile, note FolderPermission legacy).
 - **Commit** : à venir
 
-#### Lots 6B-6D : ⏳ à faire
+#### Lot 6B · Dossiers & Fichiers + corbeille (REF G / R11 / R12) — ✅ Livré
+- **Livrables** :
+  - `CallerContext`, `AccessEvaluator` (cœur REF G : `canView`/`requireViewable`→404, `requireDeletable`→403 R12, `requireEditable`→R13), `GedGuard` (chargement borné org→404, rejet dossier système→403).
+  - **Dossiers** : list racines (scope org/projet), create (héritage scope du parent), content (USER : sous-dossiers + fichiers filtrés REF G ; TASK_ATTACHMENTS : vide, délégué 6D), update (rename/move), delete (soft).
+  - **Fichiers** : list par dossier, add, get, update (rename), delete (soft), restore.
+  - **Vues** : `my-documents`, `trash` (R11 par utilisateur), `DELETE /trash` (vidage). `shared-with-me` reporté au Lot 6C (grants).
+  - 4 requests + 3 responses (+ `TaskAttachmentLineResponse` stub 6D) + 2 mappers + 2 services/impl + 3 contrôleurs.
+- **Règles serveur** : **REF G** (visibilité OPEN=membre org / PRIVATE=créateur / SHARED=créateur+grants USER → **404** si interdit) · **R11** (corbeille filtrée par créateur) · **R12** (suppression créateur+ADMIN, 403 sinon) · **R13** (édition propriétaire/EDITOR/ADMIN) · rejet dossier système (403 sur create-sous-dossier/import/rename/delete/move).
+- **REF G best-effort (documenté)** : OPEN vérifie l'appartenance workspace (X-Org-Id) ; la restriction stricte aux membres d'un projet (GED projet) relève du Project Service. SHARED n'évalue que les grants USER ; les grants TEAM seront affinés au Lot 6C.
+- **Tests (live via gateway + service)** : CRUD dossier/fichier + content ; REF G (A voit privé 200, B 404, privé absent du content de B) ; R12 (B→403, ADMIN→200) ; rejets dossier système (sous-dossier/import/rename/delete → 403) ; R11 (corbeille de A visible par A, pas par B) ; restore 200.
+- **Note** : REF E (blocage mutation GED sur projet archivé) non enforçable localement (statut projet = domaine Project) → différé/best-effort, à traiter si besoin via un flag propagé.
+- **Modifs V5.1** : aucune (accessMode déjà documenté au 6A).
+- **Commit** : à venir
+
+#### Lots 6C-6D : ⏳ à faire
 
 ### Phases 7-9 : ⏳ à faire
 
