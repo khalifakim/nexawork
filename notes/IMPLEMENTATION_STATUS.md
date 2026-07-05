@@ -16,7 +16,7 @@
 | Phase 5 | File Service | ✅ Livrée | — |
 | Phase 6 | GED Service | ✅ Livrée | — |
 | Phase 7 | Messaging Service | ✅ Livrée | — |
-| Phase 8 | Notification Service | ⏳ À faire | — |
+| Phase 8 | Notification Service | 🚧 En cours (Lot 8A ✅) | — |
 | Phase 9 | Meeting Service (JaaS) | ⏳ À faire | — |
 
 ## Détail par phase livrée
@@ -232,9 +232,26 @@ Découpage : **7A** Fondation + Canaux · **7B** Messages/Conversations/readAt �
 ### Phase 7 — Récapitulatif (3 lots livrés)
 Messaging Service complet (port 8083) : canaux (REF F/REF D/R14), messages + mentions + pagination curseur, conversations + readAt, **WebSocket STOMP temps réel**, consumers `project.created` + `call.ended`. ~30 endpoints. Ajouts modèle V5.1 : `message_mentions.is_read`. Tout validé en live (dont réception WS instantanée).
 
-### Phases 8-9 : ⏳ à faire
+### Phase 8 · Notification Service (port 8085) — 🚧 EN COURS (3 sous-lots, 1 commit par lot)
+Découpage : **8A** Fondation + notifs temps réel + email · **8B** Présence Redis · **8C** Web Push VAPID.
 
-### Phases 8-9 : ⏳ à faire
+#### Lot 8A · Fondation + notifs temps réel + email — ✅ Livré
+- **Livrables** :
+  - Module `nexawork-notification-service` rattaché au parent (pom : websocket + data-redis + mail + `nl.martijndwars:web-push` 5.1.1 + bouncycastle), Dockerfile multi-module, compose (build multi-module + env VAPID/SMTP + depends_on gateway). Config-repo : SMTP + `nexawork.mail` ajoutés.
+  - Sécurité headers Gateway ; **WebSocket** (`WebSocketConfiguration` : `/ws/notifications`, push privé `/user/queue/notifications`) + `NotificationHandshakeInterceptor` (Principal = X-User-Id → cible du user-destination). `RabbitMQConfiguration` (INFERRED).
+  - **2 entités** (`Notification`, `PushSubscription`) + enum `NotificationType` (10) + 2 repos + Flyway V1 (JSONB payload/keys).
+  - **Politique de canaux** (`NotificationPolicy`, §4.7) ; `NotificationPusher` (WS) ; `EmailSender` (SMTP async) ; `NotificationCreator` (in-app + push WS + email selon politique).
+  - **5 consumers** (`NotificationConsumer`) : `member.invited`, `task.assigned`, `livrable.validated`, `call.ended`, `external.guest.invited`.
+  - Lecture : `NotificationService`/impl + `NotificationController` (GET paginé filtre lu/non-lu + unreadCount, PATCH read, PATCH hide).
+- **Réconciliation** : **5 consumers** (le plan disait 4 ; §4.7/§7.2/§7.4 incluent `call.ended` → CALL_ENDED). Les types ADDED_TO_PROJECT/MENTION/MESSAGE_RECEIVED/DOCUMENT_SHARED/MEETING_INVITED n'ont pas encore d'event source (§7.2) → présents dans l'enum/politique mais non déclenchés en Phase 8.
+- **Tests (live)** : 2 tables ; 5 queues avec consumer actif ; **push WS temps réel** (client STOMP abonné `/user/queue/notifications` → `task.assigned` publié → notif reçue instantanément, received=1) ; consumers task/livrable/call → notifs in-app ; GET (unreadCount/pagination), PATCH read (4→3), PATCH hide (total 4→3) ; isolation (B voit 0, B read notif de A → 403).
+- **Non live-testé (documenté)** : email (member.invited/external.guest.invited, email-only) — non testé pour ne pas envoyer de vrais emails à des adresses fictives ; chemin symétrique + SMTP déjà validé côté Auth.
+- **Modifs V5.1** : aucune.
+- **Commit** : à venir
+
+#### Lots 8B-8C : ⏳ à faire
+
+### Phase 9 : ⏳ à faire
 
 ## Notes d'environnement (à connaître pour reprendre)
 - **Build Maven sur l'hôte Windows** : nécessite `-Djavax.net.ssl.trustStoreType=WINDOWS-ROOT` (proxy TLS d'entreprise qui ré-signe HTTPS ; sans ça, PKIX path building failed sur Maven Central). Le build **Docker** n'est pas affecté (environnement conteneur propre).

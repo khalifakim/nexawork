@@ -17,6 +17,20 @@ spring:
       host: ${REDIS_HOST:localhost}
       port: 6379
 
+  # ─── SMTP Gmail (email pour certains types de notifications, table §4.7) ─────
+  mail:
+    host: ${SMTP_HOST:smtp.gmail.com}
+    port: ${SMTP_PORT:587}
+    username: ${SMTP_USERNAME}
+    password: ${SMTP_PASSWORD}
+    properties:
+      mail.smtp.auth: true
+      mail.smtp.starttls.enable: true
+      mail.smtp.starttls.required: true
+      mail.smtp.connectiontimeout: 5000
+      mail.smtp.timeout: 5000
+      mail.smtp.writetimeout: 5000
+
 nexawork:
   # ─── Web Push VAPID (notifications push navigateur) ─────────────────────────
   # Clés ECDSA P-256 générées via `npx web-push generate-vapid-keys`.
@@ -31,6 +45,12 @@ nexawork:
       public-key: ${VAPID_PUBLIC_KEY}
       private-key: ${VAPID_PRIVATE_KEY}
       subject: ${VAPID_SUBJECT}
+
+  # Email sortant (table de politique §4.7)
+  mail:
+    from: ${SMTP_FROM}
+    enabled: true
+    frontend-base-url: ${FRONTEND_BASE_URL:http://localhost:4200}
 
 management:
   health:

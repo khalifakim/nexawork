@@ -1,0 +1,80 @@
+package com.nexawork.notification.services.impl;
+
+import com.nexawork.commons.exceptions.ForbiddenException;
+import com.nexawork.commons.exceptions.ResourceNotFoundException;
+import com.nexawork.notification.dtos.responses.NotificationPageResponse;
+import com.nexawork.notification.dtos.responses.NotificationResponse;
+import com.nexawork.notification.entities.Notification;
+import com.nexawork.notification.mappers.NotificationMapper;
+import com.nexawork.notification.repositories.NotificationRepository;
+import com.nexawork.notification.security.CallerContext;
+import com.nexawork.notification.services.NotificationService;
+import lombok.AccessLevel;
+import lombok.RequiredArgsConstructor;
+import lombok.experimental.FieldDefaults;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+import java.util.UUID;
+
+/**
+ * Consultation des notifications (§13.7). Filtre {@code isHidden=false} par défaut ;
+ * chaque utilisateur ne voit que ses propres notifications.
+ */
+@Service
+@Transactional
+@RequiredArgsConstructor
+@FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
+public class NotificationServiceImpl implements NotificationService {
+
+    NotificationRepository notificationRepository;
+    NotificationMapper notificationMapper;
+    CallerContext caller;
+
+    @Override
+    @Transactional(readOnly = true)
+    public NotificationPageResponse list(boolean unreadOnly, int page, int size) {
+        UUID me = caller.userId();
+        int pageSize = size <= 0 ? 20 : Math.min(size, 100);
+        PageRequest pr = PageRequest.of(Math.max(page, 0), pageSize);
+
+        Page<Notification> result = unreadOnly
+                ? notificationRepository.findByRecipientUserIdAndIsHiddenFalseAndReadFalseOrderByCreatedAtDesc(me, pr)
+                : notificationRepository.findByRecipientUserIdAndIsHiddenFalseOrderByCreatedAtDesc(me, pr);
+
+        List<NotificationResponse> items = result.getContent().stream().map(notificationMapper::asDto).toList();
+        return NotificationPageResponse.builder()
+                .notifications(items)
+                .unreadCount(notificationRepository.countByRecipientUserIdAndIsHiddenFalseAndReadFalse(me))
+                .page(result.getNumber())
+                .totalPages(result.getTotalPages())
+                .totalElements(result.getTotalElements())
+                .build();
+    }
+
+    @Override
+    public void markRead(UUID id) {
+        Notification n = requireMine(id);
+        n.setRead(true);
+        notificationRepository.save(n);
+    }
+
+    @Override
+    public void hide(UUID id) {
+        Notification n = requireMine(id);
+        n.setIsHidden(true);
+        notificationRepository.save(n);
+    }
+
+    private Notification requireMine(UUID id) {
+        Notification n = notificationRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Notification introuvable."));
+        if (!n.getRecipientUserId().equals(caller.userId())) {
+            throw new ForbiddenException("Cette notification ne vous appartient pas.");
+        }
+        return n;
+    }
+}
