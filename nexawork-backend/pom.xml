@@ -28,6 +28,7 @@
         <module>nexawork-ged-service</module>
         <module>nexawork-messaging-service</module>
         <module>nexawork-notification-service</module>
+        <module>nexawork-meeting-service</module>
     </modules>
 
     <properties>

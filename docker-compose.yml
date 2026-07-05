@@ -246,7 +246,9 @@ services:
 
   # ─── Meeting Service ────────────────────────────────────────────────────────
   meeting-service:
-    build: ./nexawork-backend/nexawork-meeting-service
+    build:
+      context: ./nexawork-backend
+      dockerfile: nexawork-meeting-service/Dockerfile
     container_name: nexawork-meeting-service
     depends_on:
       postgres: { condition: service_healthy }
@@ -399,6 +401,7 @@ services:
       ged-service: { condition: service_healthy }
       messaging-service: { condition: service_healthy }
       notification-service: { condition: service_healthy }
+      meeting-service: { condition: service_healthy }
     environment:
       CONFIG_SERVER_URL: config-server
       JWT_SECRET: ${JWT_SECRET}

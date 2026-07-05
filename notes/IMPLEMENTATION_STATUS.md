@@ -17,7 +17,7 @@
 | Phase 6 | GED Service | ✅ Livrée | — |
 | Phase 7 | Messaging Service | ✅ Livrée | — |
 | Phase 8 | Notification Service | ✅ Livrée | — |
-| Phase 9 | Meeting Service (JaaS) | ⏳ À faire | — |
+| Phase 9 | Meeting Service (JaaS) | 🚧 En cours (Lot 9A ✅) | — |
 
 ## Détail par phase livrée
 
@@ -273,7 +273,22 @@ Découpage : **8A** Fondation + notifs temps réel + email · **8B** Présence R
 ### Phase 8 — Récapitulatif (3 lots livrés)
 Notification Service complet (port 8085) : 5 consumers RabbitMQ → notifs in-app + **push WebSocket** temps réel + email SMTP (§4.7), **présence Redis** (TTL + heartbeat), **Web Push VAPID** (fallback offline). CRUD notifications (list/read/hide) + subscriptions + présence. Tout validé en live (dont réception push WS instantanée et fallback offline/online).
 
-### Phase 9 : ⏳ à faire
+### Phase 9 · Meeting Service (port 8084) — 🚧 EN COURS (2 sous-lots, 1 commit par lot)
+Découpage : **9A** Appels + JaaS + REF A · **9B** Invités externes + historique + REF B.
+
+#### Lot 9A · Fondation + appels + JaaS + REF A — ✅ Livré
+- **Livrables** :
+  - Module `nexawork-meeting-service` rattaché au parent (pom + JJWT pour RS256), Dockerfile multi-module, compose (build multi-module + JAAS env déjà présents + depends_on gateway).
+  - Sécurité headers Gateway (guest `/api/v1/guest/**` public pour 9B) ; `RabbitMQConfiguration` (publisher).
+  - **6 entités** (`Call`, `CallParticipant`, `ExternalGuest`, `MeetingHidden` + tables `meeting_messages`/`meeting_files` créées, endpoints différés) + enum `CallStatus` + 4 repos + Flyway V1.
+  - **`JitsiProperties` + `JitsiTokenService`** (code de référence §9.9.7 adapté UUID) : JWT **RS256** signé avec la clé privée PKCS#8 du `.env`, claims JaaS (kid, iss=chat, aud=jitsi, sub=tenant, room, context.user/features).
+  - `CallService`/impl : `POST /calls` (crée salle + token, **REF A** 409), `join` (token + ONGOING, **REF A** 409), `leave` (libère REF A), `end` (status ENDED + publie **`call.ended`**), `GET /calls` (historique hors masqués), `GET /calls/{id}`, `GET /calls/ongoing`, `GET /users/me/ongoing-call`. URL assemblée §9.9.5. Publisher `MeetingEventPublisher`.
+- **Adaptation** : `userId` du code de référence (`Long`) → **UUID** (modèle NexaWork).
+- **Tests (live)** : 6 tables ; POST /calls → 201 + token + URL JaaS ; **token RS256 : signature vérifiée cryptographiquement** (clé dérivée de la privée) + claims conformes §9.9.4 (kid réel, iss/aud/sub/room, moderator=true) ; **REF A** (2e create → 409, join autre appel → 409) ; leave libère REF A (re-create 201) ; end → status ENDED + **`call.ended` publié ET consommé** (notif CALL_ENDED « Réunion terminée » créée côté Notification).
+- **Modifs V5.1** : aucune (code répliqué depuis §9.9.7).
+- **Commit** : à venir
+
+#### Lot 9B : ⏳ à faire (invités externes + historique + REF B)
 
 ## Notes d'environnement (à connaître pour reprendre)
 - **Build Maven sur l'hôte Windows** : nécessite `-Djavax.net.ssl.trustStoreType=WINDOWS-ROOT` (proxy TLS d'entreprise qui ré-signe HTTPS ; sans ça, PKIX path building failed sur Maven Central). Le build **Docker** n'est pas affecté (environnement conteneur propre).
