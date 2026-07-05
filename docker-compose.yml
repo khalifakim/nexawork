@@ -303,7 +303,9 @@ services:
 
   # ─── File Service ───────────────────────────────────────────────────────────
   file-service:
-    build: ./nexawork-backend/nexawork-file-service
+    build:
+      context: ./nexawork-backend
+      dockerfile: nexawork-file-service/Dockerfile
     container_name: nexawork-file-service
     depends_on:
       postgres: { condition: service_healthy }
@@ -319,8 +321,9 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       RABBITMQ_HOST: rabbitmq
       MINIO_URL: http://minio:9000
-      MINIO_ACCESS_KEY: ${MINIO_USER}
-      MINIO_SECRET_KEY: ${MINIO_PASS}
+      # Alignés sur le config-repo nexawork-file.yml (${MINIO_USER}/${MINIO_PASS})
+      MINIO_USER: ${MINIO_USER}
+      MINIO_PASS: ${MINIO_PASS}
     ports:
       - "8086:8086"
     networks:
@@ -373,6 +376,7 @@ services:
       config-server: { condition: service_healthy }
       auth-service: { condition: service_healthy }
       project-service: { condition: service_healthy }
+      file-service: { condition: service_healthy }
     environment:
       CONFIG_SERVER_URL: config-server
       JWT_SECRET: ${JWT_SECRET}

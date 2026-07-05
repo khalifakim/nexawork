@@ -24,6 +24,7 @@
         <module>nexawork-auth-service</module>
         <module>nexawork-api-gateway</module>
         <module>nexawork-project-service</module>
+        <module>nexawork-file-service</module>
     </modules>
 
     <properties>

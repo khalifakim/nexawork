@@ -13,7 +13,7 @@
 | Phase 2 | Auth Service (template maître) | ✅ Livrée | 58b18f7 |
 | Phase 3 | API Gateway | ✅ Livrée | à venir |
 | Phase 4 | Project Service | ✅ Livrée | — |
-| Phase 5 | File Service | ⏳ À faire | — |
+| Phase 5 | File Service | ✅ Livrée | — |
 | Phase 6 | GED Service | ⏳ À faire | — |
 | Phase 7 | Messaging Service | ⏳ À faire | — |
 | Phase 8 | Notification Service | ⏳ À faire | — |
@@ -123,7 +123,21 @@ Découpage : **4A** Fondation · **4B** Projets/membres/équipes · **4C** Workf
 ### Phase 4 — Récapitulatif (5 lots livrés)
 Project Service complet (port 8082) : 9 entités, workflow Kanban FSM, tâches, dashboard/overview. ~40 endpoints. Règles serveur : R1, R6-R8, R9-R21, R15, REF E, FSM (422). 3 events publiés (`project.created`, `task.assigned`, `livrable.validated`). Identité via headers Gateway (pas de secret JWT). Tout validé en live.
 
-### Phases 5-9 : ⏳ à faire
+### Phase 5 · File Service (port 8086) — ✅ Livrée
+- **Livrables** :
+  - Module `nexawork-file-service` rattaché au parent (pom refait, QueryDSL/kotlin-reflect retirés), Dockerfile multi-module, service en contexte de build multi-module + réintroduit dans `depends_on` du gateway.
+  - Sécurité : `GatewayIdentityFilter` + `SecurityConfiguration` (identité headers, pas de secret JWT), `SwaggerConfiguration`. `CallerContext`.
+  - MinIO : `MinioProperties` (`nexawork.minio` : url, clés, 3 buckets, expiry présignée 900s), `MinioConfiguration` (bean `MinioClient`), `MinioService` (upload **SHA-256 en streaming** via `DigestInputStream`, download stream, URL présignée, remove, removeByPrefix pour cascade workspace).
+  - `StoredFile` (§4.3, entité autonome, **id assigné par l'app** — pas de `@GeneratedValue`, pré-généré pour la clé d'objet) + repo + migration Flyway `V1`. Enum `UploadContext` (6 contextes wire). `BucketRouter` (routage §5.3 → bucket + objectKey, 400 si contexte/params manquants).
+  - DTOs (`UploadContextParams`, `StoredFileResponse`, `PresignedUrlResponse`) + mapper. `FileService`/impl (orchestration route→PUT MinIO→INSERT), `FileController` (5 endpoints).
+  - **Endpoints** : `POST /files?context=` (multipart), `GET /files/{id}`, `GET /files/{id}/url` (présignée), `GET /files/{id}/download` (proxifié stream), `DELETE /files/{id}` (hard delete objet+ligne).
+- **Corrections infra** : config-repo `nexawork-file.yml` → `max-file-size: 25MB` (413) ; `docker-compose.yml` env aligné `MINIO_USER`/`MINIO_PASS` (matche le config-repo, corrige l'incohérence de credentials).
+- **Tests (live via gateway)** : upload avatar→`nexawork-users`, channel-msg→`nexawork-messaging`, ged→`nexawork-documents` (clés §5.3 vérifiées dans MinIO) ; contexte inconnu → 400 ; upload 26 Mo → 413 ; SHA-256 base = SHA local ; download proxifié = fichier exact (SHA identique) ; URL présignée (900s) ; delete → objet MinIO retiré + GET 404.
+- **Incident résolu** : upload 500 (StaleObjectStateException) — `@GeneratedValue(UUID)` + id pré-assigné faisait tenter un UPDATE ; corrigé en retirant `@GeneratedValue` (id assigné par l'application, INSERT via merge). Base `nexawork_file_db` recréée (checksum Flyway résiduel).
+- **Modifs V5.1** : §13.3 (POST avec context+413+400+SHA ; ajout `GET /files/{id}/download` proxifié à côté de `/url` ; DELETE hard delete précisé).
+- **Commit** : à venir
+
+### Phases 6-9 : ⏳ à faire
 
 ## Notes d'environnement (à connaître pour reprendre)
 - **Build Maven sur l'hôte Windows** : nécessite `-Djavax.net.ssl.trustStoreType=WINDOWS-ROOT` (proxy TLS d'entreprise qui ré-signe HTTPS ; sans ça, PKIX path building failed sur Maven Central). Le build **Docker** n'est pas affecté (environnement conteneur propre).
