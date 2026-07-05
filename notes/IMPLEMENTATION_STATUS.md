@@ -206,7 +206,19 @@ Découpage : **7A** Fondation + Canaux · **7B** Messages/Conversations/readAt �
 - **Modifs V5.1** : §4.5 (colonnes `is_read` sur message_mentions + conversation_participants). §7.5 (endpoint WS → `/nexawork-messaging-api-v1/ws/messaging`, note frontend Phase 10) sera fait au Lot 7C.
 - **Commit** : à venir
 
-#### Lots 7B-7C : ⏳ à faire
+#### Lot 7B · Messages + Conversations + readAt — ✅ Livré
+- **Livrables** :
+  - **Messages canaux** (`MessageService`/impl) : send (REF F accès + REF D écriture), list paginée par **curseur** (sentAt décroissant, `nextCursor`/`hasMore`), soft-delete (auteur/admin).
+  - **Parsing mentions** (`MentionParser`) : ordre @@@→@@→@→# avec masquage progressif (pas de collision), + `MessageAssembler` (persiste mentions + assemble le DTO). `MessageMapper`.
+  - **Threads** : `GET /threads/{id}/attachments` (fichiers joints) + `GET /threads/{id}/mentions` (groupées USER/TASK/DOCUMENT/CHANNEL).
+  - **Conversations** (`ConversationService`/impl) : openWith (unicité DIRECT via requête sur les 2 participants), list, messages paginés, `PATCH /messages/{id}/read` → `readAt` (✓✓), 403 si expéditeur ou non-destinataire.
+  - 4 requests + 6 responses + 2 mappers/assembler + 2 services/impl + 4 contrôleurs (ChannelMessage, Conversation, Message, Thread).
+- **Correctif** : pagination — `(:before IS NULL OR ...)` provoquait `SQLGrammarException` (PostgreSQL ne peut typer un paramètre null). Remplacé par des méthodes séparées première-page / avant-curseur.
+- **Tests (live)** : envoi message + parsing 4 mentions ; pagination curseur (page1→curseur→page2) ; threads (attachments + mentions groupées) ; **REF D** (MEMBER écrit annonces readonly→403, ADMIN→201) ; conversations (ouverture + **unicité** = même conv) ; **readAt** (expéditeur→403, destinataire→200 + readAt renseigné).
+- **Modifs V5.1** : aucune.
+- **Commit** : à venir
+
+#### Lot 7C : ⏳ à faire (WebSocket STOMP temps réel + consumer call.ended + mentions reçues)
 
 ### Phases 8-9 : ⏳ à faire
 

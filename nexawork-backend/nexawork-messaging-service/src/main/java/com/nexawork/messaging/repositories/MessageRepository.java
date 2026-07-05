@@ -12,24 +12,39 @@ import java.util.UUID;
 
 public interface MessageRepository extends JpaRepository<Message, UUID> {
 
-    /** Page de messages d'un canal, plus anciens qu'un curseur (pagination descendante). */
+    // Pagination par curseur en deux variantes (première page / avant curseur) pour
+    // éviter le paramètre non typé dans `(:before IS NULL OR ...)` — PostgreSQL ne
+    // peut pas inférer le type quand le paramètre est null (erreur SQLGrammar).
+
     @Query("""
             SELECT m FROM Message m
             WHERE m.channel.id = :channelId AND m.isDeleted = false
-              AND (:before IS NULL OR m.sentAt < :before)
             ORDER BY m.sentAt DESC
             """)
-    List<Message> findChannelPage(@Param("channelId") UUID channelId,
-                                  @Param("before") LocalDateTime before, Pageable pageable);
+    List<Message> findChannelFirstPage(@Param("channelId") UUID channelId, Pageable pageable);
+
+    @Query("""
+            SELECT m FROM Message m
+            WHERE m.channel.id = :channelId AND m.isDeleted = false AND m.sentAt < :before
+            ORDER BY m.sentAt DESC
+            """)
+    List<Message> findChannelBefore(@Param("channelId") UUID channelId,
+                                    @Param("before") LocalDateTime before, Pageable pageable);
 
     @Query("""
             SELECT m FROM Message m
             WHERE m.conversationId = :conversationId AND m.isDeleted = false
-              AND (:before IS NULL OR m.sentAt < :before)
             ORDER BY m.sentAt DESC
             """)
-    List<Message> findConversationPage(@Param("conversationId") UUID conversationId,
-                                       @Param("before") LocalDateTime before, Pageable pageable);
+    List<Message> findConversationFirstPage(@Param("conversationId") UUID conversationId, Pageable pageable);
+
+    @Query("""
+            SELECT m FROM Message m
+            WHERE m.conversationId = :conversationId AND m.isDeleted = false AND m.sentAt < :before
+            ORDER BY m.sentAt DESC
+            """)
+    List<Message> findConversationBefore(@Param("conversationId") UUID conversationId,
+                                         @Param("before") LocalDateTime before, Pageable pageable);
 
     List<Message> findByChannelIdAndAttachmentUrlIsNotNullAndIsDeletedFalseOrderBySentAtDesc(UUID channelId);
 
