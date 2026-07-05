@@ -32,4 +32,10 @@ public interface CallService {
 
     /** Appel ONGOING auquel l'appelant participe, ou {@code null} (source popover header). */
     CallResponse ongoing();
+
+    /** Masque l'appel de l'historique personnel de l'appelant. */
+    void hide(UUID callId);
+
+    /** Supprime définitivement un appel (REF B : ADMIN+OWNER seul → 403 sinon). */
+    void delete(UUID callId);
 }

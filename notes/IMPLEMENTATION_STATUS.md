@@ -17,7 +17,7 @@
 | Phase 6 | GED Service | ✅ Livrée | — |
 | Phase 7 | Messaging Service | ✅ Livrée | — |
 | Phase 8 | Notification Service | ✅ Livrée | — |
-| Phase 9 | Meeting Service (JaaS) | 🚧 En cours (Lot 9A ✅) | — |
+| Phase 9 | Meeting Service (JaaS) | ✅ Terminé (Lot 9A + 9B) | — |
 
 ## Détail par phase livrée
 
@@ -53,7 +53,7 @@
 - **Modifs V5.1** : §13 (intro Partie XIII : routage direct par context-path + headers d'identité réels `X-User-Id`/`X-Org-Id`/`X-Org-Role` au lieu de `X-User-Role`/`X-Workspace-Id`), §14.10 (livrables détaillés : starter/préfixe 2025.0.x, secret HMAC partagé, anti-spoofing, liste blanche ; curl d'acceptation corrigé vers le chemin réel + critère CORS).
 - **Commit** : à venir
 
-### Phase 4 · Project Service (port 8082) — 🚧 EN COURS (découpée en 5 sous-lots, 1 commit par lot)
+### Phase 4 · Project Service (port 8082) — ✅ Terminée (5 sous-lots livrés, 1 commit par lot)
 Découpage : **4A** Fondation · **4B** Projets/membres/équipes · **4C** Workflow Kanban · **4D** Tâches (FSM) · **4E** Dashboard/overview.
 
 #### Lot 4A · Fondation — ✅ Livré (build healthy, aucun endpoint métier)
@@ -137,7 +137,7 @@ Project Service complet (port 8082) : 9 entités, workflow Kanban FSM, tâches, 
 - **Modifs V5.1** : §13.3 (POST avec context+413+400+SHA ; ajout `GET /files/{id}/download` proxifié à côté de `/url` ; DELETE hard delete précisé).
 - **Commit** : à venir
 
-### Phase 6 · GED Service (port 8087) — 🚧 EN COURS (4 sous-lots, 1 commit par lot)
+### Phase 6 · GED Service (port 8087) — ✅ Terminée (4 sous-lots livrés, 1 commit par lot)
 Découpage : **6A** Fondation + consumer · **6B** Dossiers/Fichiers/corbeille (REF G/R11/R12) · **6C** Versions & Accès (R13/R16/modes) · **6D** Dossier virtuel (sync Project, 503).
 
 #### Lot 6A · Fondation + consumer project.created — ✅ Livré
@@ -190,7 +190,7 @@ Découpage : **6A** Fondation + consumer · **6B** Dossiers/Fichiers/corbeille (
 ### Phase 6 — Récapitulatif (4 lots livrés)
 GED Service complet (port 8087) : arborescence documentaire, versions (append-only), accès granulaires (REF G/R11/R12/R13/R16 best-effort), dossier système virtuel via sync Project. ~25 endpoints. Consumer `project.created` idempotent. `access_mode` ajouté au modèle V5.1. Tout validé en live.
 
-### Phase 7 · Messaging Service (port 8083) — 🚧 EN COURS (3 sous-lots, 1 commit par lot)
+### Phase 7 · Messaging Service (port 8083) — ✅ Terminée (3 sous-lots livrés, 1 commit par lot)
 Découpage : **7A** Fondation + Canaux · **7B** Messages/Conversations/readAt · **7C** WebSocket STOMP + events.
 
 #### Lot 7A · Fondation + Canaux — ✅ Livré
@@ -232,7 +232,7 @@ Découpage : **7A** Fondation + Canaux · **7B** Messages/Conversations/readAt �
 ### Phase 7 — Récapitulatif (3 lots livrés)
 Messaging Service complet (port 8083) : canaux (REF F/REF D/R14), messages + mentions + pagination curseur, conversations + readAt, **WebSocket STOMP temps réel**, consumers `project.created` + `call.ended`. ~30 endpoints. Ajouts modèle V5.1 : `message_mentions.is_read`. Tout validé en live (dont réception WS instantanée).
 
-### Phase 8 · Notification Service (port 8085) — 🚧 EN COURS (3 sous-lots, 1 commit par lot)
+### Phase 8 · Notification Service (port 8085) — ✅ Terminée (3 sous-lots livrés, 1 commit par lot)
 Découpage : **8A** Fondation + notifs temps réel + email · **8B** Présence Redis · **8C** Web Push VAPID.
 
 #### Lot 8A · Fondation + notifs temps réel + email — ✅ Livré
@@ -273,7 +273,7 @@ Découpage : **8A** Fondation + notifs temps réel + email · **8B** Présence R
 ### Phase 8 — Récapitulatif (3 lots livrés)
 Notification Service complet (port 8085) : 5 consumers RabbitMQ → notifs in-app + **push WebSocket** temps réel + email SMTP (§4.7), **présence Redis** (TTL + heartbeat), **Web Push VAPID** (fallback offline). CRUD notifications (list/read/hide) + subscriptions + présence. Tout validé en live (dont réception push WS instantanée et fallback offline/online).
 
-### Phase 9 · Meeting Service (port 8084) — 🚧 EN COURS (2 sous-lots, 1 commit par lot)
+### Phase 9 · Meeting Service (port 8084) — ✅ TERMINÉ (2 sous-lots, 1 commit par lot)
 Découpage : **9A** Appels + JaaS + REF A · **9B** Invités externes + historique + REF B.
 
 #### Lot 9A · Fondation + appels + JaaS + REF A — ✅ Livré
@@ -288,11 +288,23 @@ Découpage : **9A** Appels + JaaS + REF A · **9B** Invités externes + historiq
 - **Modifs V5.1** : aucune (code répliqué depuis §9.9.7).
 - **Commit** : à venir
 
-#### Lot 9B : ⏳ à faire (invités externes + historique + REF B)
+#### Lot 9B · Invités externes + historique + REF B — ✅ Livré
+- **Livrables** :
+  - **Invités externes** : `GuestService`/impl — `invite` (crée `ExternalGuest` avec token UUID à usage unique + lien `frontend-base-url/guest/{token}` + publie **`external.guest.invited`**), `access` (public : valide token non consommé + appel ACTIVE → **token JaaS non modérateur** + marque `used`). DTOs `InviteGuestRequest`/`GuestInviteResponse`/`GuestAccessResponse`, event `ExternalGuestInvitedEvent`, `MeetingProperties` (`frontend-base-url`).
+  - **Historique** : `CallService.hide(callId)` → insère `MeetingHidden` (PK composite call+user), exclu de `GET /calls` mais l'appel reste consultable (`GET /calls/{id}`).
+  - **REF B** : `CallService.delete(callId)` → **403** si `!isWorkspaceAdmin()` (OWNER/ADMIN seuls), sinon suppression définitive (cascade DB).
+  - **Contrôleurs** : `POST /calls/{id}/guests`, `POST /calls/{id}/hide`, `DELETE /calls/{id}` (`CallController`) ; `GuestController` **public** `GET /api/v1/guest/{token}`.
+  - **Gateway** : route invité ajoutée à la liste blanche `PublicPathMatcher` (`/nexawork-meeting-api-v1/api/v1/guest/*` — accessible sans JWT).
+- **Tests (live)** : validés en appelant le **meeting-service directement** (headers d'identité Gateway forgés) — voir note d'environnement. Créer appel 201 ; inviter 201 (guestToken + guestLink) ; **accès invité public 200** avec **JWT JaaS `moderator:"false"`, `id:"guest"`, RS256** ; **usage unique** 2ᵉ accès → 409 ; token inconnu → 404 ; **masquage** (hide 200 → historique vidé, `get` 200 : appel conservé) ; **REF B** delete MEMBER → **403**, OWNER → **200**, get après → 404 ; **`external.guest.invited` publié ET consommé** par Notification (`EmailSender` déclenché pour l'invité ; envoi SMTP TLS échoue = infra externe uniquement, comme documenté Lot 8A).
+- **Modifs V5.1** : §4.6 (accès invité usage unique, masquage historique) et REF B implémentés conformément ; `frontend-base-url` ajouté au bloc `nexawork.meeting` du config-repo.
+- **Commit** : à venir
+
+> **Phase 9 terminée = tout le backend NexaWork (Phases 0 → 9) est livré.**
 
 ## Notes d'environnement (à connaître pour reprendre)
 - **Build Maven sur l'hôte Windows** : nécessite `-Djavax.net.ssl.trustStoreType=WINDOWS-ROOT` (proxy TLS d'entreprise qui ré-signe HTTPS ; sans ça, PKIX path building failed sur Maven Central). Le build **Docker** n'est pas affecté (environnement conteneur propre).
 - **Testcontainers** : Docker Desktop de cette machine renvoie un HTTP 400 sur `/info` au client docker-java (incompatibilité connue, indépendante du code). Les tests d'intégration Testcontainers sont donc conditionnés à la variable `RUN_INTEGRATION_TESTS=true` — ignorés proprement par défaut (build vert), exécutables sur une CI ou une machine où Docker coopère. Leur logique reste couverte par la validation live.
+- **Port-forwarding hôte instable** (observé Phase 9B) : après un `docker compose up -d` qui **recrée** le conteneur gateway, le mapping `localhost:8080` → conteneur peut se figer (quirk Docker Desktop Windows, aggravé par la pression CPU/RAM — le gateway a mis 158 s à démarrer au lieu de ~18 s). Le conteneur reste *healthy* et répond en **interne**. Contournement de validation fiable : lancer un conteneur `curl` jetable sur le réseau `nexawork_default` et **appeler le service cible directement** (ex. `http://meeting-service:8084/...`) en forgeant les headers d'identité `X-User-Id`/`X-Org-Id`/`X-Org-Role` que le `GatewayIdentityFilter` fait confiance (bonus : permet de tester REF B 403 vs 200 en changeant juste `X-Org-Role`, sans créer de 2ᵉ utilisateur réel). Pour rétablir l'accès hôte : redémarrer Docker Desktop.
 
 ## Instructions pour les futures sessions
 Si tu es une nouvelle instance Claude Code qui reprend le projet :

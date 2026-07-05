@@ -4,8 +4,10 @@ import com.nexawork.commons.exceptions.ConflictException;
 import com.nexawork.commons.exceptions.ResourceNotFoundException;
 import com.nexawork.meeting.dtos.requests.CreateCallRequest;
 import com.nexawork.meeting.dtos.responses.CallResponse;
+import com.nexawork.commons.exceptions.ForbiddenException;
 import com.nexawork.meeting.entities.Call;
 import com.nexawork.meeting.entities.CallParticipant;
+import com.nexawork.meeting.entities.MeetingHidden;
 import com.nexawork.meeting.entities.enums.CallStatus;
 import com.nexawork.meeting.events.publishers.CallEndedEvent;
 import com.nexawork.meeting.events.publishers.MeetingEventPublisher;
@@ -166,6 +168,26 @@ public class CallServiceImpl implements CallService {
                 .findFirst()
                 .map(p -> toResponse(p.getCall(), null))
                 .orElse(null);
+    }
+
+    @Override
+    public void hide(UUID callId) {
+        loadInOrg(callId); // borne au workspace (404 sinon)
+        UUID me = caller.userId();
+        if (!hiddenRepository.existsByCallIdAndUserId(callId, me)) {
+            hiddenRepository.save(MeetingHidden.builder().callId(callId).userId(me).build());
+        }
+    }
+
+    @Override
+    public void delete(UUID callId) {
+        Call call = loadInOrg(callId);
+        // REF B : suppression de l'historique réservée aux administrateurs/propriétaires.
+        if (!caller.isWorkspaceAdmin()) {
+            throw new ForbiddenException("Suppression réservée aux administrateurs et au propriétaire (REF B).");
+        }
+        callRepository.delete(call); // cascade DB : participants, invités, chat, fichiers, masquages
+        log.info("Appel {} supprimé par {}", callId, caller.userId());
     }
 
     // ─── Helpers ────────────────────────────────────────────────────────────────

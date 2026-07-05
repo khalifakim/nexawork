@@ -34,6 +34,11 @@ public class PublicPathMatcher {
             // Consultation d'une invitation par son token (page publique côté front)
             "/nexawork-auth-api-v1/api/v1/invitations/*",
 
+            // ─── Meeting Service : accès invité externe par token (V5.1 §4.6) ───
+            // L'invité n'a pas de compte : il présente son token à usage unique,
+            // validé côté service. Page publique /guest/{token} côté front.
+            "/nexawork-meeting-api-v1/api/v1/guest/*",
+
             // ─── Sondes techniques + OpenAPI (tous services) ───
             "/*/actuator/health/**",
             "/*/actuator/info",

@@ -25,3 +25,6 @@ nexawork:
     api-key-id: ${JAAS_API_KEY_ID:changeme/changeme}
     private-key: ${JAAS_PRIVATE_KEY:}
     url: https://8x8.vc
+  meeting:
+    # Base URL du frontend pour construire le lien d'accès invité (/guest/{token}).
+    frontend-base-url: ${FRONTEND_BASE_URL:http://localhost:4200}
