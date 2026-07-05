@@ -2,6 +2,7 @@ package com.nexawork.ged.controllers;
 
 import com.nexawork.commons.models.Response;
 import com.nexawork.ged.dtos.responses.FileResponse;
+import com.nexawork.ged.services.GedAccessService;
 import com.nexawork.ged.services.GedFileService;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -25,10 +26,16 @@ import java.util.List;
 public class GedLibraryController {
 
     GedFileService fileService;
+    GedAccessService accessService;
 
     @GetMapping("/my-documents")
     public Response<List<FileResponse>> myDocuments() {
         return Response.<List<FileResponse>>ok().setPayload(fileService.myDocuments());
+    }
+
+    @GetMapping("/shared-with-me")
+    public Response<List<FileResponse>> sharedWithMe() {
+        return Response.<List<FileResponse>>ok().setPayload(accessService.sharedWithMe());
     }
 
     @GetMapping("/trash")

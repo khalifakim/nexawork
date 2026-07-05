@@ -1,9 +1,11 @@
 package com.nexawork.ged.controllers;
 
 import com.nexawork.commons.models.Response;
+import com.nexawork.ged.dtos.requests.ChangeAccessModeRequest;
 import com.nexawork.ged.dtos.requests.CreateFileRequest;
 import com.nexawork.ged.dtos.requests.UpdateFileRequest;
 import com.nexawork.ged.dtos.responses.FileResponse;
+import com.nexawork.ged.services.GedAccessService;
 import com.nexawork.ged.services.GedFileService;
 import jakarta.validation.Valid;
 import lombok.AccessLevel;
@@ -35,6 +37,7 @@ import java.util.UUID;
 public class GedFileController {
 
     GedFileService fileService;
+    GedAccessService accessService;
 
     /** Liste les fichiers d'un dossier : {@code ?folderId=}. */
     @GetMapping
@@ -68,5 +71,13 @@ public class GedFileController {
     @PostMapping("/{id}/restore")
     public Response<FileResponse> restore(@PathVariable UUID id) {
         return Response.<FileResponse>ok().setPayload(fileService.restore(id));
+    }
+
+    /** Bascule OPEN/PRIVATE/SHARED du fichier (§11.6). */
+    @PatchMapping("/{id}/access")
+    public Response<Void> changeAccessMode(@PathVariable UUID id,
+                                           @Valid @RequestBody ChangeAccessModeRequest request) {
+        accessService.changeFileAccessMode(id, request);
+        return Response.ok();
     }
 }

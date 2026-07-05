@@ -165,7 +165,19 @@ Découpage : **6A** Fondation + consumer · **6B** Dossiers/Fichiers/corbeille (
 - **Modifs V5.1** : aucune (accessMode déjà documenté au 6A).
 - **Commit** : à venir
 
-#### Lots 6C-6D : ⏳ à faire
+#### Lot 6C · Versions & Accès — ✅ Livré
+- **Livrables** :
+  - **Versions** (`GedVersionService`/impl) : list (v1 synthétique si aucune enregistrée), add (numéro auto max+1, matérialise la baseline v1 au 1er ajout, met à jour le pointeur du GedFile), restore (crée une nouvelle version clonée qui devient courante — historique append-only). `GET/POST /ged/files/{id}/versions`, `POST …/{versionId}/restore`.
+  - **Accès/Grants** (`GedAccessService`/impl) : list (ligne propriétaire synthétique `owner=true` en 1er — R13), add (bascule la cible en SHARED ; idempotent ; refus grant au propriétaire → 400), revoke. `GET/POST/DELETE /ged/grants`.
+  - **Modes d'accès** : `PATCH /ged/folders|files/{id}/access` (OPEN/PRIVATE → purge des grants ; SHARED géré via /grants).
+  - **`shared-with-me`** : fichiers dont l'appelant est bénéficiaire (grants USER).
+  - 3 requests + 2 responses + 2 mappers + 2 services/impl + 2 contrôleurs + 3 endpoints ajoutés (access folder/file, shared-with-me).
+- **Règles serveur** : **R13** (ligne propriétaire verrouillée : owner sans grant en base → non retirable par construction ; grant au propriétaire refusé 400) · **§11.6.c** (gérer les accès = propriétaire/ADMIN/EDITOR, 403 sinon) · rejet dossier système (403) · **R16 best-effort** (documenté : pas de vérif d'appartenance projet du bénéficiaire — domaine Project).
+- **Tests (live)** : versions (list v1, add v2 + pointeur, restore v1→v3 append-only) ; grant READER → SHARED + B voit (200) ; R13 (owner:true en 1er, grant owner → 400) ; §11.6.c (READER gère accès → 403) ; révocation → B 404 ; mode SHARED→OPEN purge grants + B voit via org ; shared-with-me.
+- **Modifs V5.1** : aucune.
+- **Commit** : à venir
+
+#### Lot 6D : ⏳ à faire (dossier virtuel TASK_ATTACHMENTS + sync Project, 503)
 
 ### Phases 7-9 : ⏳ à faire
 

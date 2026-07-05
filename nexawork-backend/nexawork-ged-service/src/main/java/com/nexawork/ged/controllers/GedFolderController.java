@@ -1,10 +1,12 @@
 package com.nexawork.ged.controllers;
 
 import com.nexawork.commons.models.Response;
+import com.nexawork.ged.dtos.requests.ChangeAccessModeRequest;
 import com.nexawork.ged.dtos.requests.CreateFolderRequest;
 import com.nexawork.ged.dtos.requests.UpdateFolderRequest;
 import com.nexawork.ged.dtos.responses.FolderContentResponse;
 import com.nexawork.ged.dtos.responses.FolderResponse;
+import com.nexawork.ged.services.GedAccessService;
 import com.nexawork.ged.services.GedFolderService;
 import jakarta.validation.Valid;
 import lombok.AccessLevel;
@@ -36,6 +38,7 @@ import java.util.UUID;
 public class GedFolderController {
 
     GedFolderService folderService;
+    GedAccessService accessService;
 
     /** Racines d'un scope : {@code ?projectId=} pour une GED projet, absent pour l'organisation. */
     @GetMapping
@@ -64,5 +67,13 @@ public class GedFolderController {
     public Response<Void> delete(@PathVariable UUID id) {
         folderService.deleteFolder(id);
         return Response.deleted();
+    }
+
+    /** Bascule OPEN/PRIVATE/SHARED du dossier (§11.6). */
+    @PatchMapping("/{id}/access")
+    public Response<Void> changeAccessMode(@PathVariable UUID id,
+                                           @Valid @RequestBody ChangeAccessModeRequest request) {
+        accessService.changeFolderAccessMode(id, request);
+        return Response.ok();
     }
 }
