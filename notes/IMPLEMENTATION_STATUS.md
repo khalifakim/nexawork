@@ -16,7 +16,7 @@
 | Phase 5 | File Service | ✅ Livrée | — |
 | Phase 6 | GED Service | ✅ Livrée | — |
 | Phase 7 | Messaging Service | ✅ Livrée | — |
-| Phase 8 | Notification Service | 🚧 En cours (Lot 8A ✅) | — |
+| Phase 8 | Notification Service | ✅ Livrée | — |
 | Phase 9 | Meeting Service (JaaS) | ⏳ À faire | — |
 
 ## Détail par phase livrée
@@ -260,7 +260,18 @@ Découpage : **8A** Fondation + notifs temps réel + email · **8B** Présence R
 - **Modifs V5.1** : aucune.
 - **Commit** : à venir
 
-#### Lot 8C : ⏳ à faire (Web Push VAPID — subscriptions + WebPushSender + fallback offline)
+#### Lot 8C · Web Push VAPID — ✅ Livré (clôture Phase 8)
+- **Livrables** :
+  - `PushProperties` (`nexawork.push.vapid`), `WebPushSender` (lib `nl.martijndwars:web-push` + BouncyCastle, init VAPID au démarrage, envoi async best-effort).
+  - Subscriptions : `RegisterPushRequest`/`UnregisterPushRequest`, `PushSubscriptionService`/impl (upsert par endpoint UNIQUE), `PushSubscriptionController` (`POST/DELETE /push/subscriptions`).
+  - **Fallback offline** branché dans `NotificationCreator` : après le push WS, si `NotificationPolicy.pushEnabled(type)` **ET** `!presenceService.isOnline(recipient)` → Web Push à tous les abonnements (payload JSON title/body/url). En ligne → sauté (pas de doublon, §4.7).
+- **Tests (live)** : Web Push initialisé (clés VAPID) ; `POST /push/subscriptions` → 201 + en base ; **hors ligne** + abonnement → push Web tenté (invocation lib prouvée, échec attendu sur endpoint/clé factices) ; **en ligne** → push sauté (compteur d'erreurs push inchangé) + notif reçue via WebSocket.
+- **Non testable ici (documenté)** : livraison native au navigateur (endpoint réel FCM/Mozilla + service worker) — nécessite un vrai navigateur → validée manuellement/Phase 10. La logique de décision offline→push / online→skip est prouvée en live.
+- **Modifs V5.1** : aucune.
+- **Commit** : à venir
+
+### Phase 8 — Récapitulatif (3 lots livrés)
+Notification Service complet (port 8085) : 5 consumers RabbitMQ → notifs in-app + **push WebSocket** temps réel + email SMTP (§4.7), **présence Redis** (TTL + heartbeat), **Web Push VAPID** (fallback offline). CRUD notifications (list/read/hide) + subscriptions + présence. Tout validé en live (dont réception push WS instantanée et fallback offline/online).
 
 ### Phase 9 : ⏳ à faire
 
