@@ -12,7 +12,7 @@
 | Phase 1 | Config Server + purge legacy + multi-module Maven | ✅ Livrée | 09dc46c |
 | Phase 2 | Auth Service (template maître) | ✅ Livrée | 58b18f7 |
 | Phase 3 | API Gateway | ✅ Livrée | à venir |
-| Phase 4 | Project Service | 🚧 En cours (Lot 4A ✅) | — |
+| Phase 4 | Project Service | ✅ Livrée | — |
 | Phase 5 | File Service | ⏳ À faire | — |
 | Phase 6 | GED Service | ⏳ À faire | — |
 | Phase 7 | Messaging Service | ⏳ À faire | — |
@@ -109,7 +109,19 @@ Découpage : **4A** Fondation · **4B** Projets/membres/équipes · **4C** Workf
 - **Modifs V5.1** : aucune.
 - **Commit** : à venir
 
-#### Lot 4E : ⏳ à faire (dashboard workspace + overview projet)
+#### Lot 4E · Dashboard & Overview — ✅ Livré (clôture Phase 4)
+- **Livrables** :
+  - `GET /workspaces/{id}/dashboard` (§13.2, §5.2) — **R1 : ADMIN+OWNER (403 sinon)**. Agrégats calculés sur les projets ACTIFS : 4 KPI (activeProjects, inProgressTasks=catégorie ACTIVE, overdueTasks=échéance passée & non final, **workspaceMembers=null**), `workload` **par projet**, `alerts` (OVERDUE/DUE_SOON/NO_ACTIVITY), `activeProjectsList` (avec santé), `overdueProjects` (breakdown, id=UUID).
+  - `GET /projects/{id}/overview` (§13.2, §6.4.1) — **R15 : membre (403 sinon)**. Répartition par catégorie de statut (donut), avancement, retards, nb membres, échéances proches (≤ 7 j).
+  - Rapports PDF (`/workspaces/{id}/report`, `/projects/{id}/report`) → **stub 501** (génération différée).
+  - `ProjectHealth` (enum) + `DashboardService`/`Impl` + 2 responses + 2 contrôleurs. `commons` : `NotImplementedException` (→ 501). Repo `TaskRepository.findAllInProjects` (join fetch agrégat).
+  - **Choix actés (avec le user)** : `workspaceMembers` = **null** (option B — roster = domaine Auth, complété côté frontend) ; « n en ligne » retiré du tableau de bord ; `workload` **par projet** (§5.2 autoritaire) ; `DashboardOverdueProject.id` = **UUID** (pas de slug) ; santé `CRITIQUE` si retard, `A_SURVEILLER` si échéance ≤ 7 j & avancement < 80 %, sinon `EN_BONNE_VOIE` ; alerte inactivité ≥ 14 j.
+- **Tests (live)** : dashboard OWNER 200 (KPI/workload/alerts/santé/overdueProjects conformes, workspaceMembers=null), **R1 MEMBER → 403** ; overview OWNER 200 (répartition + échéances), **R15 non-membre → 403** ; report workspace+projet → **501**.
+- **Modifs V5.1** : §13.2 (schéma DashboardResponse : workload « par projet », workspaceMembers null + note domaine Auth, slug→UUID, WorkloadEntry détaillé, formules santé/alertes) + §5.2 (KPI « membres du workspace », retrait « n en ligne »).
+- **Commit** : à venir
+
+### Phase 4 — Récapitulatif (5 lots livrés)
+Project Service complet (port 8082) : 9 entités, workflow Kanban FSM, tâches, dashboard/overview. ~40 endpoints. Règles serveur : R1, R6-R8, R9-R21, R15, REF E, FSM (422). 3 events publiés (`project.created`, `task.assigned`, `livrable.validated`). Identité via headers Gateway (pas de secret JWT). Tout validé en live.
 
 ### Phases 5-9 : ⏳ à faire
 

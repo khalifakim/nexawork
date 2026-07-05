@@ -52,6 +52,13 @@ public class GlobalControllerExceptionHandler {
         return Response.unprocessableEntity().setMessage(e.getMessage());
     }
 
+    @ResponseStatus(HttpStatus.NOT_IMPLEMENTED)
+    @ExceptionHandler(NotImplementedException.class)
+    public Response<Object> notImplemented(NotImplementedException e) {
+        log.error(e.getMessage());
+        return Response.exception().setMessage(e.getMessage());
+    }
+
     @ResponseStatus(HttpStatus.FORBIDDEN)
     @ExceptionHandler({ForbiddenException.class, ForbiddenActionException.class})
     public Response<Object> forbidden(RuntimeException e) {
