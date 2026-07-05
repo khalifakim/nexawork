@@ -14,7 +14,7 @@
 | Phase 3 | API Gateway | ✅ Livrée | à venir |
 | Phase 4 | Project Service | ✅ Livrée | — |
 | Phase 5 | File Service | ✅ Livrée | — |
-| Phase 6 | GED Service | 🚧 En cours (Lot 6A ✅) | — |
+| Phase 6 | GED Service | ✅ Livrée | — |
 | Phase 7 | Messaging Service | ⏳ À faire | — |
 | Phase 8 | Notification Service | ⏳ À faire | — |
 | Phase 9 | Meeting Service (JaaS) | ⏳ À faire | — |
@@ -177,7 +177,20 @@ Découpage : **6A** Fondation + consumer · **6B** Dossiers/Fichiers/corbeille (
 - **Modifs V5.1** : aucune.
 - **Commit** : à venir
 
-#### Lot 6D : ⏳ à faire (dossier virtuel TASK_ATTACHMENTS + sync Project, 503)
+#### Lot 6D · Dossier virtuel TASK_ATTACHMENTS — ✅ Livré (clôture Phase 6)
+- **Livrables** :
+  - `GedProperties` (`nexawork.ged` : URL Project + timeout), `ProjectClientConfiguration` (bean `RestClient` avec connect/read timeout courts), `ProjectTaskAttachmentClient` (appel synchrone `GET /projects/{id}/task-attachments`, **forward de l'identité** X-User-Id/X-Org-Id/X-Org-Role, mapping enveloppe `Response<List>`).
+  - `commons` : `ServiceUnavailableException` (→ **503**) + handler.
+  - Branchement dans `getContent` : pour un dossier `TASK_ATTACHMENTS`, le contenu virtuel est calculé en temps réel (jamais persisté) → lignes `TaskAttachmentLineResponse` (readOnly=true, contextType=TASK_ATTACHMENT). Toute défaillance Project → 503.
+- **Architecture** : unique appel HTTP synchrone inter-services de la plateforme (V5.1 §7.1, §10.5bis), justifié par l'exigence « zéro fichier fantôme ». Le forward d'identité fait respecter le R15 du Project (agrégat réservé aux membres du projet).
+- **Tests (live via gateway)** : pièces jointes créées sur une tâche → dossier virtuel reflète 2 lignes enrichies (taskTitle, readOnly, contextType) ; **temps réel** : suppression d'une pièce jointe côté Project → disparaît immédiatement du dossier virtuel (pas de fantôme) ; **503** si Project arrêté (message explicite) ; le reste de la GED (dossiers USER) reste fonctionnel Project down.
+- **Modifs V5.1** : aucune.
+- **Commit** : à venir
+
+### Phase 6 — Récapitulatif (4 lots livrés)
+GED Service complet (port 8087) : arborescence documentaire, versions (append-only), accès granulaires (REF G/R11/R12/R13/R16 best-effort), dossier système virtuel via sync Project. ~25 endpoints. Consumer `project.created` idempotent. `access_mode` ajouté au modèle V5.1. Tout validé en live.
+
+### Phases 7-9 : ⏳ à faire
 
 ### Phases 7-9 : ⏳ à faire
 

@@ -10,12 +10,14 @@ import com.nexawork.ged.entities.enums.AccessMode;
 import com.nexawork.ged.entities.enums.FolderType;
 import com.nexawork.ged.mappers.FileMapper;
 import com.nexawork.ged.mappers.FolderMapper;
+import com.nexawork.ged.dtos.responses.TaskAttachmentLineResponse;
 import com.nexawork.ged.repositories.GedFileRepository;
 import com.nexawork.ged.repositories.GedFolderRepository;
 import com.nexawork.ged.security.CallerContext;
 import com.nexawork.ged.services.AccessEvaluator;
 import com.nexawork.ged.services.GedFolderService;
 import com.nexawork.ged.services.GedGuard;
+import com.nexawork.ged.services.ProjectTaskAttachmentClient;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
@@ -46,6 +48,7 @@ public class GedFolderServiceImpl implements GedFolderService {
     AccessEvaluator access;
     GedGuard guard;
     CallerContext caller;
+    ProjectTaskAttachmentClient taskAttachmentClient;
 
     @Override
     @Transactional(readOnly = true)
@@ -93,9 +96,25 @@ public class GedFolderServiceImpl implements GedFolderService {
                 .folder(folderMapper.asDto(folder));
 
         if (folder.getFolderType() == FolderType.TASK_ATTACHMENTS) {
-            // Contenu virtuel calculé par appel synchrone au Project Service (Lot 6D).
-            // Ici : sous-dossiers/fichiers vides (aucun stocké en base pour ce type).
-            return builder.subFolders(List.of()).files(List.of()).taskAttachments(List.of()).build();
+            // Contenu virtuel (§10.5bis) : calculé en temps réel par appel synchrone
+            // au Project Service, jamais persisté en base GED. 503 si Project injoignable.
+            List<TaskAttachmentLineResponse> lines = taskAttachmentClient
+                    .fetchForProject(folder.getProjectId()).stream()
+                    .map(a -> TaskAttachmentLineResponse.builder()
+                            .attachmentId(a.attachmentId())
+                            .taskId(a.taskId())
+                            .taskTitle(a.taskTitle())
+                            .fileName(a.fileName())
+                            .fileUrl(a.fileUrl())
+                            .fileSize(a.fileSize())
+                            .contentType(a.contentType())
+                            .uploadedByUserId(a.uploadedByUserId())
+                            .uploadedAt(a.uploadedAt())
+                            .readOnly(true)
+                            .contextType("TASK_ATTACHMENT")
+                            .build())
+                    .toList();
+            return builder.subFolders(List.of()).files(List.of()).taskAttachments(lines).build();
         }
 
         List<FolderResponse> subFolders = folderRepository.findByParentIdAndIsDeletedFalse(folderId).stream()

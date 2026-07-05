@@ -4,6 +4,7 @@ import com.nexawork.commons.exceptions.ForbiddenException;
 import com.nexawork.commons.security.SecurityUtils;
 import org.springframework.stereotype.Component;
 
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -21,6 +22,10 @@ public class CallerContext {
     public UUID organisationId() {
         return SecurityUtils.getCurrentOrganisationId()
                 .orElseThrow(() -> new ForbiddenException("Aucun workspace actif dans la session."));
+    }
+
+    public Optional<UUID> organisationIdOptional() {
+        return SecurityUtils.getCurrentOrganisationId();
     }
 
     public String orgRole() {
