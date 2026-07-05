@@ -337,7 +337,9 @@ services:
 
   # ─── GED Service ────────────────────────────────────────────────────────────
   ged-service:
-    build: ./nexawork-backend/nexawork-ged-service
+    build:
+      context: ./nexawork-backend
+      dockerfile: nexawork-ged-service/Dockerfile
     container_name: nexawork-ged-service
     depends_on:
       postgres: { condition: service_healthy }
@@ -351,6 +353,8 @@ services:
       DB_PASSWORD: ${POSTGRES_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
       RABBITMQ_HOST: rabbitmq
+      # Appel synchrone GED → Project pour le dossier virtuel TASK_ATTACHMENTS (§10.5bis)
+      PROJECT_SERVICE_HOST: project-service
     ports:
       - "8087:8087"
     networks:
@@ -377,6 +381,7 @@ services:
       auth-service: { condition: service_healthy }
       project-service: { condition: service_healthy }
       file-service: { condition: service_healthy }
+      ged-service: { condition: service_healthy }
     environment:
       CONFIG_SERVER_URL: config-server
       JWT_SECRET: ${JWT_SECRET}

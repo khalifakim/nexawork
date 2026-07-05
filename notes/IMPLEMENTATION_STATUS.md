@@ -14,7 +14,7 @@
 | Phase 3 | API Gateway | ✅ Livrée | à venir |
 | Phase 4 | Project Service | ✅ Livrée | — |
 | Phase 5 | File Service | ✅ Livrée | — |
-| Phase 6 | GED Service | ⏳ À faire | — |
+| Phase 6 | GED Service | 🚧 En cours (Lot 6A ✅) | — |
 | Phase 7 | Messaging Service | ⏳ À faire | — |
 | Phase 8 | Notification Service | ⏳ À faire | — |
 | Phase 9 | Meeting Service (JaaS) | ⏳ À faire | — |
@@ -137,7 +137,23 @@ Project Service complet (port 8082) : 9 entités, workflow Kanban FSM, tâches, 
 - **Modifs V5.1** : §13.3 (POST avec context+413+400+SHA ; ajout `GET /files/{id}/download` proxifié à côté de `/url` ; DELETE hard delete précisé).
 - **Commit** : à venir
 
-### Phases 6-9 : ⏳ à faire
+### Phase 6 · GED Service (port 8087) — 🚧 EN COURS (4 sous-lots, 1 commit par lot)
+Découpage : **6A** Fondation + consumer · **6B** Dossiers/Fichiers/corbeille (REF G/R11/R12) · **6C** Versions & Accès (R13/R16/modes) · **6D** Dossier virtuel (sync Project, 503).
+
+#### Lot 6A · Fondation + consumer project.created — ✅ Livré
+- **Livrables** :
+  - Module `nexawork-ged-service` rattaché au parent (pom refait), Dockerfile multi-module, service en contexte de build multi-module + réintroduit dans `depends_on` du gateway. `PROJECT_SERVICE_HOST` + `nexawork.ged.project-service-url`/`timeout` au config-repo (pour le sync 6D).
+  - Sécurité : `GatewayIdentityFilter` + `SecurityConfiguration` (identité headers), `SwaggerConfiguration`. `RabbitMQConfiguration` avec convertisseur JSON en mode **INFERRED** (mappe le payload sur le record local malgré le `__TypeId__` du Project Service).
+  - **4 entités** (`GedFolder`, `GedFile`, `GedFileVersion`, `GedAccessGrant`) + **5 enums** (`FolderType`, `AccessMode`, `TargetType`, `GranteeType`, `AccessLevel`) + **4 repositories** + migration Flyway `V1`.
+  - **Consumer `project.created`** (`ProjectCreatedConsumer`, queue `nexawork.ged.project-created`) : sème 2 dossiers racine (USER au nom du projet + TASK_ATTACHMENTS), **idempotent** (double garde : `existsBy…` + index unique partiel `(project_id, folder_type) WHERE parent_id IS NULL`).
+- **Ajout modèle V5.1** : colonne **`access_mode`** (OPEN/PRIVATE/SHARED, défaut OPEN) sur `ged_folders` et `ged_files` — indispensable pour REF G, absente du modèle V5 initial. `deleted_at` ajouté aux deux. `FolderPermission` (legacy V1) non implémentée (remplacée par `ged_access_grants`).
+- **Tests (live)** : build healthy ; 4 tables Flyway ; création projet → `project.created` consommé → 2 dossiers racine (USER + TASK_ATTACHMENTS) ; **idempotence : rejeu de l'event → toujours 2 dossiers** (pas 4) ; queue consommée (0 msg, 1 consumer) ; backlog des projets Phase 4 seedé rétroactivement (queue durable).
+- **Modifs V5.1** : §4.4 (colonnes `access_mode` + `deleted_at` sur GedFolder/GedFile, note FolderPermission legacy).
+- **Commit** : à venir
+
+#### Lots 6B-6D : ⏳ à faire
+
+### Phases 7-9 : ⏳ à faire
 
 ## Notes d'environnement (à connaître pour reprendre)
 - **Build Maven sur l'hôte Windows** : nécessite `-Djavax.net.ssl.trustStoreType=WINDOWS-ROOT` (proxy TLS d'entreprise qui ré-signe HTTPS ; sans ça, PKIX path building failed sur Maven Central). Le build **Docker** n'est pas affecté (environnement conteneur propre).

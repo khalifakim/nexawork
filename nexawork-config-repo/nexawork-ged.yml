@@ -13,6 +13,13 @@ spring:
   flyway:
     locations: classpath:db/migration
 
+nexawork:
+  ged:
+    # Appel synchrone GED → Project pour le contenu du dossier virtuel
+    # « Pièces jointes aux tâches » (§10.5bis). Timeout court : 503 si dépassé.
+    project-service-url: http://${PROJECT_SERVICE_HOST:localhost}:8082/nexawork-project-api-v1
+    project-call-timeout-ms: 3000
+
 management:
   health:
     group:
