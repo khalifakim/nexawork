@@ -45,6 +45,13 @@ public class GlobalControllerExceptionHandler {
         return Response.conflict().setMessage(e.getMessage());
     }
 
+    @ResponseStatus(HttpStatus.UNPROCESSABLE_ENTITY)
+    @ExceptionHandler(UnprocessableEntityException.class)
+    public Response<Object> unprocessable(UnprocessableEntityException e) {
+        log.error(e.getMessage());
+        return Response.unprocessableEntity().setMessage(e.getMessage());
+    }
+
     @ResponseStatus(HttpStatus.FORBIDDEN)
     @ExceptionHandler({ForbiddenException.class, ForbiddenActionException.class})
     public Response<Object> forbidden(RuntimeException e) {

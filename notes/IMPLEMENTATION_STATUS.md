@@ -96,7 +96,20 @@ Découpage : **4A** Fondation · **4B** Projets/membres/équipes · **4C** Workf
 - **Modifs V5.1** : aucune.
 - **Commit** : à venir
 
-#### Lots 4D-4E : ⏳ à faire
+#### Lot 4D · Tâches + moteur FSM — ✅ Livré
+- **Livrables** :
+  - **Tâches** : CRUD (`/projects/{id}/tasks`, `/tasks/{id}`) + assignation polymorphe (USER membre du projet / TEAM du projet, validée 400 sinon).
+  - **Moteur FSM** (`PATCH /tasks/{id}/status`, §10.2) : si `enforceWorkflowOrder=false` → déplacement libre entre statuts du projet ; si `true` → exige une `WorkflowTransition` (from→to) **et** un responsable autorisé (ALL / PROJECT_LEAD=chef / SPECIFIC_MEMBER) → **422** sinon. Placement initial libre (statut courant nul). Statut cible hors projet → 422.
+  - **Sous-tâches / commentaires / pièces jointes** : CRUD ; suppression de commentaire réservée à l'auteur ou admin ; compteurs (subtask/comment/attachment) dans `TaskResponse`.
+  - **Agrégat** `GET /projects/{id}/task-attachments` (§10.5bis) : pièces jointes de toutes les tâches enrichies (taskId/taskTitle), réservé aux membres du projet — consommé en HTTP synchrone par le GED (dossier virtuel).
+  - **Events** : `task.assigned` (assignation à un utilisateur, create + update) et `livrable.validated` (passage en statut final). `ProjectEventPublisher` étendu (3 routing keys).
+  - 7 requests + 5 responses + 4 mappers + 2 events + 4 services/impl + 4 contrôleurs. `commons` : `UnprocessableEntityException` (→ 422) + handler. `ProjectGuard.participantProject` (helper). Repos : compteurs + join fetch agrégat.
+- **Règles serveur** : **FSM** (422) · **R15** (participant, 403) · **REF E** (mutation sur projet archivé → 409) · assignation cohérente (400).
+- **Tests (live, gateway + service)** : create tâche + `task.assigned` (queue 0→1) ; assignee non-membre → 400 ; sous-tâche/commentaire/pièce jointe 201 + compteurs 1/1/1 ; agrégat task-attachments enrichi ; FSM libre 200 (+ `livrable.validated` queue=1) ; FSM imposé : saut 422, transition valide 200, cross-projet 422 ; responsable PROJECT_LEAD : membre 422 / chef 200 ; R15 non-membre → 403 ; REF E changeStatus/subtask archivé → 409.
+- **Modifs V5.1** : aucune.
+- **Commit** : à venir
+
+#### Lot 4E : ⏳ à faire (dashboard workspace + overview projet)
 
 ### Phases 5-9 : ⏳ à faire
 

@@ -20,18 +20,30 @@ public class ProjectEventPublisher {
 
     public static final String EXCHANGE = "nexawork.events";
     public static final String ROUTING_PROJECT_CREATED = "project.created";
+    public static final String ROUTING_TASK_ASSIGNED = "task.assigned";
+    public static final String ROUTING_LIVRABLE_VALIDATED = "livrable.validated";
 
     RabbitTemplate rabbitTemplate;
 
     public void publishProjectCreated(ProjectCreatedEvent event) {
+        publish(ROUTING_PROJECT_CREATED, event, "projet " + event.projectId());
+    }
+
+    public void publishTaskAssigned(TaskAssignedEvent event) {
+        publish(ROUTING_TASK_ASSIGNED, event, "tâche " + event.taskId() + " → " + event.assigneeUserId());
+    }
+
+    public void publishLivrableValidated(LivrableValidatedEvent event) {
+        publish(ROUTING_LIVRABLE_VALIDATED, event, "livrable " + event.taskId());
+    }
+
+    private void publish(String routingKey, Object event, String context) {
         try {
-            rabbitTemplate.convertAndSend(EXCHANGE, ROUTING_PROJECT_CREATED, event);
-            log.info("Event project.created publié pour projet {} ({})",
-                    event.projectId(), event.projectName());
+            rabbitTemplate.convertAndSend(EXCHANGE, routingKey, event);
+            log.info("Event {} publié ({})", routingKey, context);
         } catch (Exception e) {
-            // La publication d'event ne doit pas faire échouer la création du projet
-            log.error("Échec de publication project.created pour projet {} : {}",
-                    event.projectId(), e.getMessage());
+            // La publication d'event ne doit jamais faire échouer l'opération métier.
+            log.error("Échec de publication {} ({}) : {}", routingKey, context, e.getMessage());
         }
     }
 }

@@ -58,6 +58,16 @@ public class ProjectGuard {
     }
 
     /**
+     * Charge un projet borné au workspace et vérifie que l'appelant en est
+     * participant (admin ou membre). Raccourci commun aux ressources de tâches.
+     */
+    public Project participantProject(UUID projectId) {
+        Project project = loadInOrg(projectId);
+        requireProjectVisibility(projectId);
+        return project;
+    }
+
+    /**
      * REF E — refuse toute mutation d'un projet archivé (409). Les mutations
      * légitimes d'un projet archivé passent par les routes `/archived-projects`.
      */
