@@ -15,7 +15,7 @@
 | Phase 4 | Project Service | ✅ Livrée | — |
 | Phase 5 | File Service | ✅ Livrée | — |
 | Phase 6 | GED Service | ✅ Livrée | — |
-| Phase 7 | Messaging Service | 🚧 En cours (Lot 7A ✅) | — |
+| Phase 7 | Messaging Service | ✅ Livrée | — |
 | Phase 8 | Notification Service | ⏳ À faire | — |
 | Phase 9 | Meeting Service (JaaS) | ⏳ À faire | — |
 
@@ -218,7 +218,21 @@ Découpage : **7A** Fondation + Canaux · **7B** Messages/Conversations/readAt �
 - **Modifs V5.1** : aucune.
 - **Commit** : à venir
 
-#### Lot 7C : ⏳ à faire (WebSocket STOMP temps réel + consumer call.ended + mentions reçues)
+#### Lot 7C · WebSocket STOMP + events — ✅ Livré (clôture Phase 7)
+- **Livrables** :
+  - **WebSocket STOMP** (`WebSocketConfiguration`) : endpoint `/ws/messaging` (SockJS + natif), broker simple `/topic` `/queue`, prefix `/app` + `/user`. `WebSocketHandshakeInterceptor` (identité headers Gateway → attributs de session). `StompMessageController` (`/app/channels|conversations/{id}/send`) + `StompIdentity` (réinjecte l'identité STOMP dans le SecurityContext).
+  - **Broadcast** (`MessageBroadcaster`) : chaque envoi (REST ou STOMP) est diffusé sur `/topic/channels/{id}` ou `/topic/conversations/{id}`.
+  - **Consumer `call.ended`** (`CallEndedConsumer`) : poste un message SYSTEM « Réunion … terminée — Durée : X min » dans le canal #général du projet + broadcast.
+  - **Vue « Mentions reçues »** (`MentionService`/impl, `MentionController`) : list (+ filtre unread), read, mark-all-read. **Présence** (`PresenceController`) : `/presence/active` stub (Redis en Phase 8).
+- **Best-effort documenté** : le parser extrait `targetText` mais ne résout pas `targetId` (résolution User/Task/Doc/Channel = autres domaines) → la vue mentions filtre sur `targetId` déjà résolu ; l'agrégation avec TaskComment (Project) relève d'une composition frontend. Filtrage d'abonnement WS = topics publics (dev) ; l'autorisation d'envoi reste vérifiée REST (REF D/F).
+- **Tests (live)** : **WebSocket temps réel** (client STOMP s'abonne à `/topic/channels/{id}` → envoi REST → réception instantanée, received=1) ; consumer `call.ended` → message SYSTEM dans #général (« Durée : 3 min ») ; vue mentions (list/unread/mark-all-read validés avec données réelles) ; présence stub → 200.
+- **Modifs V5.1** : §7.5 (endpoint WS → `/nexawork-messaging-api-v1/ws/messaging` sous context-path + /queue + /user prefix ; note frontend Phase 10).
+- **Commit** : à venir
+
+### Phase 7 — Récapitulatif (3 lots livrés)
+Messaging Service complet (port 8083) : canaux (REF F/REF D/R14), messages + mentions + pagination curseur, conversations + readAt, **WebSocket STOMP temps réel**, consumers `project.created` + `call.ended`. ~30 endpoints. Ajouts modèle V5.1 : `message_mentions.is_read`. Tout validé en live (dont réception WS instantanée).
+
+### Phases 8-9 : ⏳ à faire
 
 ### Phases 8-9 : ⏳ à faire
 

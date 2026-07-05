@@ -18,6 +18,7 @@ import com.nexawork.messaging.repositories.MessageRepository;
 import com.nexawork.messaging.security.CallerContext;
 import com.nexawork.messaging.services.ConversationService;
 import com.nexawork.messaging.services.MessageAssembler;
+import com.nexawork.messaging.services.MessageBroadcaster;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
@@ -44,6 +45,7 @@ public class ConversationServiceImpl implements ConversationService {
     ConversationParticipantRepository participantRepository;
     MessageRepository messageRepository;
     MessageAssembler assembler;
+    MessageBroadcaster broadcaster;
     CallerContext caller;
 
     @Override
@@ -102,7 +104,9 @@ public class ConversationServiceImpl implements ConversationService {
                 .edited(false)
                 .build());
         assembler.persistMentions(message);
-        return assembler.toDto(message);
+        MessageResponse dto = assembler.toDto(message);
+        broadcaster.broadcastConversationMessage(conversationId, dto); // temps réel (§7.5)
+        return dto;
     }
 
     @Override

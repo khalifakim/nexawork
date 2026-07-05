@@ -17,6 +17,7 @@ import com.nexawork.messaging.repositories.MessageRepository;
 import com.nexawork.messaging.security.CallerContext;
 import com.nexawork.messaging.services.ChannelAccessGuard;
 import com.nexawork.messaging.services.MessageAssembler;
+import com.nexawork.messaging.services.MessageBroadcaster;
 import com.nexawork.messaging.services.MessageService;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -44,6 +45,7 @@ public class MessageServiceImpl implements MessageService {
     MessageMentionRepository mentionRepository;
     ChannelAccessGuard channelGuard;
     MessageAssembler assembler;
+    MessageBroadcaster broadcaster;
     CallerContext caller;
 
     @Override
@@ -76,7 +78,9 @@ public class MessageServiceImpl implements MessageService {
                 .edited(false)
                 .build());
         assembler.persistMentions(message);
-        return assembler.toDto(message);
+        MessageResponse dto = assembler.toDto(message);
+        broadcaster.broadcastChannelMessage(channelId, dto); // temps réel (§7.5)
+        return dto;
     }
 
     @Override
