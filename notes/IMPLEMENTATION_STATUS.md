@@ -15,7 +15,7 @@
 | Phase 4 | Project Service | ✅ Livrée | — |
 | Phase 5 | File Service | ✅ Livrée | — |
 | Phase 6 | GED Service | ✅ Livrée | — |
-| Phase 7 | Messaging Service | ⏳ À faire | — |
+| Phase 7 | Messaging Service | 🚧 En cours (Lot 7A ✅) | — |
 | Phase 8 | Notification Service | ⏳ À faire | — |
 | Phase 9 | Meeting Service (JaaS) | ⏳ À faire | — |
 
@@ -190,9 +190,25 @@ Découpage : **6A** Fondation + consumer · **6B** Dossiers/Fichiers/corbeille (
 ### Phase 6 — Récapitulatif (4 lots livrés)
 GED Service complet (port 8087) : arborescence documentaire, versions (append-only), accès granulaires (REF G/R11/R12/R13/R16 best-effort), dossier système virtuel via sync Project. ~25 endpoints. Consumer `project.created` idempotent. `access_mode` ajouté au modèle V5.1. Tout validé en live.
 
-### Phases 7-9 : ⏳ à faire
+### Phase 7 · Messaging Service (port 8083) — 🚧 EN COURS (3 sous-lots, 1 commit par lot)
+Découpage : **7A** Fondation + Canaux · **7B** Messages/Conversations/readAt · **7C** WebSocket STOMP + events.
 
-### Phases 7-9 : ⏳ à faire
+#### Lot 7A · Fondation + Canaux — ✅ Livré
+- **Livrables** :
+  - Module `nexawork-messaging-service` rattaché au parent (pom refait + `spring-boot-starter-websocket`), Dockerfile multi-module, service en contexte de build multi-module + réintroduit dans `depends_on` du gateway.
+  - Sécurité : `GatewayIdentityFilter` + `SecurityConfiguration` (handshake `/ws/messaging/**` en white-list pour 7C), `SwaggerConfiguration`, `CallerContext`. `RabbitMQConfiguration` (converter mode INFERRED).
+  - **6 entités** (`Channel`, `ChannelMember`, `Conversation`, `ConversationParticipant`, `Message`, `MessageMention`) + **5 enums** + **6 repositories** + migration Flyway `V1` (XOR channel/conversation via CHECK, PK composite participants).
+  - **Consumer `project.created`** : crée les canaux par défaut « général » (HASH) + « annonces » (BELL, readonly), `isSystem=true`, idempotent.
+  - **Canaux** : `ChannelAccessGuard` (REF F visibilité, REF D écriture, R14 création), `ChannelService`/impl, `ChannelController` : list (scope org/projet), create (R14), get, PATCH V5 (rename/icon/readonly), delete, GET/PUT access (privé + membres). `canWrite` dérivé dans la réponse.
+- **Ajout modèle V5.1** : `message_mentions.is_read` + `conversation_participants.is_read` (état lu/non-lu pour la vue « Mentions reçues », §5.3) — absents du modèle V5 initial.
+- **Best-effort documenté** : le Messaging ne connaît pas la composition des projets — REF D « chef de projet » (canal projet readonly) et R15 (visibilité canal projet) sont approximés (admin workspace) ; le raffinement relève du Project Service.
+- **Tests (live)** : 6 tables Flyway ; seeding projet → #général (HASH) + #annonces (BELL readonly) ; **idempotence** (rejeu → 2 canaux) ; liste + canWrite ; **R14** (OWNER 201 / MEMBER 403) ; PATCH (rename/icon/readonly) ; **REF F** (membre voit privé 200, non-membre 404, absent des listes) ; **REF D** (canWrite=false sur annonces readonly pour MEMBER).
+- **Modifs V5.1** : §4.5 (colonnes `is_read` sur message_mentions + conversation_participants). §7.5 (endpoint WS → `/nexawork-messaging-api-v1/ws/messaging`, note frontend Phase 10) sera fait au Lot 7C.
+- **Commit** : à venir
+
+#### Lots 7B-7C : ⏳ à faire
+
+### Phases 8-9 : ⏳ à faire
 
 ## Notes d'environnement (à connaître pour reprendre)
 - **Build Maven sur l'hôte Windows** : nécessite `-Djavax.net.ssl.trustStoreType=WINDOWS-ROOT` (proxy TLS d'entreprise qui ré-signe HTTPS ; sans ça, PKIX path building failed sur Maven Central). Le build **Docker** n'est pas affecté (environnement conteneur propre).

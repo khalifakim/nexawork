@@ -217,7 +217,9 @@ services:
 
   # ─── Messaging Service ──────────────────────────────────────────────────────
   messaging-service:
-    build: ./nexawork-backend/nexawork-messaging-service
+    build:
+      context: ./nexawork-backend
+      dockerfile: nexawork-messaging-service/Dockerfile
     container_name: nexawork-messaging-service
     depends_on:
       postgres: { condition: service_healthy }
@@ -382,6 +384,7 @@ services:
       project-service: { condition: service_healthy }
       file-service: { condition: service_healthy }
       ged-service: { condition: service_healthy }
+      messaging-service: { condition: service_healthy }
     environment:
       CONFIG_SERVER_URL: config-server
       JWT_SECRET: ${JWT_SECRET}

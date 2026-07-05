@@ -26,6 +26,7 @@
         <module>nexawork-project-service</module>
         <module>nexawork-file-service</module>
         <module>nexawork-ged-service</module>
+        <module>nexawork-messaging-service</module>
     </modules>
 
     <properties>
