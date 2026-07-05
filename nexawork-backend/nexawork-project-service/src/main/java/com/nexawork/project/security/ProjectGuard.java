@@ -5,6 +5,7 @@ import com.nexawork.commons.exceptions.ForbiddenException;
 import com.nexawork.commons.exceptions.ResourceNotFoundException;
 import com.nexawork.project.entities.Project;
 import com.nexawork.project.entities.enums.ProjectStatus;
+import com.nexawork.project.repositories.ProjectMemberRepository;
 import com.nexawork.project.repositories.ProjectRepository;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +25,7 @@ import java.util.UUID;
 public class ProjectGuard {
 
     ProjectRepository projectRepository;
+    ProjectMemberRepository projectMemberRepository;
     CallerContext caller;
 
     /**
@@ -42,6 +44,17 @@ public class ProjectGuard {
     /** L'appelant est-il le chef de projet fonctionnel (Project.ownerUserId) ? */
     public boolean isProjectLead(Project project) {
         return project.getOwnerUserId().equals(caller.userId());
+    }
+
+    /**
+     * Visibilité en lecture d'un projet (R15) : administrateur/propriétaire du
+     * workspace, ou membre du projet — 403 sinon. À appeler après {@link #loadInOrg}.
+     */
+    public void requireProjectVisibility(UUID projectId) {
+        if (!caller.isWorkspaceAdmin()
+                && !projectMemberRepository.existsByProjectIdAndUserId(projectId, caller.userId())) {
+            throw new ForbiddenException("Vous n'avez pas accès à ce projet.");
+        }
     }
 
     /**

@@ -16,6 +16,7 @@ import com.nexawork.project.repositories.ProjectRepository;
 import com.nexawork.project.security.CallerContext;
 import com.nexawork.project.security.ProjectGuard;
 import com.nexawork.project.services.ProjectService;
+import com.nexawork.project.services.WorkflowSeeder;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
@@ -42,6 +43,7 @@ public class ProjectServiceImpl implements ProjectService {
     ProjectMemberRepository projectMemberRepository;
     ProjectMapper projectMapper;
     ProjectEventPublisher eventPublisher;
+    WorkflowSeeder workflowSeeder;
     ProjectGuard guard;
     CallerContext caller;
 
@@ -74,6 +76,9 @@ public class ProjectServiceImpl implements ProjectService {
                 .projectRole(ProjectRole.MANAGER)
                 .isProjectLead(true)
                 .build());
+
+        // Workflow Kanban par défaut (4 colonnes + transitions) — V5.1 §8.1.
+        workflowSeeder.seedDefault(project);
 
         eventPublisher.publishProjectCreated(new ProjectCreatedEvent(
                 project.getId(), project.getName(), project.getOrganisationId(), project.getOwnerUserId()));

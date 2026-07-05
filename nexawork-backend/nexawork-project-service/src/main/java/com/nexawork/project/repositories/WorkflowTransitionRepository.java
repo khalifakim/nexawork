@@ -12,4 +12,8 @@ public interface WorkflowTransitionRepository extends JpaRepository<WorkflowTran
     List<WorkflowTransition> findByFromStatusProjectId(UUID projectId);
 
     Optional<WorkflowTransition> findByFromStatusIdAndToStatusId(UUID fromStatusId, UUID toStatusId);
+
+    boolean existsByFromStatusIdAndToStatusId(UUID fromStatusId, UUID toStatusId);
+
+    boolean existsByToStatusId(UUID toStatusId);
 }

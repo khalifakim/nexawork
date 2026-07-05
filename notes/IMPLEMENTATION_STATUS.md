@@ -82,7 +82,21 @@ Découpage : **4A** Fondation · **4B** Projets/membres/équipes · **4C** Workf
 - **Modifs V5.1** : aucune (réconciliation §14.11 déjà faite au Lot 4A ; le correctif infra aligne le script sur §7.4 déjà correct).
 - **Commit** : à venir
 
-#### Lots 4C-4E : ⏳ à faire
+#### Lot 4C · Workflow Kanban (statuts + transitions + config) — ✅ Livré
+- **Livrables** :
+  - **Statuts** : list/create/update/delete (`/projects/{id}/statuses`, `/statuses/{id}`). `isInitial`/`isFinal` **dérivés de la catégorie** (`WorkflowRules` : NOT_STARTED→initial, DONE/CLOSED→final), re-dérivés à chaque changement de catégorie. Suppression d'un statut cible d'une transition → **409** (FK RESTRICT anticipée) ; sinon delete (tasks SET NULL, transitions sortantes CASCADE).
+  - **Transitions** : list/create (`/projects/{id}/transitions`). Validations : statuts du projet, distincts (400), SPECIFIC_MEMBER exige un responsable (400), doublon → 409 (UNIQUE from+to).
+  - **Workflow** : `PATCH /projects/{id}/workflow` — bascule `enforceWorkflowOrder` + mise à jour groupée des responsables de transitions ; renvoie `WorkflowResponse` (enforce + statuts ordonnés + transitions).
+  - **Seeding par défaut** (`WorkflowSeeder`, branché sur la création de projet, V5.1 §8.1) : 4 colonnes — À faire (NOT_STARTED/initial), En cours (ACTIVE), En révision (ACTIVE), Validé (DONE/final) — + 3 transitions linéaires ALL.
+  - 5 requests + 3 responses + 2 mappers + `WorkflowRules` + `WorkflowSeeder` + 3 services/impl + 3 contrôleurs.
+  - **Cohérence** : ajout `ProjectGuard.requireProjectVisibility` (R15) appliqué aux listes statuts/transitions — un non-membre du projet reçoit 403 (aligné sur `get`/`members`/`teams`).
+- **Règles serveur** : **R8** (statuts/workflow = ADMIN+OWNER+chef de projet, 403 sinon) · **REF E** (mutation sur projet archivé → 409) · **R15** (visibilité lecture = admin ou membre).
+- **Tests (live, gateway + service)** : seeding 4 statuts (flags corrects) + 3 transitions ALL ; add statut (position auto, isFinal dérivé) ; PATCH statut re-dérive les flags ; create transition 201, doublon 409, self 400 ; delete statut cible 409 ; PATCH workflow (enforce=true + responsable PROJECT_LEAD) → persisté ; **R8 : MEMBER add-statut/workflow → 403** ; **REF E : add-statut/workflow sur projet archivé → 409** ; **visibilité : non-membre → 403, membre/admin → 200**.
+- **NB** : la **validation FSM** (déplacement de tâche → 200/422 selon `enforceWorkflowOrder` + transition + responsable) est portée par le **Lot 4D** (tâches).
+- **Modifs V5.1** : aucune.
+- **Commit** : à venir
+
+#### Lots 4D-4E : ⏳ à faire
 
 ### Phases 5-9 : ⏳ à faire
 
