@@ -249,7 +249,18 @@ Découpage : **8A** Fondation + notifs temps réel + email · **8B** Présence R
 - **Modifs V5.1** : aucune.
 - **Commit** : à venir
 
-#### Lots 8B-8C : ⏳ à faire
+#### Lot 8B · Présence Redis — ✅ Livré
+- **Livrables** :
+  - `PresenceService` : clé Redis `presence:user:{id}` (compteur de sessions multi-onglets, TTL 30 s de sécurité), `markOnline`/`heartbeat`/`markOffline`/`isOnline`/`onlineUsers`.
+  - `WebSocketPresenceListener` : `SessionConnectedEvent` → markOnline, `SessionDisconnectEvent` → markOffline (Principal WS = userId posé au handshake).
+  - `StompPresenceController` : `@MessageMapping("/presence/heartbeat")` réarme le TTL (client ≈ 20 s).
+  - `PresenceController` : `GET /presence/online` (vue « En ligne ») + `GET /presence/{userId}` (isOnline).
+- **Tests (live)** : avant → isOnline=false ; 2 sessions WS ouvertes → isOnline=true, compteur Redis=2, A présent dans `/presence/online` ; fermeture des 2 sessions → isOnline=false, clé Redis supprimée (décrément final).
+- **Note** : le stub `/presence/active` du Messaging (Phase 7) peut être branché sur ces clés Redis partagées si besoin ultérieurement (autorité de présence = Notification).
+- **Modifs V5.1** : aucune.
+- **Commit** : à venir
+
+#### Lot 8C : ⏳ à faire (Web Push VAPID — subscriptions + WebPushSender + fallback offline)
 
 ### Phase 9 : ⏳ à faire
 
