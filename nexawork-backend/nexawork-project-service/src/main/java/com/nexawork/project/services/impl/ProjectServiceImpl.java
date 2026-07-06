@@ -1,5 +1,6 @@
 package com.nexawork.project.services.impl;
 
+import com.nexawork.commons.exceptions.ConflictException;
 import com.nexawork.commons.exceptions.ForbiddenException;
 import com.nexawork.project.dtos.requests.CreateProjectRequest;
 import com.nexawork.project.dtos.requests.UpdateProjectRequest;
@@ -58,8 +59,11 @@ public class ProjectServiceImpl implements ProjectService {
     @Override
     public ProjectResponse create(CreateProjectRequest request) {
         UUID userId = caller.userId();
+        String prefix = generateUniquePrefix(request.getPrefix(), request.getName(), caller.organisationId());
         Project project = projectRepository.save(Project.builder()
                 .name(request.getName())
+                .prefix(prefix)
+                .taskSequence(0)
                 .color(request.getColor())
                 .organisationId(caller.organisationId())
                 .ownerUserId(userId)
@@ -112,6 +116,16 @@ public class ProjectServiceImpl implements ProjectService {
         }
         if (request.getColor() != null) {
             project.setColor(request.getColor());
+        }
+        // Changement de préfixe : unique par workspace ; les task_key déjà émises restent inchangées.
+        if (request.getPrefix() != null && !request.getPrefix().isBlank()) {
+            String newPrefix = sanitizePrefix(request.getPrefix());
+            if (!newPrefix.isEmpty() && !newPrefix.equals(project.getPrefix())) {
+                if (projectRepository.existsByOrganisationIdAndPrefix(project.getOrganisationId(), newPrefix)) {
+                    throw new ConflictException("Ce préfixe est déjà utilisé dans ce workspace.");
+                }
+                project.setPrefix(newPrefix);
+            }
         }
         if (request.getStartDate() != null) {
             project.setStartDate(request.getStartDate());
@@ -170,5 +184,55 @@ public class ProjectServiceImpl implements ProjectService {
         ProjectResponse dto = projectMapper.asDto(project);
         dto.setMemberCount((int) projectMemberRepository.countByProjectId(project.getId()));
         return dto;
+    }
+
+    // ─── Génération du préfixe des task_key ──────────────────────────────────────
+
+    /**
+     * Détermine un préfixe unique dans le workspace : celui demandé s'il est fourni,
+     * sinon dérivé du nom (initiales si multi-mots, sinon 3 premières lettres). En cas
+     * de collision, suffixe numérique (AM → AM1, AM2, …).
+     */
+    private String generateUniquePrefix(String requested, String name, UUID orgId) {
+        String base = (requested != null && !requested.isBlank())
+                ? sanitizePrefix(requested)
+                : derivePrefix(name);
+        if (base.isEmpty()) {
+            base = "PRJ";
+        }
+        if (base.length() > 10) {
+            base = base.substring(0, 10);
+        }
+        String candidate = base;
+        int suffix = 1;
+        while (projectRepository.existsByOrganisationIdAndPrefix(orgId, candidate)) {
+            String stem = base.length() > 8 ? base.substring(0, 8) : base;
+            candidate = stem + suffix;
+            suffix++;
+        }
+        return candidate;
+    }
+
+    /** Dérive un préfixe depuis le nom : initiales des mots (≥ 2 mots) ou 3 premières lettres. */
+    private String derivePrefix(String name) {
+        String[] words = name.trim().split("\\s+");
+        String base;
+        if (words.length >= 2) {
+            StringBuilder sb = new StringBuilder();
+            for (String w : words) {
+                if (!w.isEmpty()) {
+                    sb.append(Character.toUpperCase(w.charAt(0)));
+                }
+            }
+            base = sb.toString();
+        } else {
+            String alnum = name.trim().replaceAll("[^A-Za-z0-9]", "");
+            base = alnum.substring(0, Math.min(3, alnum.length())).toUpperCase();
+        }
+        return base.replaceAll("[^A-Z0-9]", "");
+    }
+
+    private String sanitizePrefix(String s) {
+        return s.trim().toUpperCase().replaceAll("[^A-Z0-9]", "");
     }
 }

@@ -19,6 +19,7 @@
 | Phase 8 | Notification Service | ✅ Livrée | — |
 | Phase 9 | Meeting Service (JaaS) | ✅ Terminé (Lot 9A + 9B) | — |
 | Phase 10 | Meeting — évolutions visio (M1→M6) | 🚧 M1 backend ✅ · M2→M6 en pause | — |
+| Correctif | Project — `task_key` lisible (PREFIX-NNN) | ✅ Livré (V2) | — |
 
 ## Détail par phase livrée
 
@@ -343,6 +344,15 @@ Enregistrer la réunion et permettre à l'utilisateur de sauvegarder la vidéo �
 - **Frontend** : bouton Enregistrer (réservé au modérateur), indicateur d'enregistrement, récupération/téléchargement du fichier.
 
 > **Ordre retenu** : **M1 livré (backend)**. **M2 → M6 mis en pause** à la demande (2026-07-06) — on se concentre sur M1 et sur l'alignement du document de référence avant de poursuivre. Rien n'est abandonné : chat (M2), lobby (M3), partage de fichiers (M5) et enregistrement (M6) restent au plan.
+
+## Correctif Project · `task_key` lisible (PREFIX-NNN) — ✅ Livré
+Écart d'audit : le frontend et le doc de référence attendaient un identifiant lisible de tâche (ex. `MOB-101`), **non implémenté au backend**. Comblé ici (migration **V2**).
+- **Migration `V2__add_task_key.sql`** : `projects.prefix` (VARCHAR(10)) + `projects.task_sequence` (INTEGER DEF 0) + `tasks.task_key` (VARCHAR(20)) ; **backfill** PL/pgSQL (prefix dérivé du nom, unicité par workspace, tâches existantes numérotées par `created_date`) ; contraintes `UNIQUE(organisation_id, prefix)` et `UNIQUE(project_id, task_key)`.
+- **Prefix** : dérivé du nom (initiales si ≥ 2 mots — « Refonte Site Web » → `RSW` ; sinon 3 premières lettres — « Application Mobile » → `AM`), **personnalisable** à la création (`CreateProjectRequest.prefix`) et modifiable ensuite (`UpdateProjectRequest.prefix`, 409 si collision), unique par workspace (suffixe numérique `AM1`, `AM2`…). Changer le prefix n'altère pas les `task_key` déjà émises.
+- **`task_key`** généré à la création de chaque tâche : `prefix + "-" + (++task_sequence)`, la séquence étant incrémentée sous **verrou pessimiste** (`ProjectRepository.findByIdForUpdate`) pour éviter les courses.
+- **Exposé** dans `ProjectResponse.prefix` et `TaskResponse.taskKey` (MapStruct auto-mappe).
+- **Tests (live, direct project-service + vérif DB)** : `AM`/`RSW`/`MONSITE` (dérivé + personnalisé) ✅ ; collision `Zeta Project` ×2 → `ZP`/`ZP1` ✅ ; `task_key` `ZP-1`, `ZP-2` ✅ ; changement prefix → `ALPHA-3` (séquence continue, anciennes inchangées) ✅ ; collision update → **409** ✅ ; backfill : **0 `task_key` null**, 0 `prefix` null ✅.
+- **Doc de référence aligné** : §4.2 (Project +`prefix`/`taskSequence`, Task +`taskKey`), Partie V (`projects` : ligne `taskKey` erronée retirée, `prefix` VARCHAR(5)→(10)).
 
 ## Notes d'environnement (à connaître pour reprendre)
 - **Build Maven sur l'hôte Windows** : nécessite `-Djavax.net.ssl.trustStoreType=WINDOWS-ROOT` (proxy TLS d'entreprise qui ré-signe HTTPS ; sans ça, PKIX path building failed sur Maven Central). Le build **Docker** n'est pas affecté (environnement conteneur propre).

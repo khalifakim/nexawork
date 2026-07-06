@@ -39,6 +39,14 @@ public class Project extends Auditable {
     @Column(name = "name", nullable = false)
     private String name;
 
+    /** Préfixe court (ex. MOB) pour les {@code task_key} ; unique par workspace. */
+    @Column(name = "prefix", nullable = false, length = 10)
+    private String prefix;
+
+    /** Dernier numéro de tâche attribué ; incrémenté à chaque création de tâche. */
+    @Column(name = "task_sequence", nullable = false)
+    private Integer taskSequence;
+
     @Column(name = "description", columnDefinition = "TEXT")
     private String description;
 

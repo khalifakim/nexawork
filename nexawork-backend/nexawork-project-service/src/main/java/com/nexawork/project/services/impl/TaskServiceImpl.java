@@ -21,6 +21,7 @@ import com.nexawork.project.mappers.TaskMapper;
 import com.nexawork.project.repositories.SubTaskRepository;
 import com.nexawork.project.repositories.TaskAttachmentRepository;
 import com.nexawork.project.repositories.TaskCommentRepository;
+import com.nexawork.project.repositories.ProjectRepository;
 import com.nexawork.project.repositories.TaskRepository;
 import com.nexawork.project.repositories.TeamRepository;
 import com.nexawork.project.repositories.WorkflowStatusRepository;
@@ -52,6 +53,7 @@ import java.util.UUID;
 public class TaskServiceImpl implements TaskService {
 
     TaskRepository taskRepository;
+    ProjectRepository projectRepository;
     WorkflowStatusRepository statusRepository;
     WorkflowTransitionRepository transitionRepository;
     TeamRepository teamRepository;
@@ -79,8 +81,16 @@ public class TaskServiceImpl implements TaskService {
         validateAssignee(project, request.getAssigneeType(), request.getAssigneeId());
         WorkflowStatus status = resolveStatus(project, request.getStatusId());
 
+        // task_key lisible : incrémente la séquence du projet (verrou pessimiste) → PREFIX-NNN.
+        Project locked = projectRepository.findByIdForUpdate(projectId)
+                .orElseThrow(() -> new ResourceNotFoundException("Projet introuvable."));
+        int seq = (locked.getTaskSequence() == null ? 0 : locked.getTaskSequence()) + 1;
+        locked.setTaskSequence(seq);
+        String taskKey = locked.getPrefix() + "-" + seq;
+
         Task task = taskRepository.save(Task.builder()
-                .project(project)
+                .project(locked)
+                .taskKey(taskKey)
                 .title(request.getTitle())
                 .description(request.getDescription())
                 .status(status)

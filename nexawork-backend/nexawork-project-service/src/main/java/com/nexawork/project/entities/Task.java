@@ -45,6 +45,10 @@ public class Task extends Auditable {
     @JoinColumn(name = "project_id", nullable = false)
     private Project project;
 
+    /** Identifiant lisible {@code PREFIX-NNN} (ex. MOB-101) ; unique par projet. */
+    @Column(name = "task_key", nullable = false, length = 20)
+    private String taskKey;
+
     @Column(name = "title", nullable = false)
     private String title;
 

@@ -19,6 +19,7 @@ public class TaskResponse {
 
     private UUID id;
     private UUID projectId;
+    private String taskKey;
     private String title;
     private String description;
     private UUID statusId;

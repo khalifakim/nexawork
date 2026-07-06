@@ -19,6 +19,7 @@ public class ProjectResponse {
 
     private UUID id;
     private String name;
+    private String prefix;
     private String description;
     private String color;
     private UUID organisationId;
