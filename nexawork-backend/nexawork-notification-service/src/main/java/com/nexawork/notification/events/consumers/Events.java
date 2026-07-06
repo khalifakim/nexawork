@@ -35,4 +35,9 @@ public final class Events {
             UUID callId, String topic, String guestEmail, String guestDisplayName,
             String guestToken, UUID inviterUserId) {
     }
+
+    public record MeetingParticipantInvited(
+            UUID callId, String topic, UUID organisationId, UUID projectId,
+            UUID inviterUserId, String inviterDisplayName, UUID recipientUserId) {
+    }
 }

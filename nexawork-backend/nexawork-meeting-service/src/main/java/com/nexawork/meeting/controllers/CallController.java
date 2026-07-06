@@ -3,6 +3,7 @@ package com.nexawork.meeting.controllers;
 import com.nexawork.commons.models.Response;
 import com.nexawork.meeting.dtos.requests.CreateCallRequest;
 import com.nexawork.meeting.dtos.requests.InviteGuestRequest;
+import com.nexawork.meeting.dtos.requests.InviteParticipantsRequest;
 import com.nexawork.meeting.dtos.responses.CallResponse;
 import com.nexawork.meeting.dtos.responses.GuestInviteResponse;
 import com.nexawork.meeting.services.CallService;
@@ -48,6 +49,12 @@ public class CallController {
         return Response.<List<CallResponse>>ok().setPayload(callService.history());
     }
 
+    /** Appels en cours (ACTIVE) du workspace où l'appelant est convié ou hôte. */
+    @GetMapping("/active")
+    public Response<List<CallResponse>> active() {
+        return Response.<List<CallResponse>>ok().setPayload(callService.activeCalls());
+    }
+
     /** Appel en cours de l'appelant (source de vérité du popover « Appel en cours »). */
     @GetMapping("/ongoing")
     public Response<CallResponse> ongoing() {
@@ -73,6 +80,14 @@ public class CallController {
     @PostMapping("/{id}/end")
     public Response<Void> end(@PathVariable UUID id) {
         callService.end(id);
+        return Response.ok();
+    }
+
+    /** Invite des membres internes (workspace) → notification « réunion en cours ». */
+    @PostMapping("/{id}/participants")
+    public Response<Void> inviteParticipants(@PathVariable UUID id,
+                                             @Valid @RequestBody InviteParticipantsRequest request) {
+        callService.inviteParticipants(id, request.getUserIds());
         return Response.ok();
     }
 

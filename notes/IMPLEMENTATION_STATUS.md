@@ -18,6 +18,7 @@
 | Phase 7 | Messaging Service | ✅ Livrée | — |
 | Phase 8 | Notification Service | ✅ Livrée | — |
 | Phase 9 | Meeting Service (JaaS) | ✅ Terminé (Lot 9A + 9B) | — |
+| Phase 10 | Meeting — évolutions visio (M1→M6) | 🚧 En cours (M1 backend ✅ · M2 en cours) | — |
 
 ## Détail par phase livrée
 
@@ -299,7 +300,49 @@ Découpage : **9A** Appels + JaaS + REF A · **9B** Invités externes + historiq
 - **Modifs V5.1** : §4.6 (accès invité usage unique, masquage historique) et REF B implémentés conformément ; `frontend-base-url` ajouté au bloc `nexawork.meeting` du config-repo.
 - **Commit** : à venir
 
-> **Phase 9 terminée = tout le backend NexaWork (Phases 0 → 9) est livré.**
+> **Phase 9 terminée = socle backend NexaWork (Phases 0 → 9) livré.** Le frontend Angular des 9 domaines est également livré. La suite = **évolutions à valeur ajoutée de la visioconférence** (Phase 10 ci-dessous).
+
+## Phase 10 · Meeting Service — Évolutions visioconférence (roadmap)
+
+Objectif : dépasser le simple lancement d'appel JaaS pour apporter la valeur NexaWork (participants internes notifiés, approbation d'accès, historique du chat conservé, partage de fichiers, enregistrement). Rappel de l'état socle (Phase 9) : création d'appel + JWT JaaS (hôte modérateur), join/leave/end, `ongoing`, historique + masquage, invitation d'externes par email + lien à usage unique (token non-modérateur), REF A / REF B, event `call.ended`. Tables `meeting_messages` / `meeting_files` déjà présentes en base (V1) mais non exploitées.
+
+**Légende** : 🔜 = Phase 1 (à faire maintenant) · 🗓️ = planifié (après la Phase 1).
+
+### Lot M1 · Participants internes (notification « réunion en cours » + rejoindre) — ✅ Livré (backend)
+Couvre le point #2 (ajouter des membres du workspace qui reçoivent une notification, voient l'appel en cours et peuvent le rejoindre tant qu'il est actif).
+- **Backend (livré)** :
+  - `POST /calls/{id}/participants` (`{userIds:[...]}`) → crée des `CallParticipant` (`invited_explicitly=true`, non encore joints) ; ignore l'appelant et les doublons ; 409 si appel non ACTIVE.
+  - Event `meeting.participant.invited` (un par destinataire) publié sur `nexawork.events` → **consumer Notification** `nexawork.notification.meeting-invite` → notif `MEETING_INVITED` in-app + **push** « Réunion en cours — *inviteur* vous invite à « *topic* » — Rejoindre » (deep-link `/app/reunions/{callId}`). Queue ajoutée à `scripts/init-rabbitmq.sh`.
+  - `GET /calls/active` : appels **ACTIVE** du workspace où l'appelant est convié **ou** hôte (pastille « appel en cours » + bouton Rejoindre côté front).
+  - `CreateCallRequest.memberIds` optionnel : membres conviés dès la création (mêmes notifications).
+- **Tests (live, appel direct meeting-service, identités forgées)** : `POST /participants` U2+U3 → **200** ; **`GET /calls/active`** : membre invité U2 voit l'appel ✅, non-invité U4 → **0** ✅, hôte U1 le voit ✅ ; création avec `memberIds` → le membre voit l'appel ✅ ; **chaîne event prouvée** : `meeting.participant.invited` publié par membre **ET consommé** → 3 notifications `MEETING_INVITED` créées (log `NotificationCreator`).
+- **Frontend (reste)** : sélection des membres à la création ; pastille/toast « appel en cours » + bouton Rejoindre (branché sur la notif temps réel existante) + écran de liste `GET /calls/active`.
+
+### Lot M2 · Persistance de l'historique du chat de réunion — 🔜
+Couvre le point #7 (sauvegarder le chat à la fin pour consultation ultérieure), **sans remplacer** le chat JaaS (on l'écoute).
+- **Backend** : entité `MeetingMessage` + repository (table `meeting_messages` déjà en base) ; `POST /calls/{id}/messages` (ingestion depuis le front, auteur = identité Gateway ou nom d'invité) ; `GET /calls/{id}/messages` (consultation ; accessible aux participants) ; conservation garantie à la fin de l'appel.
+- **Frontend** : écoute de l'**IFrame API Jitsi** (`incomingMessage` / `outgoingMessage`) → POST vers le backend ; onglet « Historique du chat » dans le détail d'une réunion terminée.
+
+### Lot M3 · Approbation des participants (lobby) — 🗓️
+Couvre les points #4 (externes approuvés par le modérateur) et #5 (tout porteur de lien doit demander l'accès).
+- **Approche** : activer le **mode lobby JaaS** ; l'admission se fait dans l'iframe via l'IFrame API (`knockingParticipant` → `answerKnockingParticipant`). Le modérateur (hôte) admet/refuse.
+- **Backend** (si trace nécessaire) : état d'accès (`PENDING/ADMITTED/REJECTED`) + endpoints `request-access` / `admit` / `reject` ; sinon géré intégralement côté front via l'IFrame API.
+- **Frontend** : UI modérateur d'admission (liste des personnes en attente).
+
+### Lot M4 · Intégration fine de l'interface Jitsi (IFrame API) — 🗓️
+Couvre le point #6 (ouvrir automatiquement l'interface de réunion). L'ouverture simple est déjà côté front ; ce lot consolide l'usage de l'**IFrame API** (embarquée) qui conditionne aussi M2 (chat) et M3 (lobby) plutôt qu'une simple redirection vers `jitsiUrl`.
+
+### Lot M5 · Partage de fichiers pendant la réunion — 🗓️
+Couvre le point #8 (partage de fichiers, puis leur sauvegarde).
+- **Backend** : entité `MeetingFile` + repository (table `meeting_files` déjà en base) ; `POST /calls/{id}/files` (lie un `file_id` du File/GED Service) ; `GET /calls/{id}/files` ; conservation après la réunion.
+- **Frontend** : soit un **espace dédié de partage** à côté de l'iframe, soit un **chat maison complet** avec pièces jointes (choix à trancher).
+
+### Lot M6 · Enregistrement de la réunion — 🗓️
+Enregistrer la réunion et permettre à l'utilisateur de sauvegarder la vidéo à la fin (fonction JaaS payante, facturée à la minute).
+- **Backend/JaaS** : activer `context.features.recording=true` dans le JWT ; déclenchement via l'IFrame API (`startRecording` / `stopRecording`) ; définir la **cible de stockage** de l'enregistrement (téléchargement local, MinIO/GED, ou service tiers) et la récupération du fichier à la fin.
+- **Frontend** : bouton Enregistrer (réservé au modérateur), indicateur d'enregistrement, récupération/téléchargement du fichier.
+
+> **Ordre retenu** : on livre d'abord **M1 + M2** (réalisables immédiatement avec le socle actuel), puis M3 → M6. Rien n'est abandonné : partage de fichiers (M5) et enregistrement (M6) restent au plan.
 
 ## Notes d'environnement (à connaître pour reprendre)
 - **Build Maven sur l'hôte Windows** : nécessite `-Djavax.net.ssl.trustStoreType=WINDOWS-ROOT` (proxy TLS d'entreprise qui ré-signe HTTPS ; sans ça, PKIX path building failed sur Maven Central). Le build **Docker** n'est pas affecté (environnement conteneur propre).

@@ -33,6 +33,12 @@ public interface CallService {
     /** Appel ONGOING auquel l'appelant participe, ou {@code null} (source popover header). */
     CallResponse ongoing();
 
+    /** Invite des membres internes (Lot M1) : les ajoute + notifie « réunion en cours ». */
+    void inviteParticipants(UUID callId, java.util.List<UUID> userIds);
+
+    /** Appels ACTIVE du workspace où l'appelant est convié ou hôte (pastille « en cours »). */
+    List<CallResponse> activeCalls();
+
     /** Masque l'appel de l'historique personnel de l'appelant. */
     void hide(UUID callId);
 

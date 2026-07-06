@@ -78,6 +78,19 @@ public class NotificationConsumer {
                 .build());
     }
 
+    @RabbitListener(queues = "nexawork.notification.meeting-invite")
+    public void onMeetingParticipantInvited(Events.MeetingParticipantInvited e) {
+        creator.create(Command.builder()
+                .recipientUserId(e.recipientUserId())
+                .type(NotificationType.MEETING_INVITED)
+                .title("Réunion en cours")
+                .body(e.inviterDisplayName() + " vous invite à la réunion « " + e.topic() + " » — Rejoindre.")
+                .targetUrl("/app/reunions/" + e.callId())
+                .workspaceId(e.organisationId())
+                .payload(Map.of("callId", e.callId().toString()))
+                .build());
+    }
+
     @RabbitListener(queues = "nexawork.notification.external-guest")
     public void onExternalGuestInvited(Events.ExternalGuestInvited e) {
         String url = mail.getFrontendBaseUrl() + "/guest/" + e.guestToken();

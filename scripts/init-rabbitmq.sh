@@ -56,13 +56,14 @@ echo "Nettoyage queues obsolètes :"
 delete_queue_if_exists nexawork.ged.file-attached
 delete_queue_if_exists nexawork.notification.external-guest-invited
 
-# ── Queues Notification Service (5) — V5.1 §7.4 ───────────────────────────────
+# ── Queues Notification Service (6) — V5.1 §7.4 + Lot M1 ──────────────────────
 echo "Notification queues :"
 declare_queue_binding nexawork.notification.member-invited      member.invited
 declare_queue_binding nexawork.notification.task-assigned       task.assigned
 declare_queue_binding nexawork.notification.livrable-validated  livrable.validated
 declare_queue_binding nexawork.notification.call-ended          call.ended
 declare_queue_binding nexawork.notification.external-guest      external.guest.invited
+declare_queue_binding nexawork.notification.meeting-invite      meeting.participant.invited
 
 # ── Queue GED Service (1) — V5.1 §7.4 ─────────────────────────────────────────
 echo "GED queues :"

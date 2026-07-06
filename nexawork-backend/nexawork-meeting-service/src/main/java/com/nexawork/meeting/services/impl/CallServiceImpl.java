@@ -11,6 +11,7 @@ import com.nexawork.meeting.entities.MeetingHidden;
 import com.nexawork.meeting.entities.enums.CallStatus;
 import com.nexawork.meeting.events.publishers.CallEndedEvent;
 import com.nexawork.meeting.events.publishers.MeetingEventPublisher;
+import com.nexawork.meeting.events.publishers.MeetingParticipantInvitedEvent;
 import com.nexawork.meeting.properties.JitsiProperties;
 import com.nexawork.meeting.repositories.CallParticipantRepository;
 import com.nexawork.meeting.repositories.CallRepository;
@@ -69,6 +70,11 @@ public class CallServiceImpl implements CallService {
         participantRepository.save(CallParticipant.builder()
                 .call(call).userId(host)
                 .joinedAt(LocalDateTime.now()).invitedExplicitly(true).build());
+
+        // Membres internes conviés dès la création (Lot M1, optionnel).
+        if (request.getMemberIds() != null && !request.getMemberIds().isEmpty()) {
+            notifyInvited(call, request.getMemberIds());
+        }
 
         String token = tokenService.generateToken(call.getRoomName(), host,
                 caller.displayName(), null, true);
@@ -171,6 +177,27 @@ public class CallServiceImpl implements CallService {
     }
 
     @Override
+    public void inviteParticipants(UUID callId, List<UUID> userIds) {
+        Call call = loadInOrg(callId);
+        if (call.getStatus() != CallStatus.ACTIVE) {
+            throw new ConflictException("Cet appel n'est pas actif.");
+        }
+        notifyInvited(call, userIds);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<CallResponse> activeCalls() {
+        UUID me = caller.userId();
+        return callRepository.findByOrganisationIdOrderByCreatedAtDesc(caller.organisationId()).stream()
+                .filter(c -> c.getStatus() == CallStatus.ACTIVE)
+                .filter(c -> c.getHostUserId().equals(me)
+                        || participantRepository.findByCallIdAndUserId(c.getId(), me).isPresent())
+                .map(c -> toResponse(c, null))
+                .toList();
+    }
+
+    @Override
     public void hide(UUID callId) {
         loadInOrg(callId); // borne au workspace (404 sinon)
         UUID me = caller.userId();
@@ -191,6 +218,28 @@ public class CallServiceImpl implements CallService {
     }
 
     // ─── Helpers ────────────────────────────────────────────────────────────────
+
+    /**
+     * Ajoute des membres internes comme participants conviés (non encore joints) et
+     * publie un {@code meeting.participant.invited} par destinataire (→ notif « en cours »).
+     * Ignore l'appelant lui-même et les membres déjà participants.
+     */
+    private void notifyInvited(Call call, List<UUID> userIds) {
+        UUID inviter = caller.userId();
+        String inviterName = caller.displayName();
+        userIds.stream().distinct()
+                .filter(uid -> uid != null && !uid.equals(inviter))
+                .filter(uid -> participantRepository.findByCallIdAndUserId(call.getId(), uid).isEmpty())
+                .forEach(uid -> {
+                    participantRepository.save(CallParticipant.builder()
+                            .call(call).userId(uid).invitedExplicitly(true).build());
+                    eventPublisher.publish(MeetingEventPublisher.ROUTING_PARTICIPANT_INVITED,
+                            new MeetingParticipantInvitedEvent(call.getId(), call.getTopic(),
+                                    call.getOrganisationId(), call.getProjectId(),
+                                    inviter, inviterName, uid),
+                            "membre " + uid);
+                });
+    }
 
     /** REF A : refuse (409) si l'appelant est déjà dans un appel en cours. */
     private void requireNotAlreadyInCall(UUID userId) {

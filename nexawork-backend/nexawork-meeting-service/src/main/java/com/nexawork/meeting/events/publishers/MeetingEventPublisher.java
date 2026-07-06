@@ -20,6 +20,7 @@ public class MeetingEventPublisher {
     public static final String EXCHANGE = "nexawork.events";
     public static final String ROUTING_CALL_ENDED = "call.ended";
     public static final String ROUTING_GUEST_INVITED = "external.guest.invited";
+    public static final String ROUTING_PARTICIPANT_INVITED = "meeting.participant.invited";
 
     RabbitTemplate rabbitTemplate;
 
