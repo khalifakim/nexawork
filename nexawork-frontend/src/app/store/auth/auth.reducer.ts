@@ -13,7 +13,9 @@ const initialState: AuthState = {
 export const authReducer = createReducer(
   initialState,
   on(AuthActions.login, state => ({ ...state, loading: true, error: null })),
-  on(AuthActions.loginSuccess, (state, { response }) => {
+  // loginSuccess et refreshTokenSuccess partagent la même logique : stocker les
+  // tokens (rotation) et hydrater le profil depuis la réponse imbriquée.
+  on(AuthActions.loginSuccess, AuthActions.refreshTokenSuccess, (state, { response }) => {
     localStorage.setItem('nexawork_access_token', response.accessToken);
     localStorage.setItem('nexawork_refresh_token', response.refreshToken);
     return {
@@ -22,12 +24,15 @@ export const authReducer = createReducer(
       token: response.accessToken,
       refreshToken: response.refreshToken,
       user: {
-        id: response.userId,
-        email: response.email,
-        displayName: response.displayName,
-        organisationId: response.organisationId,
-        organisationName: response.organisationName,
-        orgRole: response.orgRole,
+        ...state.user,
+        id: response.user.id,
+        email: response.user.email,
+        displayName: response.user.displayName,
+        firstName: response.user.firstName,
+        lastName: response.user.lastName,
+        jobTitle: response.user.jobTitle,
+        photoUrl: response.user.photoUrl,
+        organisationId: response.activeWorkspaceId ?? state.user?.organisationId,
       },
     };
   }),

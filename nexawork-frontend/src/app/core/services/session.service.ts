@@ -3,7 +3,7 @@ import { Store } from '@ngrx/store';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { AuthActions } from '@store/auth/auth.actions';
 import { selectUser } from '@store/auth/auth.selectors';
-import { MOCK_AUTH_RESPONSE } from './auth.service';
+import { MOCK_AUTH_RESPONSE, MOCK_WORKSPACE_NAME } from './auth.service';
 import { DEFAULT_WORKSPACE_ID, WORKSPACES } from '@core/mock/workspaces';
 import { Workspace } from '@core/models/workspace.models';
 
@@ -95,7 +95,7 @@ export class SessionService {
   private fallbackView(): ActiveWorkspaceView {
     return {
       id: DEFAULT_WORKSPACE_ID,
-      name: MOCK_AUTH_RESPONSE.organisationName ?? 'Mon espace',
+      name: MOCK_WORKSPACE_NAME,
       color: '#6C70F0',
       role: 'OWNER',
       members: 1,

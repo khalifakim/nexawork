@@ -4,6 +4,7 @@ import { Router } from '@angular/router';
 import { catchError, map, switchMap, tap } from 'rxjs/operators';
 import { of } from 'rxjs';
 import { AuthService } from '@core/services/auth.service';
+import { extractApiError } from '@core/http/response.model';
 import { AuthActions } from './auth.actions';
 
 @Injectable()
@@ -17,9 +18,9 @@ export class AuthEffects {
       ofType(AuthActions.login),
       switchMap(({ request }) =>
         this.authService.login(request).pipe(
-          map(res => AuthActions.loginSuccess({ response: res.data })),
+          map(res => AuthActions.loginSuccess({ response: res })),
           catchError(err => of(AuthActions.loginFailure({
-            error: err.error?.message ?? 'Connexion échouée'
+            error: extractApiError(err, 'Connexion échouée')
           })))
         )
       )
@@ -47,7 +48,7 @@ export class AuthEffects {
         this.authService.register(request).pipe(
           map(() => AuthActions.registerSuccess()),
           catchError(err => of(AuthActions.registerFailure({
-            error: err.error?.message ?? 'Inscription échouée'
+            error: extractApiError(err, 'Inscription échouée')
           })))
         )
       )

@@ -1,44 +1,78 @@
 import { Injectable } from '@angular/core';
 import { Observable, of } from 'rxjs';
 import { delay } from 'rxjs/operators';
-import { AuthResponse, LoginRequest, RegisterRequest } from '@core/models/auth.models';
+import {
+  AuthResponse, LoginRequest, RefreshRequest, RegisterRequest, UserProfileResponse,
+} from '@core/models/auth.models';
+import { BaseHttpService } from '@core/http/base-http.service';
 
-/** Mock session for the current demo user ("Akim Koné" — admin + owner). */
+/** Nom du workspace de démo (mock uniquement — le backend le fournit via /workspaces). */
+export const MOCK_WORKSPACE_NAME = 'Atelier Nexa';
+
+/** Session mock pour l'utilisateur de démo ("Akim Koné" — admin + owner). */
 export const MOCK_AUTH_RESPONSE: AuthResponse = {
   accessToken: 'mock-access-token',
   refreshToken: 'mock-refresh-token',
-  tokenType: 'Bearer',
-  userId: 1,
-  email: 'akim.kone@nexa.io',
-  displayName: 'Akim Koné',
-  organisationId: 1,
-  organisationName: 'Atelier Nexa',
-  orgRole: 'OWNER',
+  activeWorkspaceId: '00000000-0000-0000-0000-000000000001',
+  user: {
+    id: '00000000-0000-0000-0000-0000000000a1',
+    email: 'akim.kone@nexa.io',
+    firstName: 'Akim',
+    lastName: 'Koné',
+    displayName: 'Akim Koné',
+    jobTitle: 'Product Designer',
+  },
 };
 
 /**
- * Mock auth service — returns the demo session without any backend. Replaced by
- * the real HTTP implementation once the backend is connected.
+ * Contrat d'authentification (V5.1 §13.1). Deux implémentations : mock (phase
+ * frontend) et HTTP (backend réel), liées dans `app.config.ts` selon
+ * `environment.useMock`.
  */
-@Injectable({ providedIn: 'root' })
-export class AuthService {
-  login(_request: LoginRequest): Observable<{ data: AuthResponse }> {
-    return of({ data: MOCK_AUTH_RESPONSE }).pipe(delay(250));
-  }
+export abstract class AuthService {
+  abstract login(request: LoginRequest): Observable<AuthResponse>;
+  abstract register(request: RegisterRequest): Observable<AuthResponse>;
+  /** `workspaceId` optionnel : scelle le nouveau token sur ce workspace (switch §3.6). */
+  abstract refresh(request: RefreshRequest): Observable<AuthResponse>;
+  abstract logout(refreshToken: string): Observable<unknown>;
+  abstract me(): Observable<UserProfileResponse>;
+}
 
-  register(_request: RegisterRequest): Observable<{ data: AuthResponse }> {
-    return of({ data: MOCK_AUTH_RESPONSE }).pipe(delay(250));
+@Injectable()
+export class AuthMockService extends AuthService {
+  login(_r: LoginRequest): Observable<AuthResponse> {
+    return of(MOCK_AUTH_RESPONSE).pipe(delay(250));
   }
-
-  refresh(_refreshToken: string): Observable<{ data: AuthResponse }> {
-    return of({ data: MOCK_AUTH_RESPONSE });
+  register(_r: RegisterRequest): Observable<AuthResponse> {
+    return of(MOCK_AUTH_RESPONSE).pipe(delay(250));
   }
-
-  logout(_refreshToken: string): Observable<unknown> {
+  refresh(_r: RefreshRequest): Observable<AuthResponse> {
+    return of(MOCK_AUTH_RESPONSE);
+  }
+  logout(_t: string): Observable<unknown> {
     return of(null);
   }
+  me(): Observable<UserProfileResponse> {
+    return of(MOCK_AUTH_RESPONSE.user);
+  }
+}
 
-  me(): Observable<{ data: AuthResponse }> {
-    return of({ data: MOCK_AUTH_RESPONSE });
+/** Implémentation réelle — Auth Service via la Gateway (enveloppe dé-wrappée). */
+@Injectable()
+export class AuthHttpService extends BaseHttpService implements AuthService {
+  login(request: LoginRequest): Observable<AuthResponse> {
+    return this.post$<AuthResponse>('auth', '/auth/login', request);
+  }
+  register(request: RegisterRequest): Observable<AuthResponse> {
+    return this.post$<AuthResponse>('auth', '/auth/register', request);
+  }
+  refresh(request: RefreshRequest): Observable<AuthResponse> {
+    return this.post$<AuthResponse>('auth', '/auth/refresh', request);
+  }
+  logout(refreshToken: string): Observable<unknown> {
+    return this.post$<unknown>('auth', '/auth/logout', { refreshToken });
+  }
+  me(): Observable<UserProfileResponse> {
+    return this.get$<UserProfileResponse>('auth', '/users/me');
   }
 }

@@ -10,6 +10,7 @@ import { AuthEffects } from '@store/auth/auth.effects';
 import { jwtInterceptor } from '@core/interceptors/jwt.interceptor';
 import { errorInterceptor } from '@core/interceptors/error.interceptor';
 import { provideDataServices } from '@core/services/data.providers';
+import { AuthService, AuthMockService, AuthHttpService } from '@core/services/auth.service';
 import { environment } from '@environment/environment';
 
 /**
@@ -26,6 +27,8 @@ export const appConfig: ApplicationConfig = {
     provideEffects([AuthEffects]),
     provideStoreDevtools({ maxAge: 25, logOnly: environment.production }),
     ...provideDataServices(),
+    // Auth suit le même pattern mock↔HTTP que les services de domaine (Phase I0).
+    { provide: AuthService, useClass: environment.useMock ? AuthMockService : AuthHttpService },
     { provide: LOCALE_ID, useValue: 'fr-FR' },
   ],
 };
