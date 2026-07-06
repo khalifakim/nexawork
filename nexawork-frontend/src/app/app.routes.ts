@@ -86,6 +86,8 @@ export const routes: Routes = [
     ],
   },
 
+  // Racine et routes inconnues → l'app ; l'authGuard renvoie vers /auth/landing si
+  // l'utilisateur n'est pas connecté (voir auth.guard.ts).
   { path: '', pathMatch: 'full', redirectTo: 'app/accueil/mes-taches' },
   { path: '**', redirectTo: 'app/accueil/mes-taches' },
 ];

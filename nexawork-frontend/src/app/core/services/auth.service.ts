@@ -27,7 +27,7 @@ export const MOCK_AUTH_RESPONSE: AuthResponse = {
 /**
  * Contrat d'authentification (V5.1 §13.1). Deux implémentations : mock (phase
  * frontend) et HTTP (backend réel), liées dans `app.config.ts` selon
- * `environment.useMock`.
+ * `environment.mock.auth`.
  */
 export abstract class AuthService {
   abstract login(request: LoginRequest): Observable<AuthResponse>;

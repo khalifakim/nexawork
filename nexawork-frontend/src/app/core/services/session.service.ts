@@ -1,11 +1,16 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
+import { Router } from '@angular/router';
 import { Store } from '@ngrx/store';
+import { take } from 'rxjs/operators';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { AuthActions } from '@store/auth/auth.actions';
-import { selectUser } from '@store/auth/auth.selectors';
-import { MOCK_AUTH_RESPONSE, MOCK_WORKSPACE_NAME } from './auth.service';
-import { DEFAULT_WORKSPACE_ID, WORKSPACES } from '@core/mock/workspaces';
-import { Workspace } from '@core/models/workspace.models';
+import { selectRefreshToken, selectUser } from '@store/auth/auth.selectors';
+import { AuthService, MOCK_AUTH_RESPONSE, MOCK_WORKSPACE_NAME } from './auth.service';
+import { WorkspaceService } from './workspace.service';
+import { WorkspaceLoaderService } from './workspace-loader.service';
+import { DEFAULT_WORKSPACE_ID } from '@core/mock/workspaces';
+import { CreateWorkspacePayload, UpdateWorkspacePayload, Workspace } from '@core/models/workspace.models';
+import { environment } from '@environment/environment';
 
 /** Display-friendly view of the active workspace (denormalised). */
 export interface ActiveWorkspaceView extends Workspace {}
@@ -40,6 +45,10 @@ export interface OngoingCall {
 @Injectable({ providedIn: 'root' })
 export class SessionService {
   private readonly store = inject(Store);
+  private readonly router = inject(Router);
+  private readonly auth = inject(AuthService);
+  private readonly workspaceService = inject(WorkspaceService);
+  private readonly loader = inject(WorkspaceLoaderService);
 
   /** Current signed-in user (signal). */
   readonly user = toSignal(this.store.select(selectUser), { initialValue: null });
@@ -47,8 +56,8 @@ export class SessionService {
   private readonly _activeWorkspaceId = signal<string>(DEFAULT_WORKSPACE_ID);
   readonly activeWorkspaceId = this._activeWorkspaceId.asReadonly();
 
-  /** All workspaces the current user belongs to (mutable via `createWorkspace`). */
-  private readonly _workspaces = signal<Workspace[]>(WORKSPACES.map(w => ({ ...w })));
+  /** Espaces de l'utilisateur — chargés depuis le backend (ou mock) via `loadWorkspaces()`. */
+  private readonly _workspaces = signal<Workspace[]>([]);
   readonly workspaces = this._workspaces.asReadonly();
 
   /** Denormalised view of the active workspace (id-driven). */
@@ -102,67 +111,101 @@ export class SessionService {
     };
   }
 
-  /** Establish the demo session and navigate into the workspace. */
-  enterWorkspace(): void {
-    this._activeWorkspaceId.set(DEFAULT_WORKSPACE_ID);
-    this.store.dispatch(AuthActions.loginSuccess({ response: MOCK_AUTH_RESPONSE }));
+  /** Charge (ou recharge) le catalogue des espaces de l'utilisateur. */
+  loadWorkspaces(): void {
+    this.workspaceService.list().subscribe(ws => {
+      this._workspaces.set(ws);
+      // Si aucun espace actif valide, sélectionne le premier disponible.
+      if (!ws.some(w => w.id === this._activeWorkspaceId()) && ws.length) {
+        this._activeWorkspaceId.set(ws[0].id);
+      }
+    });
   }
 
-  /** Switch the active workspace (e.g. from the header workspace menu). */
-  switchWorkspace(id: string): void {
-    if (this._workspaces().some(w => w.id === id)) {
-      this._activeWorkspaceId.set(id);
+  /**
+   * Ouvrir un espace depuis le sélecteur (§3.6) : scelle le token sur ce
+   * workspace (`refresh(workspaceId)` → claim `organisationId`/`orgRole`), fixe
+   * l'espace actif, puis entre dans l'app. Loader plein écran pendant la bascule.
+   */
+  enterWorkspace(id: string): void {
+    this.loader.show();
+    this._activeWorkspaceId.set(id);
+
+    if (environment.mock.auth) {
+      this.store.dispatch(AuthActions.loginSuccess({ response: MOCK_AUTH_RESPONSE }));
+      this.router.navigate(['/app']);
+      return;
     }
+    this.scopeTokenTo(id, () => this.router.navigate(['/app']));
+  }
+
+  /** Basculer l'espace actif (menu workspace du header / R19). */
+  switchWorkspace(id: string, then?: () => void): void {
+    if (!this._workspaces().some(w => w.id === id)) return;
+    this._activeWorkspaceId.set(id);
+    if (environment.mock.auth) { then?.(); return; }
+    this.scopeTokenTo(id, then);
+  }
+
+  /** `refresh(refreshToken, workspaceId)` → token org-scopé, puis callback. */
+  private scopeTokenTo(workspaceId: string, then?: () => void): void {
+    this.store.select(selectRefreshToken).pipe(take(1)).subscribe(refreshToken => {
+      if (!refreshToken) { then?.(); return; }
+      this.auth.refresh({ refreshToken, workspaceId }).subscribe({
+        next: response => {
+          this.store.dispatch(AuthActions.refreshTokenSuccess({ response }));
+          then?.();
+        },
+        error: () => then?.(),
+      });
+    });
   }
 
   /**
-   * Create a new workspace and add it to the catalog. Does NOT switch the
-   * active workspace — the user stays where they were, as specified.
-   * Returns the created workspace so callers can navigate or show a toast.
+   * Créer un espace (REF I : ne bascule PAS l'espace actif). Recharge le
+   * catalogue et retourne l'espace créé pour un toast / une navigation.
    */
-  createWorkspace(name: string, color: string): Workspace {
-    const base = this.slugify(name) || 'espace';
-    let id = base;
-    let i = 2;
-    const existing = this._workspaces();
-    while (existing.some(w => w.id === id)) { id = `${base}-${i++}`; }
-    const ws: Workspace = { id, name: name.trim(), color, role: 'OWNER', members: 1 };
-    this._workspaces.update(list => [...list, ws]);
-    return ws;
+  createWorkspace(payload: CreateWorkspacePayload, done?: (ws: Workspace) => void): void {
+    this.workspaceService.create(payload).subscribe(ws => {
+      this._workspaces.update(list => [...list, ws]);
+      done?.(ws);
+    });
   }
 
-  /** Update the current workspace's name and/or color (Paramètres → Général). */
-  updateActiveWorkspace(patch: Partial<Pick<Workspace, 'name' | 'color'>>): void {
+  /** Renommer / recolorer l'espace actif (Paramètres → Général). */
+  updateActiveWorkspace(patch: UpdateWorkspacePayload): void {
     const id = this._activeWorkspaceId();
-    this._workspaces.update(list => list.map(w => w.id === id ? { ...w, ...patch } : w));
+    this.workspaceService.update(id, patch).subscribe(ws =>
+      this._workspaces.update(list => list.map(w => w.id === id ? { ...w, ...ws } : w)));
   }
 
   /**
-   * R20 — quitter un workspace rejoint. Retire l'entrée de la liste locale.
-   * Retourne `wasActive: true` si l'utilisateur vient de quitter son workspace
-   * courant : dans ce cas le composant appelant est responsable de déclencher
-   * `logout()` + redirection login (l'utilisateur perd tout accès à la
-   * plateforme jusqu'à sa prochaine connexion).
+   * R20 — quitter un workspace rejoint. `wasActive` → le composant déclenche
+   * `logout()` + redirection (perte d'accès à la plateforme).
    */
-  leaveWorkspace(id: string): { wasActive: boolean; ok: boolean } {
-    const list = this._workspaces();
-    const target = list.find(w => w.id === id);
-    if (!target || target.role === 'OWNER') return { wasActive: false, ok: false };
-    const wasActive = this._activeWorkspaceId() === id;
-    this._workspaces.set(list.filter(w => w.id !== id));
-    return { wasActive, ok: true };
+  leaveWorkspace(id: string, done?: (r: { wasActive: boolean; ok: boolean }) => void): void {
+    const target = this._workspaces().find(w => w.id === id);
+    if (!target || target.role === 'OWNER') { done?.({ wasActive: false, ok: false }); return; }
+    this.workspaceService.leave(id).subscribe({
+      next: r => {
+        this._workspaces.update(list => list.filter(w => w.id !== id));
+        done?.({ wasActive: r.wasActive || this._activeWorkspaceId() === id, ok: true });
+      },
+      error: () => done?.({ wasActive: false, ok: false }),
+    });
   }
 
-  /**
-   * REF H — Supprimer le workspace actif (OWNER seul). Le composant appelant
-   * doit également déclencher `logout()` + redirection login puisque
-   * l'utilisateur perd son workspace de session.
-   */
-  deleteActiveWorkspace(): { ok: boolean } {
-    if (!this.isOwner()) return { ok: false };
+  /** REF H — Supprimer le workspace actif (OWNER seul). */
+  deleteActiveWorkspace(done?: (r: { ok: boolean }) => void): void {
+    if (!this.isOwner()) { done?.({ ok: false }); return; }
     const id = this._activeWorkspaceId();
-    this._workspaces.update(list => list.filter(w => w.id !== id));
-    return { ok: true };
+    this.workspaceService.remove(id).subscribe({
+      next: () => {
+        this._workspaces.update(list => list.filter(w => w.id !== id));
+        done?.({ ok: true });
+      },
+      error: () => done?.({ ok: false }),
+    });
   }
 
   logout(): void {

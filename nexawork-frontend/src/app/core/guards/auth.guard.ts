@@ -6,11 +6,13 @@ import { selectIsAuthenticated } from '@store/auth/auth.selectors';
 import { environment } from '@environment/environment';
 
 export const authGuard: CanActivateFn = () => {
-  if (environment.useMock) return true;
+  // En mode mock auth, la session de démo est toujours considérée valide.
+  if (environment.mock.auth) return true;
   const store = inject(Store);
   const router = inject(Router);
   return store.select(selectIsAuthenticated).pipe(
     take(1),
-    map(isAuth => isAuth ? true : router.createUrlTree(['/auth/login']))
+    // Non connecté → page d'accueil (landing), pas directement le formulaire de login.
+    map(isAuth => isAuth ? true : router.createUrlTree(['/auth/landing']))
   );
 };

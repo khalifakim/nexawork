@@ -1,6 +1,8 @@
-import { ChangeDetectionStrategy, Component, computed, signal } from '@angular/core';
-import { Router, RouterLink } from '@angular/router';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { RouterLink } from '@angular/router';
+import { Store } from '@ngrx/store';
 import { IconComponent } from '@shared/ui/icon/icon.component';
+import { AuthActions } from '@store/auth/auth.actions';
 
 /**
  * Formulaire de création de compte — compact, tient dans la vue sans scroll.
@@ -86,7 +88,7 @@ import { IconComponent } from '@shared/ui/icon/icon.component';
   `],
 })
 export class InscriptionComponent {
-  constructor(private router: Router) {}
+  private readonly store = inject(Store);
 
   firstName = signal('');
   lastName  = signal('');
@@ -111,11 +113,19 @@ export class InscriptionComponent {
   });
 
   /**
-   * Simulation frontend : on ne bloque plus la soumission — l'utilisateur peut
-   * toujours passer à l'étape suivante. Les erreurs inline (mots de passe qui
-   * ne correspondent pas) restent visuelles pour guider la saisie.
+   * Inscription (§3.5). Dispatche `register` ; l'effet `register$` appelle le
+   * backend puis redirige vers `/auth/verify`. Les erreurs inline (mots de passe)
+   * restent visuelles ; la validation reste non bloquante pour le parcours.
    */
   submit(): void {
-    this.router.navigate(['/auth/verify']);
+    this.store.dispatch(AuthActions.register({
+      request: {
+        firstName: this.firstName().trim(),
+        lastName: this.lastName().trim(),
+        email: this.email().trim(),
+        password: this.password(),
+        jobTitle: this.fn().trim() || undefined,
+      },
+    }));
   }
 }

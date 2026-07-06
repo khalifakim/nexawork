@@ -27,17 +27,20 @@ export class AuthEffects {
     )
   );
 
+  // Après connexion : sélecteur d'espaces (§3.1/§3.6). Le choix d'un espace y
+  // établit le contexte workspace (token org-scopé, câblé en I1b).
   loginSuccess$ = createEffect(() =>
     this.actions$.pipe(
       ofType(AuthActions.loginSuccess),
-      tap(() => this.router.navigate(['/app']))
+      tap(() => this.router.navigate(['/auth/selector']))
     ), { dispatch: false }
   );
 
+  // Déconnexion → page d'accueil (landing), conformément à la redirection non-connecté.
   logout$ = createEffect(() =>
     this.actions$.pipe(
       ofType(AuthActions.logout),
-      tap(() => this.router.navigate(['/auth']))
+      tap(() => this.router.navigate(['/auth/landing']))
     ), { dispatch: false }
   );
 

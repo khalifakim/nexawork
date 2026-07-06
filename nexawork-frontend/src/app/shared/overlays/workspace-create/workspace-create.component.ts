@@ -96,8 +96,9 @@ export class WorkspaceCreateComponent {
 
   create(): void {
     if (!this.canCreate()) return;
-    const ws = this.session.createWorkspace(this.name(), this.color());
-    this.toast.show({ message: `Espace de travail « ${ws.name} » créé` });
-    this.closed.emit();
+    this.session.createWorkspace({ name: this.name(), color: this.color() }, ws => {
+      this.toast.show({ message: `Espace de travail « ${ws.name} » créé` });
+      this.closed.emit();
+    });
   }
 }

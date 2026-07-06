@@ -1,10 +1,8 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, computed, inject } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { SessionService } from '@core/services/session.service';
-import { WorkspaceLoaderService } from '@core/services/workspace-loader.service';
 import { IconComponent } from '@shared/ui/icon/icon.component';
-
-interface WsItem { name: string; sub: string; mono: string; grad: string; }
+import { Workspace } from '@core/models/workspace.models';
 
 @Component({
   selector: 'app-selecteur-espaces',
@@ -16,26 +14,26 @@ interface WsItem { name: string; sub: string; mono: string; grad: string; }
     <p class="nxf-sub">Choisissez un espace à ouvrir ou créez-en un nouveau.</p>
 
     <div class="grp">Créés par moi</div>
-    @for (w of mine; track w.name) {
+    @for (w of mine(); track w.id) {
       <div class="ws">
-        <div class="ws__logo" [style.background]="w.grad">{{ w.mono }}</div>
+        <div class="ws__logo" [style.background]="w.color">{{ mono(w) }}</div>
         <div style="flex:1;min-width:0">
           <div class="ws__name">{{ w.name }}</div>
-          <div class="ws__sub">{{ w.sub }}</div>
+          <div class="ws__sub">{{ w.members }} {{ w.members > 1 ? 'membres' : 'membre' }} · Propriétaire</div>
         </div>
-        <button class="ws__open ws__open--primary" (click)="enter()">Ouvrir</button>
+        <button class="ws__open ws__open--primary" (click)="enter(w)">Ouvrir</button>
       </div>
     }
 
     <div class="grp" style="margin-top:22px">Espaces rejoints</div>
-    @for (w of joined; track w.name) {
+    @for (w of joined(); track w.id) {
       <div class="ws">
-        <div class="ws__logo" [style.background]="w.grad">{{ w.mono }}</div>
+        <div class="ws__logo" [style.background]="w.color">{{ mono(w) }}</div>
         <div style="flex:1;min-width:0">
           <div class="ws__name">{{ w.name }}</div>
-          <div class="ws__sub">{{ w.sub }}</div>
+          <div class="ws__sub">{{ w.members }} {{ w.members > 1 ? 'membres' : 'membre' }} · {{ w.role === 'ADMIN' ? 'Administrateur' : 'Membre' }}</div>
         </div>
-        <button class="ws__open" (click)="enter()">Ouvrir</button>
+        <button class="ws__open" (click)="enter(w)">Ouvrir</button>
       </div>
     }
 
@@ -58,18 +56,21 @@ interface WsItem { name: string; sub: string; mono: string; grad: string; }
     .create:hover { border-color: var(--nx-indigo); color: var(--nx-indigo); }
   `],
 })
-export class SelecteurEspacesComponent {
+export class SelecteurEspacesComponent implements OnInit {
   private session = inject(SessionService);
-  private loader = inject(WorkspaceLoaderService);
 
-  mine: WsItem[] = [{ name: 'Atelier Nexa', sub: '12 membres · Propriétaire', mono: 'N', grad: 'linear-gradient(135deg,#6C70F0,#4B3FD6)' }];
-  joined: WsItem[] = [
-    { name: 'Studio Marbre', sub: '8 membres · Membre', mono: 'S', grad: 'linear-gradient(135deg,#3AA9E0,#2E7BC4)' },
-    { name: 'Coop Verte', sub: '5 membres · Membre', mono: 'C', grad: 'linear-gradient(135deg,#2BB673,#1E8F57)' },
-  ];
+  readonly mine = computed(() => this.session.workspaces().filter(w => w.role === 'OWNER'));
+  readonly joined = computed(() => this.session.workspaces().filter(w => w.role !== 'OWNER'));
 
-  enter(): void {
-    this.loader.show();
-    this.session.enterWorkspace();
+  ngOnInit(): void {
+    this.session.loadWorkspaces();
+  }
+
+  mono(w: Workspace): string {
+    return (w.name.trim()[0] ?? 'N').toUpperCase();
+  }
+
+  enter(w: Workspace): void {
+    this.session.enterWorkspace(w.id);
   }
 }

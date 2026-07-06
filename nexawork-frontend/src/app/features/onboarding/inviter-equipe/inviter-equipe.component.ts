@@ -86,8 +86,13 @@ export class InviterEquipeComponent {
   remove(i: number): void { this.state.emails.update(list => list.filter((_, idx) => idx !== i)); }
   back(): void { this.router.navigate(['/auth/workspace/name']); }
   finish(): void {
-    this.loader.show();
-    this.session.enterWorkspace();
-    this.state.reset();
+    // Crée l'espace configuré à l'étape 1 (nom + couleur) puis y entre (§3.3).
+    this.session.createWorkspace(
+      { name: this.state.name().trim() || 'Mon espace', color: this.state.color(), slug: this.state.slug() || undefined },
+      ws => {
+        this.state.reset();
+        this.session.enterWorkspace(ws.id);
+      },
+    );
   }
 }

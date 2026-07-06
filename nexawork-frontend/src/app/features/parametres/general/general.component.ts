@@ -141,10 +141,11 @@ export class ParamGeneralComponent {
    */
   confirmDelete(): void {
     const name = this.ws().name;
-    const { ok } = this.session.deleteActiveWorkspace();
-    this.deleteOpen.set(false);
-    if (!ok) return;
-    this.toast.show({ message: '« ' + name + ' » supprimé — vous êtes déconnecté.' });
-    this.session.logout(); // AuthEffect logout$ → route /auth
+    this.session.deleteActiveWorkspace(({ ok }) => {
+      this.deleteOpen.set(false);
+      if (!ok) return;
+      this.toast.show({ message: '« ' + name + ' » supprimé — vous êtes déconnecté.' });
+      this.session.logout(); // AuthEffect logout$ → route /auth/landing
+    });
   }
 }

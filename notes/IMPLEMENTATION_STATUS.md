@@ -59,7 +59,7 @@ I0 → I1 → I2 → I3 → I4 → I5 → I6 → I7 → I9 (recherche) → I10 (
 | Ordre | Phase | Domaine | Statut | Notes |
 | :-: | :-: | :- | :-: | :- |
 | 1 | **I0** | Socle transverse (enveloppe, context-paths, UUID, auth flux, WS, JWT/refresh) | ✅ | Livré + validé live (2026-07-06). |
-| 2 | **I1** | Auth & Workspace | ⏳ | Dépend I0. |
+| 2 | **I1** | Auth & Workspace | 🚧 | I1a ✅ (auth core + redirection) · I1b ✅ (workspaces & session, `mock.auth=false`) · **I1c ⏳** (reset MDP, invitations, membres). |
 | 3 | **I2** | Projects + Tasks/Kanban | ⏳ | Cœur métier, gros recâblage d'écritures. |
 | 4 | **I3** | Members | ⏳ | Annuaire + présence Redis. |
 | 5 | **I4** | Channels + Conversations (+ STOMP) | ⏳ | Temps réel. |
@@ -99,6 +99,31 @@ I0 → I1 → I2 → I3 → I4 → I5 → I6 → I7 → I9 (recherche) → I10 (
   workspace + `refresh(workspaceId)` → `activeWorkspaceId` + claims JWT `organisationId`/`orgRole` ✅ ;
   `ng build` vert ✅. `useMock` reste `true` (bascule par domaine à partir de I1).
 - **V5.1** : note §7.5 (WS URLs frontend) marquée résolue.
+- **Bascule progressive par domaine** : `environment.useMock` (booléen) → `environment.mock` (objet de
+  drapeaux par domaine : auth/projects/tasks/members/channels/conversations/ged/notifications/accueil/meetings/search).
+  À chaque fin de phase, le drapeau du domaine intégré passe à `false` → testable en réel dans le navigateur,
+  le reste reste en mock. `environment.prod.ts` = tout à `false`. Adaptés : `data.providers.ts`, `app.config.ts`,
+  `auth.guard.ts`. **Aucun flip global en fin de projet.**
+
+#### I1 · Auth & Workspace — 🚧 En cours (I1a+I1b livrés, `mock.auth=false`)
+- **I1a — Auth core + redirection** : `connexion`/`inscription` → formulaires réactifs + `dispatch(login/register)` réels ;
+  erreurs backend inline ; `authGuard` redirige non-connecté vers **`/auth/landing`** (page d'accueil) ; `logout` → landing ;
+  `loginSuccess` → sélecteur d'espaces, `register` → verify.
+- **I1b — Workspaces & session** : `WorkspaceService` (abstrait + Mock + Http) sur `/workspaces*`, `/workspace-members/leave` ;
+  `SessionService` charge la vraie liste (`loadWorkspaces`), `enterWorkspace(id)` scelle le token (`refresh(workspaceId)`
+  → claim `organisationId`/`orgRole`), `switchWorkspace` idem, `createWorkspace`/`updateActiveWorkspace`/`leaveWorkspace`/
+  `deleteActiveWorkspace` délèguent au backend. Recâblés : sélecteur (liste réelle), inviter-equipe (crée le 1ᵉʳ espace),
+  header (switch), Paramètres Général (renommer/supprimer) + Espaces (quitter), workspace-create modal.
+- **Bascule** : `environment.mock.auth = false` → auth + workspaces en **backend réel**. Reste en mock : projets, tâches,
+  GED, canaux, etc. (drapeaux séparés).
+- **Build** : `ng build` vert (mock ET réel).
+- **Reste I1c** : reset mot de passe (3 écrans → `/auth/password/*`), accepter invitation (`/invitations/{token}/accept`),
+  Paramètres ▸ Membres/Invitations (rôles, désactivation, relance). `rejoindre-invitation` est provisoire (mock) en attendant I1c.
+- **Suivi de test** : le test navigateur nécessite `localhost:8080` accessible depuis l'hôte (voir Notes d'environnement —
+  quirk Docker Desktop : redémarrer Docker Desktop si le port est figé), puis `npm start` (frontend sur :4200).
+- **Gap connu (I1b polish)** : persistance au **reload** — après un rechargement de page, le token est relu du localStorage
+  mais le profil (`user`) et le workspace actif ne sont pas réhydratés (`GET /users/me` + décodage JWT au démarrage à ajouter).
+  Sans impact sur un login frais.
 
 ## 3 · Décisions/gaps à acter (voir plan §5)
 - **Recherche** : implémenter `/search` fédéré **ou** garder le mock (I9 bloquée sinon).

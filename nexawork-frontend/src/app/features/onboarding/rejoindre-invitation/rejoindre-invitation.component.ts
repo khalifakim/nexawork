@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { SessionService } from '@core/services/session.service';
+import { DEFAULT_WORKSPACE_ID } from '@core/mock/workspaces';
 import { ToastService } from '@core/services/toast.service';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 
@@ -138,7 +139,10 @@ export class RejoindreInvitationComponent {
    * pour guider la saisie mais ne bloquent pas la navigation.
    */
   submit(): void {
-    this.session.enterWorkspace();
-    this.toast.show({ message: 'Bienvenue sur Atelier Nexa !' });
+    // Acceptation d'invitation (branchement backend réel = Lot I1c) : charge les
+    // espaces et entre dans le premier disponible.
+    this.session.loadWorkspaces();
+    this.session.enterWorkspace(DEFAULT_WORKSPACE_ID);
+    this.toast.show({ message: 'Bienvenue sur votre espace !' });
   }
 }

@@ -153,6 +153,9 @@ export class AppShellComponent {
   }
 
   constructor() {
+    // Charge le catalogue des espaces (header, sélecteur, Paramètres) à l'entrée.
+    this.session.loadWorkspaces();
+
     this.router.events.pipe(
       filter((e): e is NavigationEnd => e instanceof NavigationEnd),
       takeUntilDestroyed(),

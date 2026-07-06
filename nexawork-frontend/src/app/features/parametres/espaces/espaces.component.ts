@@ -175,14 +175,15 @@ export class ParamEspacesComponent {
   confirmLeave(): void {
     const w = this.leaveTarget();
     if (!w) return;
-    const { wasActive, ok } = this.session.leaveWorkspace(w.id);
-    this.leaveTarget.set(null);
-    if (!ok) return;
-    if (wasActive) {
-      this.toast.show({ message: 'Vous avez quitté « ' + w.name + ' » — vous êtes déconnecté.' });
-      this.session.logout(); // AuthEffect logout$ → route /auth
-    } else {
-      this.toast.show({ message: 'Vous avez quitté « ' + w.name + ' »' });
-    }
+    this.session.leaveWorkspace(w.id, ({ wasActive, ok }) => {
+      this.leaveTarget.set(null);
+      if (!ok) return;
+      if (wasActive) {
+        this.toast.show({ message: 'Vous avez quitté « ' + w.name + ' » — vous êtes déconnecté.' });
+        this.session.logout(); // AuthEffect logout$ → route /auth/landing
+      } else {
+        this.toast.show({ message: 'Vous avez quitté « ' + w.name + ' »' });
+      }
+    });
   }
 }
