@@ -18,7 +18,7 @@
 | Phase 7 | Messaging Service | ✅ Livrée | — |
 | Phase 8 | Notification Service | ✅ Livrée | — |
 | Phase 9 | Meeting Service (JaaS) | ✅ Terminé (Lot 9A + 9B) | — |
-| Phase 10 | Meeting — évolutions visio (M1→M6) | 🚧 En cours (M1 backend ✅ · M2 en cours) | — |
+| Phase 10 | Meeting — évolutions visio (M1→M6) | 🚧 M1 backend ✅ · M2→M6 en pause | — |
 
 ## Détail par phase livrée
 
@@ -342,7 +342,7 @@ Enregistrer la réunion et permettre à l'utilisateur de sauvegarder la vidéo �
 - **Backend/JaaS** : activer `context.features.recording=true` dans le JWT ; déclenchement via l'IFrame API (`startRecording` / `stopRecording`) ; définir la **cible de stockage** de l'enregistrement (téléchargement local, MinIO/GED, ou service tiers) et la récupération du fichier à la fin.
 - **Frontend** : bouton Enregistrer (réservé au modérateur), indicateur d'enregistrement, récupération/téléchargement du fichier.
 
-> **Ordre retenu** : on livre d'abord **M1 + M2** (réalisables immédiatement avec le socle actuel), puis M3 → M6. Rien n'est abandonné : partage de fichiers (M5) et enregistrement (M6) restent au plan.
+> **Ordre retenu** : **M1 livré (backend)**. **M2 → M6 mis en pause** à la demande (2026-07-06) — on se concentre sur M1 et sur l'alignement du document de référence avant de poursuivre. Rien n'est abandonné : chat (M2), lobby (M3), partage de fichiers (M5) et enregistrement (M6) restent au plan.
 
 ## Notes d'environnement (à connaître pour reprendre)
 - **Build Maven sur l'hôte Windows** : nécessite `-Djavax.net.ssl.trustStoreType=WINDOWS-ROOT` (proxy TLS d'entreprise qui ré-signe HTTPS ; sans ça, PKIX path building failed sur Maven Central). Le build **Docker** n'est pas affecté (environnement conteneur propre).
