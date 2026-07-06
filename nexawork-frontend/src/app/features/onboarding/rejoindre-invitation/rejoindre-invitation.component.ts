@@ -1,7 +1,7 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
-import { Router } from '@angular/router';
+import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
+import { ActivatedRoute } from '@angular/router';
 import { SessionService } from '@core/services/session.service';
-import { DEFAULT_WORKSPACE_ID } from '@core/mock/workspaces';
+import { AuthService } from '@core/services/auth.service';
 import { ToastService } from '@core/services/toast.service';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 
@@ -25,20 +25,20 @@ import { IconComponent } from '@shared/ui/icon/icon.component';
   template: `
     <span class="tag">Invitation</span>
     <div class="card">
-      <div class="card__av">SD</div>
+      <div class="card__av">{{ inviterInitials() }}</div>
       <div class="card__b">
-        <div class="card__by"><span class="card__bn">Sarah Diallo</span> vous invite à rejoindre</div>
+        <div class="card__by"><span class="card__bn">{{ inviterName() }}</span> vous invite à rejoindre</div>
         <div class="card__ws">
-          <div class="ws">N</div>
-          <span class="ws__n">Atelier Nexa</span>
-          <span class="ws__c">· 12 membres</span>
+          <div class="ws" [style.background]="workspaceColor()">{{ workspaceMono() }}</div>
+          <span class="ws__n">{{ workspaceName() }}</span>
+          <span class="ws__c">· {{ memberCount() }} membres</span>
         </div>
       </div>
     </div>
 
     <div class="role-line">
       <app-icon name="lock" [size]="14" [stroke]="2" />
-      Vous rejoindrez en tant que <span class="role-badge">Membre</span>
+      Vous rejoindrez en tant que <span class="role-badge">{{ roleLabel() }}</span>
     </div>
 
     <div class="row">
@@ -105,10 +105,14 @@ import { IconComponent } from '@shared/ui/icon/icon.component';
     .submit:disabled { background: #C9C5BD; box-shadow: none; cursor: not-allowed; }
   `],
 })
-export class RejoindreInvitationComponent {
+export class RejoindreInvitationComponent implements OnInit {
   private session = inject(SessionService);
+  private auth = inject(AuthService);
   private toast = inject(ToastService);
-  private router = inject(Router);
+  private route = inject(ActivatedRoute);
+
+  /** Token d'invitation porté par le lien email (`/auth/invite?token=…`). */
+  private token = this.route.snapshot.queryParamMap.get('token') ?? '';
 
   firstName = signal('');
   lastName  = signal('');
@@ -116,6 +120,29 @@ export class RejoindreInvitationComponent {
   password  = signal('');
   confirm   = signal('');
   role      = signal('');
+
+  // Contexte du bandeau (chargé depuis GET /invitations/{token}).
+  inviterName    = signal('…');
+  workspaceName  = signal('…');
+  workspaceColor = signal('#6C70F0');
+  memberCount    = signal(0);
+  private roleCode = signal<'ADMIN' | 'MEMBER'>('MEMBER');
+
+  inviterInitials = computed(() => this.inviterName().split(/\s+/).map(w => w[0] ?? '').join('').slice(0, 2).toUpperCase() || '?');
+  workspaceMono = computed(() => (this.workspaceName().trim()[0] ?? 'N').toUpperCase());
+  roleLabel = computed(() => this.roleCode() === 'ADMIN' ? 'Administrateur' : 'Membre');
+
+  ngOnInit(): void {
+    if (!this.token) return;
+    this.auth.getInvitation(this.token).subscribe(ctx => {
+      this.inviterName.set(ctx.inviterDisplayName);
+      this.workspaceName.set(ctx.workspaceName);
+      this.workspaceColor.set(ctx.workspaceColor);
+      this.memberCount.set(ctx.memberCount);
+      this.roleCode.set(ctx.role);
+      this.email.set(ctx.email); // email invité pré-rempli
+    });
+  }
 
   /** Vrai si l'utilisateur a saisi une confirmation qui diffère du mot de passe. */
   passwordMismatch = computed(() => {
@@ -134,15 +161,21 @@ export class RejoindreInvitationComponent {
   });
 
   /**
-   * Après validation, l'utilisateur rejoint directement le workspace ciblé.
-   * Simulation frontend : soumission ouverte, les erreurs inline restent
-   * pour guider la saisie mais ne bloquent pas la navigation.
+   * Acceptation d'invitation (§3.2) : crée le compte + rejoint l'espace. La
+   * réponse porte une session déjà scellée sur le workspace → entrée directe.
    */
   submit(): void {
-    // Acceptation d'invitation (branchement backend réel = Lot I1c) : charge les
-    // espaces et entre dans le premier disponible.
-    this.session.loadWorkspaces();
-    this.session.enterWorkspace(DEFAULT_WORKSPACE_ID);
-    this.toast.show({ message: 'Bienvenue sur votre espace !' });
+    this.auth.acceptInvitation(this.token, {
+      firstName: this.firstName().trim(),
+      lastName: this.lastName().trim(),
+      email: this.email().trim(),
+      password: this.password(),
+      jobTitle: this.role().trim() || undefined,
+    }).subscribe({
+      next: response => {
+        this.session.establishSession(response);
+        this.toast.show({ message: 'Bienvenue sur ' + this.workspaceName() + ' !' });
+      },
+    });
   }
 }

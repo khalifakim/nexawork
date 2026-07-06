@@ -69,3 +69,22 @@ export interface AuthResponse {
   activeWorkspaceId?: string | null;
   user: UserProfileResponse;
 }
+
+/** POST /invitations/{token}/accept — création de compte via invitation (§3.2). */
+export interface AcceptInvitationRequest {
+  firstName: string;
+  lastName: string;
+  email: string;
+  password: string;
+  jobTitle?: string;
+}
+
+/** GET /invitations/{token} — contexte public du bandeau d'invitation. */
+export interface InvitationContext {
+  workspaceName: string;
+  workspaceColor: string;
+  inviterDisplayName: string;
+  email: string;
+  role: 'ADMIN' | 'MEMBER';
+  memberCount: number;
+}

@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import { Router, RouterLink } from '@angular/router';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 import { PasswordResetState } from '@core/services/password-reset.state';
+import { AuthService } from '@core/services/auth.service';
 
 /**
  * Étape 1 du reset mot de passe — saisie de l'email de compte.
@@ -42,6 +43,7 @@ import { PasswordResetState } from '@core/services/password-reset.state';
 export class MdpSaisieEmailComponent {
   private router = inject(Router);
   private state = inject(PasswordResetState);
+  private auth = inject(AuthService);
 
   email = signal('');
   private touched = signal(false);
@@ -53,7 +55,10 @@ export class MdpSaisieEmailComponent {
   submit(): void {
     this.touched.set(true);
     if (!this.canSubmit()) return;
-    this.state.email.set(this.email().trim());
+    const email = this.email().trim();
+    this.state.email.set(email);
+    // Backend : envoi du lien (réponse silencieuse si le compte n'existe pas, §3.4).
+    this.auth.passwordResetRequest(email).subscribe();
     this.router.navigate(['/auth/forgot/sent']);
   }
 }

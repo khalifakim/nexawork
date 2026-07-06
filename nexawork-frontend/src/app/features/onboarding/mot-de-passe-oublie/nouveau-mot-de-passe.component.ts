@@ -1,7 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
-import { Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 import { ToastService } from '@core/services/toast.service';
+import { AuthService } from '@core/services/auth.service';
 
 /**
  * Étape finale du reset : nouveau mot de passe + confirmation.
@@ -52,6 +53,11 @@ import { ToastService } from '@core/services/toast.service';
 export class MdpNouveauComponent {
   private router = inject(Router);
   private toast  = inject(ToastService);
+  private auth   = inject(AuthService);
+  private route  = inject(ActivatedRoute);
+
+  /** Token du lien de réinitialisation reçu par email (`/auth/forgot/new?token=…`). */
+  private token = this.route.snapshot.queryParamMap.get('token') ?? '';
 
   pwd     = signal('');
   confirm = signal('');
@@ -62,7 +68,11 @@ export class MdpNouveauComponent {
 
   submit(): void {
     if (!this.canSubmit()) return;
-    this.toast.show({ message: 'Mot de passe réinitialisé — connectez-vous.' });
-    this.router.navigate(['/auth/login']);
+    this.auth.passwordReset(this.token, this.pwd()).subscribe({
+      next: () => {
+        this.toast.show({ message: 'Mot de passe réinitialisé — connectez-vous.' });
+        this.router.navigate(['/auth/login']);
+      },
+    });
   }
 }

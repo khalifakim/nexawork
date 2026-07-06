@@ -4,7 +4,8 @@ import { Store } from '@ngrx/store';
 import { take } from 'rxjs/operators';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { AuthActions } from '@store/auth/auth.actions';
-import { selectRefreshToken, selectUser } from '@store/auth/auth.selectors';
+import { selectRefreshToken, selectToken, selectUser } from '@store/auth/auth.selectors';
+import { decodeJwt } from '@core/util/jwt.util';
 import { AuthService, MOCK_AUTH_RESPONSE, MOCK_WORKSPACE_NAME } from './auth.service';
 import { WorkspaceService } from './workspace.service';
 import { WorkspaceLoaderService } from './workspace-loader.service';
@@ -91,6 +92,29 @@ export class SessionService {
    */
   readonly hasOngoingCall = computed<boolean>(() => this._ongoingCall() !== null);
 
+  constructor() {
+    // Réhydratation après un rechargement de page (backend réel) : le token est
+    // relu du localStorage par le reducer, mais le profil et le workspace actif
+    // doivent être restaurés (le claim `organisationId` du JWT + GET /users/me).
+    if (!environment.mock.auth) this.restoreSession();
+  }
+
+  private restoreSession(): void {
+    this.store.select(selectToken).pipe(take(1)).subscribe(token => {
+      const claims = decodeJwt(token);
+      if (!token || !claims) return;
+      if (claims.organisationId) this._activeWorkspaceId.set(claims.organisationId);
+      if (this.user()) return; // profil déjà en session (login frais)
+      this.auth.me().subscribe(u => this.store.dispatch(AuthActions.loadProfileSuccess({
+        user: {
+          id: u.id, email: u.email, displayName: u.displayName,
+          firstName: u.firstName, lastName: u.lastName, jobTitle: u.jobTitle, photoUrl: u.photoUrl,
+          organisationId: claims.organisationId, orgRole: claims.orgRole,
+        },
+      })));
+    });
+  }
+
   /** Démarrer un appel (rejoindre une réunion, prendre un appel entrant). */
   startCall(call: Omit<OngoingCall, 'startedAt'> & { startedAt?: number }): void {
     this._ongoingCall.set({ ...call, startedAt: call.startedAt ?? Date.now() });
@@ -109,6 +133,18 @@ export class SessionService {
       role: 'OWNER',
       members: 1,
     };
+  }
+
+  /**
+   * Établit une session déjà scellée sur un workspace (ex. acceptation
+   * d'invitation : la réponse porte le token org-scopé). Pas de `refresh`
+   * supplémentaire — on entre directement dans l'app.
+   */
+  establishSession(response: import('@core/models/auth.models').AuthResponse): void {
+    this.store.dispatch(AuthActions.refreshTokenSuccess({ response }));
+    if (response.activeWorkspaceId) this._activeWorkspaceId.set(response.activeWorkspaceId);
+    this.loadWorkspaces();
+    this.router.navigate(['/app']);
   }
 
   /** Charge (ou recharge) le catalogue des espaces de l'utilisateur. */

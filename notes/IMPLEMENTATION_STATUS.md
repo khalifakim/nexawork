@@ -16,7 +16,7 @@
 **Frontend : ✅ construit sur mocks.**
 **Phase en cours : intégration Frontend ↔ Backend (mock → HTTP)** — voir le plan. **Rien encore démarré** côté intégration.
 
-Progression globale intégration : **1 / 16 phases** (✅ I0 · prochaine : **I1 Auth & Workspace**).
+Progression globale intégration : **2 / 16 phases** (✅ I0, I1 · prochaine : **I2 Projects + Tasks/Kanban**).
 
 > **Décision actée (2026-07-06)** : aucune fonctionnalité simulée ou stub dans le livrable final — recherche
 > globale, rapports PDF et Meetings M2-M6 sont **tous à implémenter réellement** (exigences du mémoire).
@@ -59,7 +59,7 @@ I0 → I1 → I2 → I3 → I4 → I5 → I6 → I7 → I9 (recherche) → I10 (
 | Ordre | Phase | Domaine | Statut | Notes |
 | :-: | :-: | :- | :-: | :- |
 | 1 | **I0** | Socle transverse (enveloppe, context-paths, UUID, auth flux, WS, JWT/refresh) | ✅ | Livré + validé live (2026-07-06). |
-| 2 | **I1** | Auth & Workspace | 🚧 | I1a ✅ (auth core + redirection) · I1b ✅ (workspaces & session, `mock.auth=false`) · **I1c ⏳** (reset MDP, invitations, membres). |
+| 2 | **I1** | Auth & Workspace | ✅ | I1a (auth core + redirection) · I1b (workspaces & session) · I1c (reset MDP, invitations, membres). `mock.auth=false`. |
 | 3 | **I2** | Projects + Tasks/Kanban | ⏳ | Cœur métier, gros recâblage d'écritures. |
 | 4 | **I3** | Members | ⏳ | Annuaire + présence Redis. |
 | 5 | **I4** | Channels + Conversations (+ STOMP) | ⏳ | Temps réel. |
@@ -117,13 +117,23 @@ I0 → I1 → I2 → I3 → I4 → I5 → I6 → I7 → I9 (recherche) → I10 (
 - **Bascule** : `environment.mock.auth = false` → auth + workspaces en **backend réel**. Reste en mock : projets, tâches,
   GED, canaux, etc. (drapeaux séparés).
 - **Build** : `ng build` vert (mock ET réel).
-- **Reste I1c** : reset mot de passe (3 écrans → `/auth/password/*`), accepter invitation (`/invitations/{token}/accept`),
-  Paramètres ▸ Membres/Invitations (rôles, désactivation, relance). `rejoindre-invitation` est provisoire (mock) en attendant I1c.
-- **Suivi de test** : le test navigateur nécessite `localhost:8080` accessible depuis l'hôte (voir Notes d'environnement —
-  quirk Docker Desktop : redémarrer Docker Desktop si le port est figé), puis `npm start` (frontend sur :4200).
-- **Gap connu (I1b polish)** : persistance au **reload** — après un rechargement de page, le token est relu du localStorage
-  mais le profil (`user`) et le workspace actif ne sont pas réhydratés (`GET /users/me` + décodage JWT au démarrage à ajouter).
-  Sans impact sur un login frais.
+- **I1c — Mot de passe / invitations / membres** (livré) :
+  - **Reload persistence** : `SessionService.restoreSession()` (constructeur) — décode le JWT (`core/util/jwt.util.ts`) pour
+    restaurer le workspace actif + `GET /users/me` pour réhydrater le profil après un rechargement de page.
+  - **Reset mot de passe** : `saisie-email` → `POST /auth/password/reset-request` ; `nouveau-mot-de-passe` → `POST /auth/password/reset`
+    (token lu du query param). `AuthService` étendu (`passwordResetRequest`, `passwordReset`, `verifyEmail`).
+  - **Acceptation d'invitation** : `rejoindre-invitation` charge le contexte (`GET /invitations/{token}`) + `POST /invitations/{token}/accept`
+    → `SessionService.establishSession` (token déjà org-scopé). `AuthService.getInvitation`/`acceptInvitation`.
+  - **Paramètres ▸ Membres** : charge `GET /workspaces/{id}/members` (avec `userId`/`memberId`) ; changer rôle
+    (`PATCH /workspace-members/{id}/role`), activer/désactiver (`/active`), retirer (`DELETE`).
+  - **Paramètres ▸ Invitations** + **modal d'invitation** : `GET/POST /workspaces/{id}/invitations`, relancer (`/invitations/{id}/resend`),
+    annuler (`DELETE /invitations/{id}`). Le modal existant `shared/overlays/invitation` envoie réellement.
+  - **`WorkspaceService` étendu** (pas de nouveau service, respect du frontend) : `members`, `changeMemberRole`, `toggleMemberActive`,
+    `removeMember`, `invitations`, `sendInvitations`, `resendInvitation`, `cancelInvitation`. Modèle `Member` + `userId` ;
+    nouveaux `WorkspaceMemberAdmin`/`WorkspaceInvitation`.
+- **Test navigateur** : nécessite `localhost:8080` joignable depuis l'hôte + machine peu chargée (quirk Docker Desktop :
+  redémarrer Docker Desktop si le port `:8080` est figé — observé en fin de session), puis `npm start` (frontend :4200).
+  Endpoints tous prouvés en curl (I0). Test UI complet à faire quand la machine est disponible.
 
 ## 3 · Décisions/gaps à acter (voir plan §5)
 - **Recherche** : implémenter `/search` fédéré **ou** garder le mock (I9 bloquée sinon).

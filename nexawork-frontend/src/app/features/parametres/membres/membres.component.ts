@@ -1,12 +1,17 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 import { AvatarComponent } from '@shared/ui/avatar/avatar.component';
 import { ConfirmDialogComponent } from '@shared/overlays/confirm-dialog/confirm-dialog.component';
 import { ShellBus } from '@layouts/app-shell/shell.bus';
 import { ToastService } from '@core/services/toast.service';
+import { SessionService } from '@core/services/session.service';
+import { WorkspaceService } from '@core/services/workspace.service';
+import { WorkspaceMemberAdmin } from '@core/models/member.models';
 
 type WsRole = 'Propriétaire' | 'Administrateur' | 'Membre';
-interface Row { name: string; email: string; role: WsRole; color: string; me?: boolean; active: boolean; }
+interface Row { memberId: string; name: string; email: string; role: WsRole; color: string; me?: boolean; active: boolean; }
+
+const ROLE_FR: Record<string, WsRole> = { OWNER: 'Propriétaire', ADMIN: 'Administrateur', MEMBER: 'Membre' };
 
 /**
  * « Membres » — search box (live), role dropdown (Membre / Administrateur),
@@ -121,9 +126,11 @@ interface Row { name: string; email: string; role: WsRole; color: string; me?: b
   `,
   styleUrl: './membres.component.scss',
 })
-export class ParamMembresComponent {
+export class ParamMembresComponent implements OnInit {
   bus = inject(ShellBus);
   private toast = inject(ToastService);
+  private session = inject(SessionService);
+  private workspaceService = inject(WorkspaceService);
 
   query = signal('');
   roleMenu = signal<string | null>(null);
@@ -135,14 +142,20 @@ export class ParamMembresComponent {
     'Cette action est irréversible ; il devra être ré-invité pour revenir.',
   ];
 
-  private all = signal<Row[]>([
-    { name: 'Akim Koné',      email: 'akim.kone@nexa.io',     role: 'Propriétaire',   color: '#F2693C', me: true, active: true },
-    { name: 'Sarah Diallo',   email: 'sarah.diallo@nexa.io',  role: 'Administrateur', color: '#6C70F0',           active: true },
-    { name: 'Moussa Bâ',      email: 'moussa.ba@nexa.io',     role: 'Membre',         color: '#2BB673',           active: true },
-    { name: 'Aïda Ndiaye',    email: 'aida.ndiaye@nexa.io',   role: 'Membre',         color: '#E0497B',           active: false },
-    { name: 'Yacine Sow',     email: 'yacine.sow@nexa.io',    role: 'Membre',         color: '#3AA9E0',           active: true },
-    { name: 'Fatou Traoré',   email: 'fatou.traore@nexa.io',  role: 'Administrateur', color: '#E89A2C',           active: true },
-  ]);
+  private all = signal<Row[]>([]);
+
+  ngOnInit(): void {
+    const myId = this.session.user()?.id;
+    this.workspaceService.members(this.session.activeWorkspaceId()).subscribe(list =>
+      this.all.set(list.map((m: WorkspaceMemberAdmin) => ({
+        memberId: m.memberId, name: m.name, email: m.email, role: ROLE_FR[m.role], color: m.color,
+        me: m.userId === myId, active: m.active,
+      }))));
+  }
+
+  private memberIdByEmail(email: string): string | undefined {
+    return this.all().find(m => m.email === email)?.memberId;
+  }
 
   visible = computed<Row[]>(() => {
     const q = this.query().toLowerCase().trim();
@@ -165,26 +178,31 @@ export class ParamMembresComponent {
     this.dotsMenu.set(this.dotsMenu() === email ? null : email);
   }
   setRole(email: string, role: WsRole): void {
-    this.all.update(list => list.map(m => m.email === email ? { ...m, role } : m));
     this.roleMenu.set(null);
-    this.toast.show({ message: 'Rôle mis à jour' });
+    const id = this.memberIdByEmail(email);
+    if (!id || role === 'Propriétaire') return;
+    const backendRole = role === 'Administrateur' ? 'ADMIN' : 'MEMBER';
+    this.workspaceService.changeMemberRole(id, backendRole).subscribe(() => {
+      this.all.update(list => list.map(m => m.email === email ? { ...m, role } : m));
+      this.toast.show({ message: 'Rôle mis à jour' });
+    });
   }
   toggleActive(email: string): void {
-    let toggled: Row | undefined;
-    this.all.update(list => list.map(m => {
-      if (m.email !== email) return m;
-      toggled = { ...m, active: !m.active };
-      return toggled;
-    }));
-    if (toggled) {
-      this.toast.show({ message: toggled.active ? 'Membre réactivé' : 'Membre désactivé' });
-    }
+    const row = this.all().find(m => m.email === email);
+    if (!row) return;
+    const next = !row.active;
+    this.workspaceService.toggleMemberActive(row.memberId, next).subscribe(() => {
+      this.all.update(list => list.map(m => m.email === email ? { ...m, active: next } : m));
+      this.toast.show({ message: next ? 'Membre réactivé' : 'Membre désactivé' });
+    });
   }
 
   askRemove(m: Row): void { this.removing.set(m); }
   confirmRemove(m: Row): void {
-    this.all.update(list => list.filter(x => x.email !== m.email));
-    this.removing.set(null);
-    this.toast.show({ message: 'Membre retiré du workspace' });
+    this.workspaceService.removeMember(m.memberId).subscribe(() => {
+      this.all.update(list => list.filter(x => x.memberId !== m.memberId));
+      this.removing.set(null);
+      this.toast.show({ message: 'Membre retiré du workspace' });
+    });
   }
 }

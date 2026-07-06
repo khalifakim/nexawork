@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, ElementRef, EventEmitter, Output, V
 import { ModalShellComponent } from '@shared/ui/modal-shell/modal-shell.component';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 import { SessionService } from '@core/services/session.service';
+import { WorkspaceService } from '@core/services/workspace.service';
 import { ToastService } from '@core/services/toast.service';
 
 type InviteRole = 'Administrateur' | 'Membre';
@@ -95,6 +96,7 @@ export class InvitationModalComponent {
   @ViewChild('inp', { static: false }) private inputRef?: ElementRef<HTMLInputElement>;
 
   private session = inject(SessionService);
+  private workspaceService = inject(WorkspaceService);
   private toast = inject(ToastService);
 
   emails = signal<string[]>([]);
@@ -132,10 +134,16 @@ export class InvitationModalComponent {
   remove(email: string): void { this.emails.update(l => l.filter(x => x !== email)); }
 
   send(): void {
-    const n = this.emails().length;
-    if (!n) return;
-    this.toast.show({ message: `${n} invitation${n > 1 ? 's' : ''} envoyée${n > 1 ? 's' : ''} en tant que ${this.role()}` });
-    this.emails.set([]);
-    this.closed.emit();
+    const emails = this.emails();
+    if (!emails.length) return;
+    const role = this.role() === 'Administrateur' ? 'ADMIN' : 'MEMBER';
+    this.workspaceService.sendInvitations(this.session.activeWorkspaceId(), emails, role).subscribe({
+      next: () => {
+        const n = emails.length;
+        this.toast.show({ message: `${n} invitation${n > 1 ? 's' : ''} envoyée${n > 1 ? 's' : ''} en tant que ${this.role()}` });
+        this.emails.set([]);
+        this.closed.emit();
+      },
+    });
   }
 }
