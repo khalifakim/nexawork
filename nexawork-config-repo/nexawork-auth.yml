@@ -32,6 +32,10 @@ spring:
       mail.smtp.connectiontimeout: 5000
       mail.smtp.timeout: 5000
       mail.smtp.writetimeout: 5000
+      # Réseaux avec proxy TLS intercepteur (certificat auto-signé) : fait confiance
+      # au certificat SMTP présenté. Contournement pour dev/démo derrière un proxy —
+      # en prod sur un réseau sans interception, à retirer.
+      mail.smtp.ssl.trust: ${SMTP_SSL_TRUST:*}
 
 nexawork:
   jwt:

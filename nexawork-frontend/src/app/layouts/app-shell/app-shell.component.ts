@@ -21,12 +21,14 @@ import { GedAccessModalComponent } from '@shared/overlays/ged-access-modal/ged-a
 import { GedVersionsModalComponent } from '@shared/overlays/ged-versions-modal/ged-versions-modal.component';
 import { ConfirmDialogComponent } from '@shared/overlays/confirm-dialog/confirm-dialog.component';
 import { SessionService } from '@core/services/session.service';
+import { UserProfileService } from '@core/services/user-profile.service';
 import { TasksService } from '@core/services/tasks.service';
 import { ChannelsService } from '@core/services/channels.service';
 import { ToastService } from '@core/services/toast.service';
 import { GedOverlayBus } from '@core/services/ged-overlay.bus';
 import { TaskCard } from '@core/models/task.models';
 import { ShellBus } from './shell.bus';
+import { environment } from '@environment/environment';
 
 const SECTION_TITLES: Record<string, string> = {
   accueil: 'Accueil', projets: 'Projets', equipes: 'Équipes', documents: 'Documents',
@@ -105,6 +107,7 @@ export class AppShellComponent {
   bus = inject(ShellBus);
   ged = inject(GedOverlayBus);
   session = inject(SessionService);
+  private profileSvc = inject(UserProfileService);
 
   readonly deleteLines = [
     'Cette suppression est irréversible.',
@@ -153,8 +156,9 @@ export class AppShellComponent {
   }
 
   constructor() {
-    // Charge le catalogue des espaces (header, sélecteur, Paramètres) à l'entrée.
+    // Charge le catalogue des espaces + le profil réel (header, Paramètres) à l'entrée.
     this.session.loadWorkspaces();
+    if (!environment.mock.auth) this.profileSvc.load();
 
     this.router.events.pipe(
       filter((e): e is NavigationEnd => e instanceof NavigationEnd),

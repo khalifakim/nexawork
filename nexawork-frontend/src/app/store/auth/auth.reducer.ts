@@ -37,6 +37,10 @@ export const authReducer = createReducer(
     };
   }),
   on(AuthActions.loginFailure, (state, { error }) => ({ ...state, loading: false, error })),
+  // Inscription : même cycle loading/error que le login (feedback écran §3.5).
+  on(AuthActions.register, state => ({ ...state, loading: true, error: null })),
+  on(AuthActions.registerSuccess, state => ({ ...state, loading: false })),
+  on(AuthActions.registerFailure, (state, { error }) => ({ ...state, loading: false, error })),
   on(AuthActions.logout, () => {
     localStorage.removeItem('nexawork_access_token');
     localStorage.removeItem('nexawork_refresh_token');

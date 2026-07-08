@@ -59,7 +59,7 @@ I0 → I1 → I2 → I3 → I4 → I5 → I6 → I7 → I9 (recherche) → I10 (
 | Ordre | Phase | Domaine | Statut | Notes |
 | :-: | :-: | :- | :-: | :- |
 | 1 | **I0** | Socle transverse (enveloppe, context-paths, UUID, auth flux, WS, JWT/refresh) | ✅ | Livré + validé live (2026-07-06). |
-| 2 | **I1** | Auth & Workspace | ✅ | I1a (auth core + redirection) · I1b (workspaces & session) · I1c (reset MDP, invitations, membres). `mock.auth=false`. |
+| 2 | **I1** | Auth & Workspace | ✅ | I1a-c + **I1d emails/profil/sécurité/vérif** (voir détail). `mock.auth=false`. |
 | 3 | **I2** | Projects + Tasks/Kanban | ⏳ | Cœur métier, gros recâblage d'écritures. |
 | 4 | **I3** | Members | ⏳ | Annuaire + présence Redis. |
 | 5 | **I4** | Channels + Conversations (+ STOMP) | ⏳ | Temps réel. |
@@ -131,9 +131,22 @@ I0 → I1 → I2 → I3 → I4 → I5 → I6 → I7 → I9 (recherche) → I10 (
   - **`WorkspaceService` étendu** (pas de nouveau service, respect du frontend) : `members`, `changeMemberRole`, `toggleMemberActive`,
     `removeMember`, `invitations`, `sendInvitations`, `resendInvitation`, `cancelInvitation`. Modèle `Member` + `userId` ;
     nouveaux `WorkspaceMemberAdmin`/`WorkspaceInvitation`.
-- **Test navigateur** : nécessite `localhost:8080` joignable depuis l'hôte + machine peu chargée (quirk Docker Desktop :
-  redémarrer Docker Desktop si le port `:8080` est figé — observé en fin de session), puis `npm start` (frontend :4200).
-  Endpoints tous prouvés en curl (I0). Test UI complet à faire quand la machine est disponible.
+  - **`WorkspaceService` étendu** (pas de nouveau service, respect du frontend) : `members`, `changeMemberRole`, `toggleMemberActive`,
+    `removeMember`, `invitations`, `sendInvitations`, `resendInvitation`, `cancelInvitation`.
+- **I1d — Emails réels, vérification, profil, sécurité** (livré) :
+  - **Emails réels** : cause racine = **proxy TLS intercepteur du réseau** (cert auto-signé → « Could not convert socket to TLS »,
+    même cause que Maven PKIX). Fix : `mail.smtp.ssl.trust: ${SMTP_SSL_TRUST:*}` dans `config-repo/nexawork-auth.yml`.
+    **Emails partent réellement** (reset envoyé à Gmail, vérifié dans les logs). En prod sans proxy, retirer ce trust.
+  - **Blocage login non-vérifié** : `login()` refuse (`ForbiddenException`) si `!emailVerified` (backend).
+  - **Lien de vérification** : `verification-email.component` consomme `?token=` → `POST /auth/verify-email` → redirection login.
+  - **Profil** : `UserProfileService` chargé via `GET /users/me`, sauvé via `PATCH /users/me/profile` (prénom/nom/fonction réels).
+    Photo affichée localement (persistance MinIO via File Service = à faire, `photoUrl` VARCHAR(1024) ≠ base64).
+  - **Sécurité** : email réel affiché ; mot de passe (`PATCH /users/me/password`), email (`POST /users/me/email`),
+    lien reset (`POST /auth/password/reset-request`). `AuthService` étendu (`updateProfile`/`changePassword`/`changeEmail`).
+- **Setup de test opérationnel** : 6 conteneurs (config-server, postgres, rabbitmq, auth-service, api-gateway, frontend) via
+  Docker + accès navigateur **http://localhost:4200** (nginx proxifie → gateway interne, contourne le gel de `:8080`).
+  Ports Java hôtes (`:8080`/`:8081`) gelés par Docker Desktop → on teste **uniquement via :4200**. `register` prouvé (HTTP 201).
+- **Reste I1** : persistance photo de profil via File Service (avatar) — à faire avec I5.
 
 ## 3 · Décisions/gaps à acter (voir plan §5)
 - **Recherche** : implémenter `/search` fédéré **ou** garder le mock (I9 bloquée sinon).
@@ -142,6 +155,28 @@ I0 → I1 → I2 → I3 → I4 → I5 → I6 → I7 → I9 (recherche) → I10 (
 - **`membersOnline`** : champ frontend d'une KPI retirée → nettoyer.
 
 ---
+
+## 3bis · Setup d'exécution (tout-Docker, parité prod)
+
+**Décision (2026-07-06)** : tout tourne dans Docker, y compris le frontend, pour tester exactement ce qui
+ira en prod. Le frontend est servi par **nginx** qui fait aussi **reverse-proxy** vers la Gateway.
+
+- **`nexawork-frontend/nginx.conf`** : sert l'app Angular (SPA) + proxifie `/nexawork-*` et `/ws/*` vers
+  `api-gateway:8080` (réseau Docker interne). Le navigateur ne parle qu'à **une seule origine** (`localhost:4200`)
+  → pas de CORS, et **contourne le port hôte `:8080`** (souvent gelé par Docker Desktop).
+- **`environment.prod.ts`** : `apiUrl: ''` (même origine → nginx proxifie), `mock.auth=false`. Build image =
+  `--configuration=production`.
+- **`environment.ts`** (dev, `ng serve`) : `apiUrl: 'http://localhost:8080'` (appel direct gateway). Nécessite
+  que le port hôte `:8080` réponde.
+- **Workflow** : `docker compose up -d` (tout) → http://localhost:4200. Après un changement frontend :
+  `docker compose build frontend && docker compose up -d frontend` (~5 min). Backend : `docker compose build <service> && up -d <service>`.
+- **Piège** : après un changement de `nginx.conf` ou du code frontend, **l'image doit être reconstruite** —
+  sinon le conteneur tourne encore l'ancienne version (symptôme observé : nginx sans proxy → 405 sur `/nexawork-*`,
+  ancien message « Timeout has occurred »).
+- **Diagnostic email** : `register`/`reset`/`invite` déclenchent des emails SMTP (Gmail). SMTP **injoignable dans
+  cet environnement** (TLS bloqué) → `register` prend ~4 s (tentatives avant échec) et `/actuator/health` = 503
+  (indicateur `mail`). Non bloquant (sous le timeout de 20 s ; le compte est créé). En prod avec SMTP joignable,
+  instantané. Pour désactiver localement : override `NEXAWORK_MAIL_ENABLED=false` (env auth-service) — non fait pour ne pas retirer la fonctionnalité.
 
 ## 4 · Notes d'environnement (à connaître pour builder/tester)
 

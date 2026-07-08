@@ -39,11 +39,18 @@ export abstract class AuthService {
   abstract me(): Observable<UserProfileResponse>;
   abstract passwordResetRequest(email: string): Observable<unknown>;
   abstract passwordReset(token: string, newPassword: string): Observable<unknown>;
-  abstract verifyEmail(token: string): Observable<unknown>;
+  /** Confirme l'adresse et **connecte** l'utilisateur (§3.5) → enchaîne workspace. */
+  abstract verifyEmail(token: string): Observable<AuthResponse>;
   /** GET /invitations/{token} — contexte public (bandeau §3.2). */
   abstract getInvitation(token: string): Observable<InvitationContext>;
   /** POST /invitations/{token}/accept — crée le compte + rejoint l'espace. */
   abstract acceptInvitation(token: string, req: AcceptInvitationRequest): Observable<AuthResponse>;
+  /** PATCH /users/me/profile — prénom, nom, fonction, photo. */
+  abstract updateProfile(req: { firstName?: string; lastName?: string; jobTitle?: string; photoUrl?: string }): Observable<UserProfileResponse>;
+  /** PATCH /users/me/password. */
+  abstract changePassword(currentPassword: string, newPassword: string): Observable<unknown>;
+  /** POST /users/me/email — demande de changement (lien de confirmation envoyé). */
+  abstract changeEmail(newEmail: string): Observable<unknown>;
 }
 
 @Injectable()
@@ -65,7 +72,7 @@ export class AuthMockService extends AuthService {
   }
   passwordResetRequest(_e: string): Observable<unknown> { return of(null).pipe(delay(200)); }
   passwordReset(_t: string, _p: string): Observable<unknown> { return of(null).pipe(delay(200)); }
-  verifyEmail(_t: string): Observable<unknown> { return of(null); }
+  verifyEmail(_t: string): Observable<AuthResponse> { return of(MOCK_AUTH_RESPONSE).pipe(delay(200)); }
   getInvitation(_t: string): Observable<InvitationContext> {
     const ctx: InvitationContext = {
       workspaceName: MOCK_WORKSPACE_NAME, workspaceColor: '#6C70F0',
@@ -76,6 +83,11 @@ export class AuthMockService extends AuthService {
   acceptInvitation(_t: string, _r: AcceptInvitationRequest): Observable<AuthResponse> {
     return of(MOCK_AUTH_RESPONSE).pipe(delay(250));
   }
+  updateProfile(req: { firstName?: string; lastName?: string; jobTitle?: string; photoUrl?: string }): Observable<UserProfileResponse> {
+    return of({ ...MOCK_AUTH_RESPONSE.user, ...req } as UserProfileResponse).pipe(delay(150));
+  }
+  changePassword(_c: string, _n: string): Observable<unknown> { return of(null).pipe(delay(150)); }
+  changeEmail(_e: string): Observable<unknown> { return of(null).pipe(delay(150)); }
 }
 
 /** Implémentation réelle — Auth Service via la Gateway (enveloppe dé-wrappée). */
@@ -102,13 +114,22 @@ export class AuthHttpService extends BaseHttpService implements AuthService {
   passwordReset(token: string, newPassword: string): Observable<unknown> {
     return this.post$<unknown>('auth', '/auth/password/reset', { token, newPassword });
   }
-  verifyEmail(token: string): Observable<unknown> {
-    return this.post$<unknown>('auth', '/auth/verify-email', { token });
+  verifyEmail(token: string): Observable<AuthResponse> {
+    return this.post$<AuthResponse>('auth', '/auth/verify-email', { token });
   }
   getInvitation(token: string): Observable<InvitationContext> {
     return this.get$<InvitationContext>('auth', `/invitations/${token}`);
   }
   acceptInvitation(token: string, req: AcceptInvitationRequest): Observable<AuthResponse> {
     return this.post$<AuthResponse>('auth', `/invitations/${token}/accept`, req);
+  }
+  updateProfile(req: { firstName?: string; lastName?: string; jobTitle?: string; photoUrl?: string }): Observable<UserProfileResponse> {
+    return this.patch$<UserProfileResponse>('auth', '/users/me/profile', req);
+  }
+  changePassword(currentPassword: string, newPassword: string): Observable<unknown> {
+    return this.patch$<unknown>('auth', '/users/me/password', { currentPassword, newPassword });
+  }
+  changeEmail(newEmail: string): Observable<unknown> {
+    return this.post$<unknown>('auth', '/users/me/email', { newEmail });
   }
 }

@@ -27,5 +27,5 @@ public interface AuthenticationService {
 
     void resetPassword(PasswordResetConfirmRequest request);
 
-    void verifyEmail(VerifyEmailRequest request);
+    AuthResponse verifyEmail(VerifyEmailRequest request);
 }

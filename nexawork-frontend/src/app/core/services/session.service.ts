@@ -147,6 +147,26 @@ export class SessionService {
     this.router.navigate(['/app']);
   }
 
+  /**
+   * Établit la session après confirmation d'email (§3.5) puis route selon le
+   * contexte : **aucun workspace** (fondateur) → création du 1ᵉʳ espace ;
+   * un seul → entrée directe (token scellé) ; plusieurs → sélecteur.
+   */
+  establishSessionAfterVerification(response: import('@core/models/auth.models').AuthResponse): void {
+    this.store.dispatch(AuthActions.refreshTokenSuccess({ response }));
+    this.workspaceService.list().subscribe(ws => {
+      this._workspaces.set(ws);
+      if (ws.length === 0) {
+        this.router.navigate(['/auth/workspace/name']); // fondateur : crée son espace
+      } else if (ws.length === 1) {
+        this._activeWorkspaceId.set(ws[0].id);
+        this.scopeTokenTo(ws[0].id, () => this.router.navigate(['/app']));
+      } else {
+        this.router.navigate(['/auth/selector']);
+      }
+    });
+  }
+
   /** Charge (ou recharge) le catalogue des espaces de l'utilisateur. */
   loadWorkspaces(): void {
     this.workspaceService.list().subscribe(ws => {

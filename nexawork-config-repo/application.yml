@@ -39,9 +39,13 @@ nexawork-cors:
   max-age: 1800
 
 springdoc:
+  # Désactivé en dev/intégration : l'init springdoc (~25 s au 1er appel) ralentit
+  # inutilement la première requête. Réactiver (true) pour exposer Swagger.
   api-docs:
+    enabled: ${SPRINGDOC_ENABLED:false}
     path: /v3/api-docs
   swagger-ui:
+    enabled: ${SPRINGDOC_ENABLED:false}
     path: /swagger-ui.html
 
 management:

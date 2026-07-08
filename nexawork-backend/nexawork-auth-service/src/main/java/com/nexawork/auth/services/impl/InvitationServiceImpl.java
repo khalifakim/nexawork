@@ -212,7 +212,6 @@ public class InvitationServiceImpl implements InvitationService {
         invitation.setStatus(InvitationStatus.ACCEPTED);
         invitationRepository.save(invitation);
 
-        emailSender.sendWelcomeEmail(user.getEmail(), user.getFirstName());
         log.info("Invitation acceptée : {} rejoint {} en {}", user.getEmail(),
                 organisation.getName(), invitation.getRole());
 

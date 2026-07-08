@@ -1,6 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 import { ToastService } from '@core/services/toast.service';
+import { SessionService } from '@core/services/session.service';
+import { AuthService } from '@core/services/auth.service';
 
 /** « Sécurité » — email display + password change + reset-link. Fidèle à `settingsSecurite()`. */
 @Component({
@@ -17,7 +19,7 @@ import { ToastService } from '@core/services/toast.service';
         <div class="set-row set-row--first set-row--top">
           <div class="set-rlabel"><b>Email de connexion</b><small>Sert à vous identifier sur la plateforme.</small></div>
           <div class="set-rctrl" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-            <div class="set-input set-input--locked" style="max-width:300px">akim.kone&#64;nexa.io</div>
+            <div class="set-input set-input--locked" style="max-width:300px">{{ email() }}</div>
             <span class="set-verified"><app-icon name="check" [size]="14" />Adresse vérifiée</span>
           </div>
         </div>
@@ -90,6 +92,11 @@ import { ToastService } from '@core/services/toast.service';
 })
 export class ParamSecuriteComponent {
   private toast = inject(ToastService);
+  private session = inject(SessionService);
+  private auth = inject(AuthService);
+
+  /** Email de connexion réel de l'utilisateur courant. */
+  email = computed(() => this.session.user()?.email ?? '—');
 
   current = signal('');
   next = signal('');
@@ -106,17 +113,31 @@ export class ParamSecuriteComponent {
 
   updatePassword(): void {
     if (!this.canSubmit()) return;
-    this.toast.show({ message: 'Mot de passe mis à jour' });
-    this.current.set('');
-    this.next.set('');
-    this.confirm.set('');
+    this.auth.changePassword(this.current(), this.next()).subscribe({
+      next: () => {
+        this.toast.show({ message: 'Mot de passe mis à jour' });
+        this.current.set(''); this.next.set(''); this.confirm.set('');
+      },
+    });
   }
 
   sendResetLink(): void {
-    this.toast.show({ message: 'Lien de réinitialisation envoyé à akim.kone@nexa.io' });
+    const email = this.email();
+    this.auth.passwordResetRequest(email).subscribe();
+    this.toast.show({ message: 'Lien de réinitialisation envoyé à ' + email });
   }
 
   askEmailChange(): void {
-    this.toast.show({ message: 'Un lien de confirmation a été envoyé. Vérifiez votre boîte de réception.' });
+    const newEmail = window.prompt('Nouvelle adresse email :', '')?.trim();
+    if (!newEmail) return;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(newEmail)) {
+      this.toast.show({ message: 'Adresse email invalide.', icon: 'warning' });
+      return;
+    }
+    this.auth.changeEmail(newEmail).subscribe({
+      next: () => this.toast.show({
+        message: 'Un lien de confirmation a été envoyé à ' + newEmail + '. Le changement prend effet après vérification.',
+      }),
+    });
   }
 }

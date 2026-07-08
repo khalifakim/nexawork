@@ -1,5 +1,6 @@
 package com.nexawork.auth.services.impl;
 
+import com.nexawork.commons.exceptions.ForbiddenException;
 import com.nexawork.commons.exceptions.PasswordException;
 import com.nexawork.commons.exceptions.ResourceAlreadyExistException;
 import com.nexawork.commons.exceptions.ResourceNotFoundException;
@@ -85,9 +86,9 @@ public class AuthenticationServiceImpl implements AuthenticationService {
                 .build();
         user = userRepository.save(user);
 
+        // Un seul email : le lien de confirmation d'adresse (§3.5).
         UserActionToken verificationToken = createActionToken(user, ActionTokenType.EMAIL_VERIFICATION,
                 VERIFICATION_TOKEN_VALIDITY_HOURS);
-        emailSender.sendWelcomeEmail(user.getEmail(), user.getFirstName());
         emailSender.sendEmailVerification(user.getEmail(), user.getFirstName(), verificationToken.getToken());
 
         log.info("Nouveau compte créé : {}", user.getEmail());
@@ -103,6 +104,13 @@ public class AuthenticationServiceImpl implements AuthenticationService {
 
         User user = userRepository.findByEmailIgnoreCase(request.getEmail())
                 .orElseThrow(() -> new BadCredentialsException("Identifiants incorrects."));
+
+        // §3.5 — connexion refusée tant que l'adresse email n'est pas confirmée.
+        if (!Boolean.TRUE.equals(user.getEmailVerified())) {
+            throw new ForbiddenException(
+                    "Veuillez confirmer votre adresse email avant de vous connecter. "
+                    + "Vérifiez votre boîte de réception.");
+        }
 
         // §3.1 — workspace unique : contexte automatique ; sinon le client
         // passe par le sélecteur d'espaces puis /auth/refresh {workspaceId}.
@@ -175,7 +183,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     }
 
     @Override
-    public void verifyEmail(VerifyEmailRequest request) {
+    public AuthResponse verifyEmail(VerifyEmailRequest request) {
         UserActionToken token = consumeActionToken(request.getToken(), ActionTokenType.EMAIL_VERIFICATION);
         User user = token.getUser();
         // Changement d'email (§13.1 POST /users/me/email) : bascule de la
@@ -187,6 +195,14 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         user.setEmailVerified(true);
         userRepository.save(user);
         log.info("Email vérifié pour {}", user.getEmail());
+
+        // §3.5 — la confirmation connecte l'utilisateur : il enchaîne directement
+        // sur la création de son premier workspace (fondateur) sans re-login.
+        List<OrganisationMember> memberships = organisationMemberRepository.findAllByUserId(user.getId()).stream()
+                .filter(member -> Boolean.FALSE.equals(member.getIsDeactivated()))
+                .toList();
+        OrganisationMember context = memberships.size() == 1 ? memberships.get(0) : null;
+        return buildAuthResponse(user, context);
     }
 
     // ─── Helpers ────────────────────────────────────────────────────────────

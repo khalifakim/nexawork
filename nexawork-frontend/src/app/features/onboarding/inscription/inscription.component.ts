@@ -1,8 +1,10 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { Store } from '@ngrx/store';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 import { AuthActions } from '@store/auth/auth.actions';
+import { selectAuthError, selectAuthLoading } from '@store/auth/auth.selectors';
 
 /**
  * Formulaire de création de compte — compact, tient dans la vue sans scroll.
@@ -59,7 +61,12 @@ import { AuthActions } from '@store/auth/auth.actions';
              [value]="fn()" (input)="fn.set($any($event.target).value)" />
     </div>
 
-    <button class="su-primary" (click)="submit()">Créer mon compte</button>
+    @if (error()) {
+      <div class="su-err" style="margin:2px 0 8px">{{ error() }}</div>
+    }
+    <button class="su-primary" [disabled]="loading()" (click)="submit()">
+      {{ loading() ? 'Création…' : 'Créer mon compte' }}
+    </button>
     <p class="su-foot">Déjà un compte ? <button class="su-link" routerLink="/auth/login">Se connecter</button></p>
   `,
   styles: [`
@@ -89,6 +96,9 @@ import { AuthActions } from '@store/auth/auth.actions';
 })
 export class InscriptionComponent {
   private readonly store = inject(Store);
+
+  readonly loading = toSignal(this.store.select(selectAuthLoading), { initialValue: false });
+  readonly error = toSignal(this.store.select(selectAuthError), { initialValue: null });
 
   firstName = signal('');
   lastName  = signal('');
