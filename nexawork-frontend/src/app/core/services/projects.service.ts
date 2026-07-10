@@ -1,27 +1,151 @@
 import { Injectable, inject } from '@angular/core';
-import { Observable, of } from 'rxjs';
+import { Observable, map, of } from 'rxjs';
 import { delay } from 'rxjs/operators';
-import { Project } from '@core/models/project.models';
-import { PROJECTS_BY_WORKSPACE } from '@core/mock/projects';
+import { BaseHttpService } from '@core/http/base-http.service';
+import {
+  CreateProjectPayload, Project, ProjectResponse, UpdateProjectPayload,
+} from '@core/models/project.models';
+import { ARCHIVED_PROJECTS, PROJECTS_BY_WORKSPACE } from '@core/mock/projects';
 import { SessionService } from './session.service';
 
+/**
+ * Projets (Project Service §13.4). `list()` ne renvoie que les projets **actifs
+ * et visibles** par l'appelant ; les archivés passent par `listArchived()`
+ * (réservé ADMIN/OWNER — REF E, R6).
+ */
 export abstract class ProjectsService {
   abstract list(): Observable<Project[]>;
   abstract byId(id: string): Observable<Project | undefined>;
+  abstract create(payload: CreateProjectPayload): Observable<Project>;
+  abstract update(id: string, patch: UpdateProjectPayload): Observable<Project>;
+  abstract archive(id: string): Observable<void>;
+  abstract restore(id: string): Observable<void>;
+  abstract remove(id: string): Observable<void>;
+  abstract listArchived(): Observable<Project[]>;
 }
 
 @Injectable()
 export class ProjectsMockService extends ProjectsService {
   private readonly session = inject(SessionService);
+  private overrides: Record<string, Project[]> = {};
+  private archived: Project[] = ARCHIVED_PROJECTS.map(p => ({ ...p }));
+
+  private current(): Project[] {
+    const wsId = this.session.activeWorkspaceId();
+    return this.overrides[wsId] ?? PROJECTS_BY_WORKSPACE[wsId] ?? [];
+  }
+  private setCurrent(list: Project[]): void {
+    this.overrides[this.session.activeWorkspaceId()] = list;
+  }
 
   list(): Observable<Project[]> {
-    const wsId = this.session.activeWorkspaceId();
-    return of(PROJECTS_BY_WORKSPACE[wsId] ?? []).pipe(delay(80));
+    return of(this.current().map(p => ({ ...p }))).pipe(delay(80));
   }
 
   byId(id: string): Observable<Project | undefined> {
-    const wsId = this.session.activeWorkspaceId();
-    const list = PROJECTS_BY_WORKSPACE[wsId] ?? [];
-    return of(list.find(p => p.id === id));
+    const found = this.current().find(p => p.id === id) ?? this.archived.find(p => p.id === id);
+    return of(found ? { ...found } : undefined);
   }
+
+  create(payload: CreateProjectPayload): Observable<Project> {
+    const project: Project = {
+      id: payload.name.trim().toLowerCase().replace(/\s+/g, '-') + '-' + Date.now(),
+      name: payload.name.trim(),
+      color: payload.color ?? '#5B5FE9',
+      prefix: payload.prefix || payload.name.trim().slice(0, 3).toUpperCase(),
+      status: 'ACTIVE',
+      ownerUserId: 'u1',
+      memberCount: 1,
+      startDate: payload.startDate,
+      endDate: payload.endDate,
+      enforceWorkflowOrder: false,
+      createdDate: new Date().toISOString(),
+    };
+    this.setCurrent([...this.current(), project]);
+    return of({ ...project }).pipe(delay(80));
+  }
+
+  update(id: string, patch: UpdateProjectPayload): Observable<Project> {
+    this.setCurrent(this.current().map(p => p.id === id ? { ...p, ...patch } : p));
+    return of({ ...this.current().find(p => p.id === id)! }).pipe(delay(80));
+  }
+
+  archive(id: string): Observable<void> {
+    const project = this.current().find(p => p.id === id);
+    if (project) {
+      this.archived = [...this.archived, { ...project, status: 'ARCHIVED', lastModifiedDate: new Date().toISOString() }];
+      this.setCurrent(this.current().filter(p => p.id !== id));
+    }
+    return of(void 0).pipe(delay(80));
+  }
+
+  restore(id: string): Observable<void> {
+    const project = this.archived.find(p => p.id === id);
+    if (project) {
+      this.setCurrent([...this.current(), { ...project, status: 'ACTIVE' }]);
+      this.archived = this.archived.filter(p => p.id !== id);
+    }
+    return of(void 0).pipe(delay(80));
+  }
+
+  remove(id: string): Observable<void> {
+    this.setCurrent(this.current().filter(p => p.id !== id));
+    this.archived = this.archived.filter(p => p.id !== id);
+    return of(void 0).pipe(delay(80));
+  }
+
+  listArchived(): Observable<Project[]> {
+    return of(this.archived.map(p => ({ ...p }))).pipe(delay(80));
+  }
+}
+
+@Injectable()
+export class ProjectsHttpService extends BaseHttpService implements ProjectsService {
+  list(): Observable<Project[]> {
+    return this.get$<ProjectResponse[]>('project', '/projects').pipe(map(rs => rs.map(toProject)));
+  }
+  /** `GET /projects/{id}` accepte aussi un projet archivé (contrôle d'appartenance, pas de statut). */
+  byId(id: string): Observable<Project | undefined> {
+    return this.get$<ProjectResponse>('project', `/projects/${id}`).pipe(map(toProject));
+  }
+  create(payload: CreateProjectPayload): Observable<Project> {
+    return this.post$<ProjectResponse>('project', '/projects', payload).pipe(map(toProject));
+  }
+  update(id: string, patch: UpdateProjectPayload): Observable<Project> {
+    return this.patch$<ProjectResponse>('project', `/projects/${id}`, patch).pipe(map(toProject));
+  }
+  archive(id: string): Observable<void> {
+    return this.post$<void>('project', `/projects/${id}/archive`, {});
+  }
+  restore(id: string): Observable<void> {
+    return this.post$<void>('project', `/projects/${id}/restore`, {});
+  }
+  remove(id: string): Observable<void> {
+    return this.delete$<void>('project', `/projects/${id}`);
+  }
+  listArchived(): Observable<Project[]> {
+    return this.get$<ProjectResponse[]>('project', '/archived-projects').pipe(map(rs => rs.map(toProject)));
+  }
+}
+
+/** Couleur de repli quand le backend n'en porte pas. */
+const DEFAULT_PROJECT_COLOR = '#5B5FE9';
+
+/** `ProjectResponse` (backend) → `Project` (view-model). */
+function toProject(r: ProjectResponse): Project {
+  return {
+    id: r.id,
+    name: r.name,
+    color: r.color || DEFAULT_PROJECT_COLOR,
+    prefix: r.prefix,
+    description: r.description,
+    status: r.status,
+    ownerUserId: r.ownerUserId,
+    memberCount: r.memberCount ?? 0,
+    startDate: r.startDate,
+    endDate: r.endDate,
+    enforceWorkflowOrder: r.enforceWorkflowOrder ?? false,
+    createdDate: r.createdDate,
+    lastModifiedDate: r.lastModifiedDate,
+  };
 }

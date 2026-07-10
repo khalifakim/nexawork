@@ -1,42 +1,36 @@
 import {
   ChangeDetectionStrategy, Component, EventEmitter, Input, OnInit,
-  Output, computed, signal,
+  Output, computed, inject, signal,
 } from '@angular/core';
+import { forkJoin } from 'rxjs';
 import { IconComponent } from '@shared/ui/icon/icon.component';
+import { TasksService } from '@core/services/tasks.service';
+import { ToastService } from '@core/services/toast.service';
+import { CreateTaskPayload, KanbanColumn, TaskCard, TaskPriority } from '@core/models/task.models';
+import { tintOf } from '@core/util/ui.util';
 
 // ── Data ────────────────────────────────────────────────────────────────────
 
-const STATUSES = [
-  { name: 'À faire',     color: '#8E8AA0', bg: 'rgba(142,138,160,.14)' },
-  { name: 'En cours',    color: '#5B8DEF', bg: 'rgba(91,141,239,.16)'  },
-  { name: 'En révision', color: '#E89A2C', bg: 'rgba(232,154,44,.16)'  },
-  { name: 'Validé',      color: '#2BB673', bg: 'rgba(43,182,115,.16)'  },
-];
-
-const PRIOS = [
-  { name: 'Basse',   color: '#2BB673' },
-  { name: 'Moyenne', color: '#E89A2C' },
-  { name: 'Haute',   color: '#F5564E' },
-  { name: 'Urgente', color: '#E0497B' },
+const PRIOS: { name: string; color: string; value: TaskPriority }[] = [
+  { name: 'Basse',   color: '#2BB673', value: 'LOW' },
+  { name: 'Moyenne', color: '#E89A2C', value: 'MEDIUM' },
+  { name: 'Haute',   color: '#F5564E', value: 'HIGH' },
+  { name: 'Urgente', color: '#E0497B', value: 'URGENT' },
 ];
 
 const EST_OPTIONS = ['0,5 h', '1 h', '2 h', '4 h', '1 j', '2 j', '3 j', '1 sem'];
 
-const ME = { name: 'Akim Koné', c: '#F5A623' };
+const ME = { name: 'Moi', c: '#F5A623' };
 
-const MEMBERS = [
-  ME,
-  { name: 'Moussa Bâ',   c: '#5B5FE9' },
-  { name: 'Aïda Ndiaye', c: '#E0497B' },
-  { name: 'Fatou Sarr',  c: '#3AA9E0' },
-  { name: 'Yacine Sow',  c: '#2BB673' },
-];
+/**
+ * Annuaire des assignés — vide en I2b : l'annuaire des membres (résolution
+ * userId → nom/couleur) est câblé en I3. Le sélecteur reste présent (design
+ * préservé) mais n'affiche pas de personne tant que I3 n'a pas alimenté ces
+ * listes ; l'assigné n'est donc pas encore transmis à la création.
+ */
+const MEMBERS: { name: string; c: string }[] = [];
 
-const TEAMS = [
-  { name: 'Design Produit', c: '#6C70F0' },
-  { name: 'Développement',  c: '#2BB673' },
-  { name: 'Marketing',      c: '#F2693C' },
-];
+const TEAMS: { name: string; c: string }[] = [];
 
 // raw SVG paths used in field labels (not in the icon registry)
 const IC_STATUS = '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.4" fill="currentColor" stroke="none"/>';
@@ -94,22 +88,22 @@ const IC_USER   = '<circle cx="12" cy="8" r="3.4"/><path d="M5.5 20c0-3.6 2.9-6.
               <div class="fv">
                 <div class="fw">
                   <button class="st-btn"
-                          [style.background]="curStatus().bg"
-                          [style.color]="curStatus().color"
+                          [style.background]="tint(curStatus()?.color)"
+                          [style.color]="curStatus()?.color"
                           [style.border-color]="field()==='status' ? '#5B5FE9' : 'transparent'"
                           (click)="$event.stopPropagation(); openField('status')">
-                    <span class="st-dot" [style.background]="curStatus().color"></span>
-                    {{ curStatus().name }}
+                    <span class="st-dot" [style.background]="curStatus()?.color"></span>
+                    {{ curStatus()?.name }}
                     <app-icon name="chevronDown" [size]="13" [stroke]="2.4" />
                   </button>
                   @if (field() === 'status') {
                     <div class="dd" style="width:196px" (click)="$event.stopPropagation()">
-                      @for (s of STATUSES; track s.name) {
-                        <button class="dd__i" [class.dd__i--sel]="s.name === status()"
-                                (click)="status.set(s.name); field.set(null)">
+                      @for (s of columns; track s.id) {
+                        <button class="dd__i" [class.dd__i--sel]="s.id === statusId()"
+                                (click)="statusId.set(s.id); field.set(null)">
                           <span class="st-dot" [style.background]="s.color" style="flex:none"></span>
                           <span style="flex:1">{{ s.name }}</span>
-                          @if (s.name === status()) {
+                          @if (s.id === statusId()) {
                             <app-icon name="checkBig" [size]="15" style="color:#5B5FE9;display:flex" />
                           }
                         </button>
@@ -383,8 +377,8 @@ const IC_USER   = '<circle cx="12" cy="8" r="3.4"/><path d="M5.5 20c0-3.6 2.9-6.
     <div class="footer">
       <span style="flex:1"></span>
       <button class="ft-ghost" (click)="closed.emit()">Annuler</button>
-      <button class="ft-primary" [disabled]="!canCreate()" (click)="create()">
-        <app-icon name="plus" [size]="16" />Créer la tâche
+      <button class="ft-primary" [disabled]="!canCreate() || busy()" (click)="create()">
+        <app-icon name="plus" [size]="16" />{{ busy() ? "Création…" : "Créer la tâche" }}
       </button>
     </div>
 
@@ -693,13 +687,21 @@ const IC_USER   = '<circle cx="12" cy="8" r="3.4"/><path d="M5.5 20c0-3.6 2.9-6.
   `],
 })
 export class CreerTacheComponent implements OnInit {
-  @Input() column      = 'À faire';
-  @Input() projectName = 'Refonte App Mobile';
+  /** Colonnes réelles du projet (statuts) — alimentent le sélecteur de statut. */
+  @Input() columns: KanbanColumn[] = [];
+  /** Colonne pré-sélectionnée (là où l'utilisateur a cliqué « + »). */
+  @Input() initialStatusId: string | null = null;
+  @Input() projectId   = '';
+  @Input() projectName = '';
+  /** Nom de la colonne d'origine — affiché dans le fil d'Ariane. */
+  @Input() column      = '';
   @Output() closed  = new EventEmitter<void>();
-  @Output() created = new EventEmitter<string>();
+  @Output() created = new EventEmitter<TaskCard>();
+
+  private tasksSvc = inject(TasksService);
+  private toast    = inject(ToastService);
 
   // ── Expose constants to template ────────────────────────────────────────
-  readonly STATUSES     = STATUSES;
   readonly PRIOS        = PRIOS;
   readonly EST_OPTIONS  = EST_OPTIONS;
   readonly ME           = ME;
@@ -712,7 +714,7 @@ export class CreerTacheComponent implements OnInit {
   title        = signal('');
   desc         = signal('');
   field        = signal<string | null>(null);
-  status       = signal('À faire');
+  statusId     = signal<string | null>(null);
   assignee     = signal<string | null>(null);
   assigneeType = signal<'user' | 'team' | null>(null);
   assigneeQuery = signal('');
@@ -724,18 +726,29 @@ export class CreerTacheComponent implements OnInit {
   subs         = signal<string[]>([]);
   subAdding    = signal(false);
   subDraft     = signal('');
+  busy         = signal(false);
 
   // ── Computed ─────────────────────────────────────────────────────────────
-  curStatus = computed(() => STATUSES.find(s => s.name === this.status()) ?? STATUSES[0]);
+  curStatus = computed<KanbanColumn | undefined>(() =>
+    this.columns.find(c => c.id === this.statusId()) ?? this.columns[0]);
   curPrio   = computed(() => PRIOS.find(p => p.name === this.priority()) ?? null);
-  canCreate = computed(() => !!this.title().trim());
+  canCreate = computed(() => !!this.title().trim() && !!this.statusId());
   filteredMembers = computed(() => {
     const q = this.assigneeQuery().toLowerCase().trim();
     return MEMBERS.filter(m => m.name.toLowerCase().includes(q));
   });
 
+  tint(color: string | undefined): string { return tintOf(color ?? '#8E8AA0'); }
+
   // ── Lifecycle ────────────────────────────────────────────────────────────
-  ngOnInit(): void { this.status.set(this.column); }
+  ngOnInit(): void {
+    // Pré-sélectionne la colonne cliquée, sinon le statut initial du workflow.
+    const initial = this.initialStatusId
+      ?? this.columns.find(c => c.isInitial)?.id
+      ?? this.columns[0]?.id
+      ?? null;
+    this.statusId.set(initial);
+  }
 
   // ── Helpers ──────────────────────────────────────────────────────────────
   openField(k: string): void { this.field.set(this.field() === k ? null : k); }
@@ -776,7 +789,36 @@ export class CreerTacheComponent implements OnInit {
   removeSub(i: number): void { this.subs.update(l => l.filter((_, j) => j !== i)); }
 
   create(): void {
-    const t = this.title().trim();
-    if (t) this.created.emit(t);
+    const title = this.title().trim();
+    const statusId = this.statusId();
+    if (!title || !statusId || this.busy()) return;
+    this.busy.set(true);
+
+    const payload: CreateTaskPayload = {
+      title,
+      description: this.desc().trim() || undefined,
+      statusId,
+      priority: PRIOS.find(p => p.name === this.priority())?.value,
+      startDate: this.dateDebut() || undefined,
+      dueDate: this.dateFin() || undefined,
+      estimate: this.estimate() || undefined,
+      // Assigné : câblé en I3 (annuaire des membres).
+    };
+
+    this.tasksSvc.createTask(this.projectId, payload).subscribe({
+      next: card => {
+        const subs = this.subs();
+        if (subs.length === 0) { this.finish(card); return; }
+        // Les sous-tâches se créent après la tâche (elles ont besoin de son id).
+        forkJoin(subs.map(s => this.tasksSvc.addSubtask(card.id, s)))
+          .subscribe({ next: () => this.finish(card), error: () => this.finish(card) });
+      },
+      error: () => this.busy.set(false),
+    });
+  }
+
+  private finish(card: TaskCard): void {
+    this.toast.show({ message: 'Tâche ' + card.taskKey + ' créée' });
+    this.created.emit(card);
   }
 }

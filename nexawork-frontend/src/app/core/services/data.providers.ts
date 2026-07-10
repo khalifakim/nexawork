@@ -1,8 +1,8 @@
 import { Provider } from '@angular/core';
 import { environment } from '@environment/environment';
 import { MembersService, MembersMockService } from './members.service';
-import { ProjectsService, ProjectsMockService } from './projects.service';
-import { TasksService, TasksMockService } from './tasks.service';
+import { ProjectsService, ProjectsMockService, ProjectsHttpService } from './projects.service';
+import { TasksService, TasksMockService, TasksHttpService } from './tasks.service';
 import { GedService, GedMockService } from './ged.service';
 import { ConversationsService, ConversationsMockService } from './conversations.service';
 import { ChannelsService, ChannelsMockService } from './channels.service';
@@ -25,8 +25,8 @@ export function provideDataServices(): Provider[] {
   const m = environment.mock;
   return [
     { provide: MembersService,       useClass: MembersMockService },       // I3 → MembersHttpService
-    { provide: ProjectsService,      useClass: ProjectsMockService },      // I2 → ProjectsHttpService
-    { provide: TasksService,         useClass: TasksMockService },         // I2 → TasksHttpService
+    { provide: ProjectsService,      useClass: m.projects ? ProjectsMockService : ProjectsHttpService },
+    { provide: TasksService,         useClass: m.tasks ? TasksMockService : TasksHttpService },
     { provide: GedService,           useClass: GedMockService },           // I5 → GedHttpService
     { provide: ConversationsService, useClass: ConversationsMockService }, // I4 → ConversationsHttpService
     { provide: ChannelsService,      useClass: ChannelsMockService },      // I4 → ChannelsHttpService

@@ -3,7 +3,7 @@ import { ActivatedRoute } from '@angular/router';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 import { FilterChipComponent, FilterOption } from '@shared/ui/filter-chip/filter-chip.component';
 import { DueBucket, KanbanColumn, TaskCard } from '@core/models/task.models';
-import { TAG_TINT } from '@core/util/ui.util';
+import { tintOf } from '@core/util/ui.util';
 import { KanbanStore } from './kanban.store';
 
 @Component({
@@ -23,7 +23,7 @@ import { KanbanStore } from './kanban.store';
                          (valueChange)="store.setFilter('ech', $any($event))" />
         <span class="spacer"></span>
         @if (!readonly) {
-          <button class="add-task" (click)="create.emit('À faire')"><app-icon name="plus" [size]="15" [stroke]="2.2" />Ajouter une tâche</button>
+          <button class="add-task" (click)="create.emit('')"><app-icon name="plus" [size]="15" [stroke]="2.2" />Ajouter une tâche</button>
           @if (canManageBoard) {
             <div class="gearwrap">
               <button class="gear" [class.gear--on]="gearOpen()" title="Paramètres du tableau" (click)="gearOpen.set(!gearOpen())"><app-icon name="gear" [size]="17" /></button>
@@ -92,7 +92,7 @@ import { KanbanStore } from './kanban.store';
                   }
                 </div>
 
-                <button class="col__ic" title="Ajouter une tâche" (click)="create.emit(col.name)">
+                <button class="col__ic" title="Ajouter une tâche" (click)="create.emit(col.id)">
                   <app-icon name="plus" [size]="16" [stroke]="2.2" />
                 </button>
               }
@@ -109,7 +109,7 @@ import { KanbanStore } from './kanban.store';
                   <div class="card__top">
                     <span class="pill" [style.color]="t.prio[1]" [style.background]="t.prio[2]">{{ t.prio[0] }}</span>
                     <span class="pill" [style.color]="t.tag[1]" [style.background]="tint(t.tag[1])">{{ t.tag[0] }}</span>
-                    <span class="card__id nx-mono">{{ t.id }}</span>
+                    <span class="card__id nx-mono">{{ t.taskKey }}</span>
                     @if (!readonly) {
                       <button class="card__del" title="Supprimer la tâche" (click)="store.deleteTask(t.id); $event.stopPropagation()"><app-icon name="trash" [size]="14" /></button>
                     }
@@ -128,7 +128,7 @@ import { KanbanStore } from './kanban.store';
                 </div>
               }
               @if (!readonly) {
-                <button class="addcard" (click)="create.emit(col.name)"><app-icon name="plus" [size]="16" [stroke]="2" />Ajouter une tâche</button>
+                <button class="addcard" (click)="create.emit(col.id)"><app-icon name="plus" [size]="16" [stroke]="2" />Ajouter une tâche</button>
               }
             </div>
           </div>
@@ -151,6 +151,7 @@ export class KanbanComponent {
   /** True when the user can open the board settings menu (ADMIN/OWNER/CP — règle R8). */
   @Input() canManageBoard = false;
   @Output() openTask = new EventEmitter<TaskCard>();
+  /** Ouvre « Créer une tâche » ; émet l'id du statut cliqué ('' = barre d'outils). */
   @Output() create = new EventEmitter<string>();
   @Output() openStatuses = new EventEmitter<void>();
   @Output() openWorkflow = new EventEmitter<void>();
@@ -205,7 +206,7 @@ export class KanbanComponent {
     { value: 'mois', label: 'Ce mois', dot: '#5B8DEF' },
   ];
 
-  tint(c: string): string { return TAG_TINT[c] ?? 'rgba(0,0,0,.04)'; }
+  tint(c: string): string { return tintOf(c); }
 
   startEdit(col: KanbanColumn): void {
     this.colMenu.set(null);
@@ -220,7 +221,7 @@ export class KanbanComponent {
   saveEdit(): void {
     const id  = this.editId();
     const val = this.editVal().trim();
-    if (id && val) this.store.renameColumn(id, val);
+    if (id && val) { this.store.renameColumn(id, val); this.store.commitRename(id); }
     this.editId.set(null);
   }
 
@@ -230,10 +231,8 @@ export class KanbanComponent {
   }
 
   addColumn(): void {
-    const id = this.store.addColumn('active');
-    // immediately drop the new column into rename mode
-    const nc = this.store.columns().find(c => c.id === id);
-    if (nc) this.startEdit(nc);
+    // Crée le statut en base puis passe la nouvelle colonne en édition inline.
+    this.store.addColumnAsync('active').subscribe(nc => this.startEdit(nc));
   }
 
   // ── card drag-and-drop ─────────────────────────────────────────────────────

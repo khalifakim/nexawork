@@ -9,8 +9,8 @@ export const environment = {
   /** true = données mock en mémoire ; false = backend réel (bascule par domaine). */
   mock: {
     auth: false,         // Phase I1 ✅ (auth + workspaces branchés au backend réel)
-    projects: true,      // Phase I2
-    tasks: true,         // Phase I2
+    projects: false,     // Phase I2a ✅ (projets : liste, CRUD, archivage)
+    tasks: false,        // Phase I2a ✅ (board Kanban : lecture, drag-drop FSM, suppression)
     members: true,       // Phase I3
     channels: true,      // Phase I4
     conversations: true, // Phase I4

@@ -96,3 +96,10 @@
 .composer { flex: none; padding: 12px 16px 16px; }
 
 @media (max-width: 900px) { .right { display: none; } .left { border-right: none; } }
+
+/* I2b : téléchargement / retrait des pièces jointes réelles */
+.att__c { cursor: pointer; }
+.att__c:hover { border-color: var(--nx-border-strong, #d4d0c7); }
+.att__del { margin-left: auto; border: none; background: transparent; color: var(--nx-text-400); cursor: pointer; display: flex; padding: 2px; border-radius: 6px; }
+.att__del:hover { color: var(--nx-danger, #E0497B); background: var(--nx-surface-2); }
+.drop { cursor: pointer; }

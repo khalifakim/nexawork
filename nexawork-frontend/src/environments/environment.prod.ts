@@ -11,8 +11,8 @@ export const environment = {
   production: true,
   mock: {
     auth: false,
-    projects: true,
-    tasks: true,
+    projects: false,     // Phase I2a
+    tasks: false,        // Phase I2a
     members: true,
     channels: true,
     conversations: true,

@@ -1,7 +1,7 @@
-import { DestroyRef, Signal, inject } from '@angular/core';
-import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop';
+import { Signal, computed } from '@angular/core';
+import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { switchMap } from 'rxjs/operators';
-import { Observable, of } from 'rxjs';
+import { Observable } from 'rxjs';
 import { SessionService } from '@core/services/session.service';
 
 /**
@@ -25,9 +25,13 @@ export function workspaceSignal<T>(
   session: SessionService,
   factory: () => Observable<T>,
   initialValue: T,
+  refresh?: Signal<unknown>,
 ): Signal<T> {
+  // Refetch dès que l'espace actif change OU que `refresh` est bumpé (mutation
+  // faite ailleurs — ex. création/archivage de projet). Voir DataRefreshService.
+  const trigger = computed(() => ({ ws: session.activeWorkspaceId(), r: refresh ? refresh() : 0 }));
   return toSignal(
-    toObservable(session.activeWorkspaceId).pipe(
+    toObservable(trigger).pipe(
       switchMap(() => factory()),
     ),
     { initialValue },

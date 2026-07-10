@@ -1,9 +1,11 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, effect, inject, signal } from '@angular/core';
+import { Observable } from 'rxjs';
 import { TasksService } from '@core/services/tasks.service';
-import { DueBucket, KanbanColumn, TaskCard } from '@core/models/task.models';
+import { ToastService } from '@core/services/toast.service';
+import { DueBucket, KanbanColumn, StatusCat, TaskCard } from '@core/models/task.models';
+import { toStatusCategory } from '@core/util/task-display.util';
 
-/** Status category, shared by the board and the "Modifier les statuts" modal. */
-export type StatusCat = 'notstarted' | 'active' | 'done' | 'closed';
+export type { StatusCat } from '@core/models/task.models';
 
 export interface KanbanFilters {
   assigne: string | null;   // avatar color
@@ -15,58 +17,51 @@ export interface KanbanFilters {
  * Single source of truth for one project's Kanban board.
  *
  * `columns` drives BOTH the board (rendered in array order) and the status
- * modal (grouped by category, but reordering mutates this same array). So the
- * order of columns on the board always follows the flattened order of statuses
- * across categories in the modal — exactly like the prototype's `kanbanCols`.
- *
- * Provided at the projet-shell level so each project gets its own instance.
+ * modal (grouped by category). Provided at the projet-shell level so each
+ * project gets its own instance; the shell pushes the active `projectId` into
+ * the store, which (re)loads statuses + cards from the backend on change.
  */
 @Injectable()
 export class KanbanStore {
   private tasksSvc = inject(TasksService);
+  private toast = inject(ToastService);
+
+  /** UUID du projet courant, poussé par `projet-shell`. `null` = pas encore résolu. */
+  readonly projectId = signal<string | null>(null);
 
   /** Columns = statuses. Order here is the order shown on the board. */
   readonly columns = signal<KanbanColumn[]>([]);
 
-  /** Cards keyed by their original column id. */
+  /** Cards keyed by their column (status) id. */
   private board = signal<Record<string, TaskCard[]>>({});
-
-  /** Task id → column id override (drag-and-drop between columns). */
-  private colOverrides = signal<Record<string, string>>({});
-
-  /** Deleted task ids. */
-  private deleted = signal<string[]>([]);
 
   /** Filters. */
   readonly filters = signal<KanbanFilters>({ assigne: null, prio: null, ech: null });
 
+  /** Vrai pendant le chargement initial du board (état vide sinon). */
+  readonly loading = signal(false);
+
   constructor() {
-    this.tasksSvc.columns().subscribe(cols => {
-      // Only seed once; later edits live in the signal.
-      if (this.columns().length === 0) this.columns.set(cols.map(c => ({ ...c })));
+    effect(() => {
+      const pid = this.projectId();
+      if (!pid) return;
+      this.loading.set(true);
+      this.tasksSvc.loadBoard(pid).subscribe({
+        next: ({ columns, cards }) => {
+          this.columns.set(columns);
+          this.board.set(cards);
+          this.loading.set(false);
+        },
+        error: () => this.loading.set(false),
+      });
     });
-    this.tasksSvc.board().subscribe(b => this.board.set(b));
   }
 
-  /** Cards for a column, after overrides / deletions / filters. */
+  /** Cards for a column, after filters. */
   cards(colId: string): TaskCard[] {
-    const del = this.deleted();
-    const ov = this.colOverrides();
     const f = this.filters();
-    const base = this.board();
-
-    // start from the column's own cards, minus any moved out
-    let list = (base[colId] ?? []).filter(t => ov[t.id] === undefined || ov[t.id] === colId);
-    // add cards moved into this column from elsewhere
-    Object.entries(ov).forEach(([tid, target]) => {
-      if (target !== colId) return;
-      if (list.some(t => t.id === tid)) return;
-      const task = Object.values(base).flat().find(t => t.id === tid);
-      if (task) list = [...list, task];
-    });
-
+    const list = this.board()[colId] ?? [];
     return list.filter(t => {
-      if (del.includes(t.id)) return false;
       if (f.assigne && !(t.team ?? []).includes(f.assigne)) return false;
       if (f.prio && t.prio[0] !== f.prio) return false;
       if (f.ech && t.due !== f.ech) return false;
@@ -78,47 +73,132 @@ export class KanbanStore {
     this.filters.update(f => ({ ...f, [key]: value }));
   }
 
-  deleteTask(id: string): void { this.deleted.update(l => l.includes(id) ? l : [...l, id]); }
+  /** Insère une carte fraîchement créée dans sa colonne. */
+  addCard(card: TaskCard): void {
+    this.board.update(b => ({ ...b, [card.statusId]: [...(b[card.statusId] ?? []), card] }));
+  }
 
-  /** Move a task to another column (drag-and-drop). */
+  deleteTask(id: string): void {
+    const snapshot = this.board();
+    // Optimiste : on retire la carte tout de suite, on rétablit si le backend refuse.
+    this.board.update(b => {
+      const next: Record<string, TaskCard[]> = {};
+      for (const [col, list] of Object.entries(b)) next[col] = list.filter(t => t.id !== id);
+      return next;
+    });
+    this.tasksSvc.deleteTask(id).subscribe({ error: () => this.board.set(snapshot) });
+  }
+
+  /**
+   * Déplace une carte vers une autre colonne (drag-and-drop) et persiste la
+   * transition. Optimiste : la carte bouge immédiatement ; si la FSM refuse
+   * (422, toast par l'intercepteur) on rétablit la position d'origine.
+   */
   moveTask(taskId: string, toColId: string): void {
-    this.colOverrides.update(o => ({ ...o, [taskId]: toColId }));
+    const snapshot = this.board();
+    let moved: TaskCard | undefined;
+    for (const list of Object.values(snapshot)) {
+      const found = list.find(t => t.id === taskId);
+      if (found) { moved = found; break; }
+    }
+    if (!moved || moved.statusId === toColId) return;
+
+    const card = { ...moved, statusId: toColId };
+    this.board.update(b => {
+      const next: Record<string, TaskCard[]> = {};
+      for (const [col, list] of Object.entries(b)) next[col] = list.filter(t => t.id !== taskId);
+      (next[toColId] ??= []).push(card);
+      return next;
+    });
+
+    const toName = this.columns().find(c => c.id === toColId)?.name ?? '';
+    this.tasksSvc.changeStatus(taskId, toColId).subscribe({
+      next: fresh => {
+        this.board.update(b => ({
+          ...b,
+          [toColId]: (b[toColId] ?? []).map(t => t.id === taskId ? { ...fresh } : t),
+        }));
+        // V5.1 §8 : confirmation de la transition persistée.
+        this.toast.show({ message: `${fresh.taskKey} déplacée vers « ${toName} »` });
+      },
+      error: () => this.board.set(snapshot),
+    });
   }
 
   // ── Column / status mutations (shared with the status modal) ────────────────
-  updateColumn(id: string, patch: Partial<KanbanColumn>): void {
+  // I2c : chaque mutation de statut est persistée (Project Service §8.2.1).
+  private updateColumn(id: string, patch: Partial<KanbanColumn>): void {
     this.columns.update(cols => cols.map(c => c.id === id ? { ...c, ...patch } : c));
   }
 
+  /** Renommage local (au fil de la frappe) — la persistance a lieu au blur. */
   renameColumn(id: string, name: string): void { this.updateColumn(id, { name }); }
-  setColor(id: string, color: string): void { this.updateColumn(id, { color }); }
 
-  deleteColumn(id: string): void {
-    this.columns.update(cols => cols.filter(c => c.id !== id));
+  /** Persiste le nom courant du statut (appelé au blur du champ). */
+  commitRename(id: string): void {
+    const name = this.columns().find(c => c.id === id)?.name?.trim();
+    if (name) this.tasksSvc.updateStatus(id, { name }).subscribe();
   }
 
-  /** Append a new status at the end of a category (default: active). */
-  addColumn(cat: StatusCat = 'active'): string {
-    const id = 'col-' + Date.now().toString(36) + Math.floor(Math.random() * 1000);
-    this.columns.update(cols => {
-      const arr = [...cols];
-      let last = -1;
-      arr.forEach((c, i) => { if (c.cat === cat) last = i; });
-      const nc: KanbanColumn = { id, name: '', color: '#6C70F0', cat };
-      if (last < 0) arr.push(nc); else arr.splice(last + 1, 0, nc);
-      return arr;
+  setColor(id: string, color: string): void {
+    this.updateColumn(id, { color });
+    this.tasksSvc.updateStatus(id, { color }).subscribe();
+  }
+
+  deleteColumn(id: string): void {
+    const snapshot = this.columns();
+    this.columns.update(cols => cols.filter(c => c.id !== id));
+    // Le backend refuse (409) la suppression d'un statut qui porte des tâches → on rétablit.
+    this.tasksSvc.deleteStatus(id).subscribe({ error: () => this.columns.set(snapshot) });
+  }
+
+  /**
+   * Crée un statut en base puis l'ajoute au board (position = fin de sa
+   * catégorie). Émet la colonne créée pour permettre l'édition inline immédiate.
+   */
+  addColumnAsync(cat: StatusCat = 'active'): Observable<KanbanColumn> {
+    const pid = this.projectId();
+    const position = this.columns().length;
+    const obs = this.tasksSvc.createStatus(pid!, {
+      name: 'Nouveau statut', category: toStatusCategory(cat), color: '#6C70F0', position,
     });
-    return id;
+    obs.subscribe(col => this.columns.update(cols => this.insertInCategory(cols, col)));
+    return obs;
+  }
+
+  /** Insère une colonne juste après la dernière de sa catégorie (ordre du board). */
+  private insertInCategory(cols: KanbanColumn[], col: KanbanColumn): KanbanColumn[] {
+    const arr = [...cols];
+    let last = -1;
+    arr.forEach((c, i) => { if (c.cat === col.cat) last = i; });
+    if (last < 0) arr.push(col); else arr.splice(last + 1, 0, col);
+    return arr;
   }
 
   /** Statuses in a given category, in array order. */
   byCat(cat: StatusCat): KanbanColumn[] { return this.columns().filter(c => c.cat === cat); }
 
+  /** Monte/descend un statut d'un cran (modal Workflow) et persiste les positions. */
+  reorderStatus(id: string, dir: -1 | 1): void {
+    const cols = [...this.columns()];
+    const i = cols.findIndex(c => c.id === id);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= cols.length) return;
+    [cols[i], cols[j]] = [cols[j], cols[i]];
+    const reindexed = cols.map((c, k) => ({ ...c, position: k }));
+    this.columns.set(reindexed);
+    this.tasksSvc.updateStatus(reindexed[i].id, { position: i }).subscribe();
+    this.tasksSvc.updateStatus(reindexed[j].id, { position: j }).subscribe();
+  }
+
   /**
-   * Drag-and-drop a status: change its category and/or reposition it relative to
-   * `beforeId`. Mutating the array here is what reorders the board columns.
+   * Drag-and-drop d'un statut : change sa catégorie et/ou sa position. L'ordre du
+   * tableau = l'ordre des positions ; on persiste les positions réindexées et la
+   * nouvelle catégorie du statut déplacé.
    */
   moveStatus(dragId: string, cat: StatusCat, beforeId: string | null): void {
+    const before = this.columns();
+    let reordered: KanbanColumn[] = before;
     this.columns.update(cols => {
       const arr = [...cols];
       const idx = arr.findIndex(c => c.id === dragId);
@@ -135,7 +215,22 @@ export class KanbanStore {
         at = last + 1;
       }
       arr.splice(at, 0, moved);
-      return arr;
+      reordered = arr.map((c, i) => ({ ...c, position: i }));
+      return reordered;
     });
+    this.persistOrder(before, reordered, dragId, cat);
+  }
+
+  /** Persiste les positions modifiées + la catégorie du statut déplacé. */
+  private persistOrder(before: KanbanColumn[], after: KanbanColumn[], movedId: string, movedCat: StatusCat): void {
+    const prevPos = new Map(before.map(c => [c.id, c.position]));
+    for (const c of after) {
+      const patch: { position?: number; category?: ReturnType<typeof toStatusCategory> } = {};
+      if (prevPos.get(c.id) !== c.position) patch.position = c.position;
+      if (c.id === movedId) patch.category = toStatusCategory(movedCat);
+      if (patch.position !== undefined || patch.category !== undefined) {
+        this.tasksSvc.updateStatus(c.id, patch).subscribe();
+      }
+    }
   }
 }

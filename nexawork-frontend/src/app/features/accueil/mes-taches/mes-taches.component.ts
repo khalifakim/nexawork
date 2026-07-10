@@ -84,7 +84,7 @@ export class MesTachesComponent {
       id: r.id, title: r.t, proj: r.proj, due: r.due,
       desc: 'Tâche assignée au projet ' + r.proj + '.',
       prio: [r.prio[0], r.prio[1], PRIO_BG[r.prio[0]] ?? 'rgba(0,0,0,.06)'],
-      tag: ['Feature', '#6C70F0'], prog: [0, ''], team: ['#F2693C', '#6C70F0'], links: 2, comments: 3,
+      tag: ['Feature', '#6C70F0'], team: ['#F2693C', '#6C70F0'], links: 2, comments: 3,
     };
   }
 
@@ -95,7 +95,7 @@ export class MesTachesComponent {
     this.openTask.set(row ? this.toCard(row) : {
       id, title: 'Tâche ' + id, proj: '', due: '',
       desc: '', prio: ['Moyenne', '#E89A2C', 'rgba(0,0,0,.06)'],
-      tag: ['', '#8E8AA0'], prog: [0, ''], team: [], links: 0, comments: 0,
+      tag: ['', '#8E8AA0'], team: [], links: 0, comments: 0,
     });
   }
 }

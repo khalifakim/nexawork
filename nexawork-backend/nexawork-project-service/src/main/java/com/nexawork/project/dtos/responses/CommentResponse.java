@@ -4,10 +4,11 @@ import lombok.Builder;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 /**
- * Commentaire de tâche (§13.2).
+ * Commentaire de tâche (§13.2), avec ses éventuelles pièces jointes.
  */
 @Data
 @Builder
@@ -18,4 +19,5 @@ public class CommentResponse {
     private UUID authorUserId;
     private String content;
     private LocalDateTime createdAt;
+    private List<CommentAttachmentResponse> attachments;
 }
