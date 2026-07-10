@@ -248,13 +248,32 @@ ira en prod. Le frontend est servi par **nginx** qui fait aussi **reverse-proxy*
 - **Piège** : après un changement de `nginx.conf` ou du code frontend, **l'image doit être reconstruite** —
   sinon le conteneur tourne encore l'ancienne version (symptôme observé : nginx sans proxy → 405 sur `/nexawork-*`,
   ancien message « Timeout has occurred »).
-- **Diagnostic email** : `register`/`reset`/`invite` déclenchent des emails SMTP (Gmail). SMTP **injoignable dans
-  cet environnement** (TLS bloqué) → `register` prend ~4 s (tentatives avant échec) et `/actuator/health` = 503
-  (indicateur `mail`). Non bloquant (sous le timeout de 20 s ; le compte est créé). En prod avec SMTP joignable,
-  instantané. Pour désactiver localement : override `NEXAWORK_MAIL_ENABLED=false` (env auth-service) — non fait pour ne pas retirer la fonctionnalité.
+- **Emails SMTP — RÉSOLU** : le proxy TLS intercepteur cassait le handshake (« Could not convert socket to TLS »).
+  Corrigé par `mail.smtp.ssl.trust: ${SMTP_SSL_TRUST:*}` dans `config-repo/nexawork-auth.yml` → **les emails partent
+  réellement**. ⚠️ Le proxy reste **intermittent** : un envoi peut échouer (`SSLHandshakeException`) puis réussir
+  juste après. Les envois sont `@Async` (`@EnableAsync` sur `NexaworkAuthApplication`) → un échec SMTP **ne bloque
+  jamais** la requête HTTP. En prod sans proxy, retirer ce `ssl.trust`.
+- **1ʳᵉ invitation lente (~10 s)** : la connexion RabbitMQ est créée **paresseusement** au premier `publish`
+  (6 s pour l'établir). Normal, sous le timeout de 20 s. Les suivantes sont instantanées.
 
 ## 4 · Notes d'environnement (à connaître pour builder/tester)
 
+- **🔴 springdoc / Swagger — le piège n°1 de cette machine.** `SPRINGDOC_ENABLED` est **désactivé par défaut**
+  (`docker-compose.yml` : `${SPRINGDOC_ENABLED:-false}`). Son initialisation a été **mesurée à 81 s**
+  (`Init duration for springdoc-openapi is: 81445 ms`) et sature le CPU → **dépasse le timeout de 20 s**
+  du frontend (`error.interceptor`, `REQUEST_TIMEOUT_MS`) → toasts « Le serveur ne répond pas » **intermittents**,
+  famine de threads Hikari, connexions PostgreSQL perdues. **Ne l'active jamais pendant les tests d'intégration.**
+  Pour le consulter ponctuellement :
+  `SPRINGDOC_ENABLED=true docker compose up -d --no-deps --force-recreate auth-service`
+  puis **via nginx** (les ports Java hôtes sont gelés) : `http://localhost:4200/nexawork-auth-api-v1/swagger-ui/index.html`.
+  Repasser à `false` ensuite.
+- **🔴 Frontend : JAMAIS `docker compose build --no-cache frontend`.** Cela force `npm install` à retélécharger
+  depuis `registry.npmjs.org` → le **proxy TLS** fait échouer le build (`exit code 1`). Un build **normal** suffit :
+  `npm install` reste en cache (le `package.json` n'a pas changé) et seules les couches `COPY . .` + `npm run build`
+  re-tournent. **Une date d'image inchangée après un build signifie simplement que le code était déjà à jour.**
+- **`config-server` brûle ~120 % de CPU** en continu. Il n'est lu qu'**au démarrage** des services : une fois tous
+  `healthy`, `docker compose stop config-server` libère un cœur. Le redémarrer avant tout `up`/`--force-recreate`
+  d'un service backend.
 - **Build Maven hôte Windows** : `MAVEN_OPTS=-Djavax.net.ssl.trustStoreType=WINDOWS-ROOT` + `JAVA_HOME=C:\Program Files\Java\jdk-21` (le mvn par défaut tourne en JDK 17). PowerShell découpe les args sur les points → passer par `MAVEN_OPTS`. **Le build Docker n'est pas affecté** (chemin canonique : `docker compose build <service>`).
 - **Édition de `.sh`** : Edit/Write réécrit en **CRLF** sur ce poste → casse les scripts en conteneur Linux (`$'\r'`). Repasser en LF (`tr -d '\r'`) après édition. Les `.md` de `notes/` sont en CRLF (sans impact).
 - **Validation live fiable** : le port hôte `localhost:8080` peut se figer après un recreate de conteneur (quirk Docker Desktop Windows, aggravé par la charge). Contournement : `docker run --rm --network nexawork_default curlimages/curl:latest -s http://<service>:<port>/...` en forgeant les headers `X-User-Id`/`X-Org-Id`/`X-Org-Role` (le `GatewayIdentityFilter` leur fait confiance ; permet aussi de tester REF B 403/200 en changeant `X-Org-Role`).
@@ -264,6 +283,26 @@ ira en prod. Le frontend est servi par **nginx** qui fait aussi **reverse-proxy*
 ---
 
 ## 5 · Git
-- Repo code : `nexawork` — branche **`backend/dev`** (→ merge `main`). Remote `github.com/khalifakim/nexawork.git`.
+- Repo code : `nexawork` — branche de travail **`backend/dev`**. Remote `github.com/khalifakim/nexawork.git`.
 - Repo docs : `docs-config` — branche **`main`**.
 - **L'assistant ne commite jamais** : il propose les blocs (Bloc A = `nexawork`, Bloc B = `docs-config`), l'utilisateur exécute. **Pas de trailer `Co-Authored-By`.**
+
+**État au 2026-07-10** : `HEAD` = `backend/dev` = `main` = `origin/backend/dev` = `origin/main` = **`36606e9`**
+(alignement parfait, arbre propre).
+
+**TLS** : Git utilisait le backend `openssl` (imposé au niveau **système**), dont le magasin ignore le certificat du
+proxy intercepteur → `git fetch` échouait. Corrigé une fois pour toutes par :
+`git config --global http.sslBackend schannel` (délègue la validation au magasin Windows). **Ne jamais** utiliser
+`http.sslVerify false`.
+
+**⚠️ Ne PAS faire `git checkout main` depuis `backend/dev`.** Les deux branches diffèrent de milliers de fichiers ;
+la bascule réécrit tout l'arbre et un verrou Windows (IDE/antivirus) sur `.git/HEAD` a déjà **interrompu un checkout
+en plein milieu** (HEAD resté sur `backend/dev`, arbre de travail passé sur `main` → faux diff géant).
+*Récupération si ça arrive* : `git reset --hard HEAD` (sûr si tout est commité).
+
+**Merge `backend/dev` → `main` sans toucher un seul fichier** (méthode à utiliser) :
+```bash
+git push origin backend/dev:main      # fast-forward cote serveur (refuse si divergence)
+git fetch origin --prune
+git branch -f main origin/main        # deplace le pointeur local, sans checkout
+```
