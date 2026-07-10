@@ -123,13 +123,29 @@ public class GedFileServiceImpl implements GedFileService {
     public FileResponse restore(UUID fileId) {
         GedFile file = fileRepository.findById(fileId)
                 .orElseThrow(() -> new ResourceNotFoundException("Fichier introuvable."));
-        // R11 : on ne restaure que ses propres éléments (ou ADMIN).
-        if (!file.getAddedByUserId().equals(caller.userId()) && !caller.isWorkspaceAdmin()) {
+        // R11 : la corbeille est strictement personnelle — on ne restaure que ses
+        // propres éléments (aucune dérogation administrateur : cf. retrait de CU-A10).
+        if (!file.getAddedByUserId().equals(caller.userId())) {
             throw new ResourceNotFoundException("Fichier introuvable.");
         }
         file.setIsDeleted(false);
         file.setDeletedAt(null);
         return fileMapper.asDto(fileRepository.save(file));
+    }
+
+    @Override
+    public void purge(UUID fileId) {
+        // CU-M17 : suppression définitive d'un élément de sa propre corbeille.
+        GedFile file = fileRepository.findById(fileId)
+                .orElseThrow(() -> new ResourceNotFoundException("Fichier introuvable."));
+        // R11 : la corbeille est strictement personnelle — on ne purge que ses
+        // propres éléments ; un élément hors corbeille n'est pas un élément de corbeille.
+        if (!Boolean.TRUE.equals(file.getIsDeleted())
+                || !file.getAddedByUserId().equals(caller.userId())) {
+            throw new ResourceNotFoundException("Fichier introuvable.");
+        }
+        fileRepository.delete(file);
+        log.info("Élément purgé de la corbeille par {} ({})", caller.userId(), fileId);
     }
 
     @Override

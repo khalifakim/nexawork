@@ -31,5 +31,8 @@ public interface GedFileService {
 
     FileResponse restore(UUID fileId);
 
+    /** CU-M17 : suppression définitive d'un seul élément de sa propre corbeille. */
+    void purge(UUID fileId);
+
     void emptyTrash();
 }

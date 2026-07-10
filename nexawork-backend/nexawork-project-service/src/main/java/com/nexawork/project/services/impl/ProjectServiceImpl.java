@@ -58,6 +58,9 @@ public class ProjectServiceImpl implements ProjectService {
 
     @Override
     public ProjectResponse create(CreateProjectRequest request) {
+        // CU-A03 : la création d'un projet est réservée à l'administrateur (ou au
+        // propriétaire) du workspace ; le chef de projet est désigné ensuite (CU-CP05).
+        caller.requireWorkspaceAdmin("créer un projet");
         UUID userId = caller.userId();
         String prefix = generateUniquePrefix(request.getPrefix(), request.getName(), caller.organisationId());
         Project project = projectRepository.save(Project.builder()

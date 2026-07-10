@@ -285,8 +285,8 @@ import { workspaceSignal } from '@core/util/workspace-signal';
         <button class="row row--arch" routerLink="/app/projets/archives">
           <app-icon class="row__i" name="archive" [size]="15" /><span>Projets archivés</span>
         </button>
+        <button class="primary" (click)="createProject.emit()"><app-icon name="plus" [size]="16" />Nouveau projet</button>
       }
-      <button class="primary" (click)="createProject.emit()"><app-icon name="plus" [size]="16" />Nouveau projet</button>
       <button class="search">
         <app-icon name="search" [size]="15" />
         <input [value]="projQ()" (input)="projQ.set($any($event.target).value)" placeholder="Rechercher un projet…" aria-label="Rechercher un projet" />
