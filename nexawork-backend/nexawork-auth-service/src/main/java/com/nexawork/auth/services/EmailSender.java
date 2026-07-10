@@ -6,9 +6,10 @@ package com.nexawork.auth.services;
  */
 public interface EmailSender {
 
-    void sendWelcomeEmail(String to, String firstName);
-
     void sendEmailVerification(String to, String firstName, String verificationToken);
+
+    /** Confirmation d'un changement d'adresse — lien envoyé à la NOUVELLE adresse. */
+    void sendEmailChangeConfirmation(String to, String firstName, String changeToken);
 
     void sendPasswordReset(String to, String firstName, String resetToken);
 

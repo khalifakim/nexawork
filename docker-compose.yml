@@ -175,6 +175,12 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD}
       SMTP_FROM: ${SMTP_FROM}
       FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:4200}
+      # Documentation OpenAPI/Swagger — DÉSACTIVÉE par défaut : son initialisation
+      # coûte ~80 s au premier appel sur cette machine (mesuré : 81 445 ms) et sature
+      # le CPU, ce qui fait dépasser le timeout de 20 s du frontend.
+      # Pour l'activer ponctuellement :
+      #   SPRINGDOC_ENABLED=true docker compose up -d --no-deps --force-recreate auth-service
+      SPRINGDOC_ENABLED: ${SPRINGDOC_ENABLED:-false}
     ports:
       - "8081:8081"
     networks:

@@ -3,13 +3,14 @@ import { IconComponent } from '@shared/ui/icon/icon.component';
 import { ToastService } from '@core/services/toast.service';
 import { SessionService } from '@core/services/session.service';
 import { AuthService } from '@core/services/auth.service';
+import { ChangeEmailModalComponent } from '@shared/overlays/change-email/change-email-modal.component';
 
 /** « Sécurité » — email display + password change + reset-link. Fidèle à `settingsSecurite()`. */
 @Component({
   selector: 'app-param-securite',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IconComponent],
+  imports: [IconComponent, ChangeEmailModalComponent],
   template: `
     <div class="set-page"><div class="set-inner">
       <h1 class="set-h1">Sécurité</h1>
@@ -42,11 +43,11 @@ import { AuthService } from '@core/services/auth.service';
           </div>
         </div>
         <div class="set-row set-row--top">
-          <div class="set-rlabel"><b>Nouveau mot de passe</b><small>Au moins 8 caractères, avec une majuscule et un chiffre.</small></div>
+          <div class="set-rlabel"><b>Nouveau mot de passe</b><small>Au moins 8 caractères.</small></div>
           <div class="set-rctrl">
             <input class="set-input" type="password" [value]="next()" (input)="next.set($any($event.target).value)" />
             @if (next().length > 0 && !strong()) {
-              <div class="err">Le mot de passe ne respecte pas les critères.</div>
+              <div class="err">Le mot de passe doit contenir au moins 8 caractères.</div>
             }
           </div>
         </div>
@@ -81,6 +82,10 @@ import { AuthService } from '@core/services/auth.service';
         </div>
       </div>
     </div></div>
+
+    @if (showEmailModal()) {
+      <app-change-email-modal (closed)="showEmailModal.set(false)" (confirmed)="onEmailConfirmed($event)" />
+    }
   `,
   styles: [`
     .set-input { display: flex; align-items: center; font-family: inherit; }
@@ -102,10 +107,10 @@ export class ParamSecuriteComponent {
   next = signal('');
   confirm = signal('');
 
-  strong = computed(() => {
-    const p = this.next();
-    return p.length >= 8 && /[A-Z]/.test(p) && /[0-9]/.test(p);
-  });
+  /** Modal « Modifier l'adresse email » (remplace la boîte native). */
+  showEmailModal = signal(false);
+
+  strong = computed(() => this.next().length >= 8);
 
   canSubmit = computed(() =>
     this.current().length > 0 && this.strong() && this.confirm() === this.next(),
@@ -128,12 +133,11 @@ export class ParamSecuriteComponent {
   }
 
   askEmailChange(): void {
-    const newEmail = window.prompt('Nouvelle adresse email :', '')?.trim();
-    if (!newEmail) return;
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(newEmail)) {
-      this.toast.show({ message: 'Adresse email invalide.', icon: 'warning' });
-      return;
-    }
+    this.showEmailModal.set(true);
+  }
+
+  onEmailConfirmed(newEmail: string): void {
+    this.showEmailModal.set(false);
     this.auth.changeEmail(newEmail).subscribe({
       next: () => this.toast.show({
         message: 'Un lien de confirmation a été envoyé à ' + newEmail + '. Le changement prend effet après vérification.',

@@ -12,14 +12,35 @@
 
 ## 🎯 Où en est le projet
 
-**Backend : ✅ 100 % livré** (baseline stable, branche `backend/dev`).
-**Frontend : ✅ construit sur mocks.**
-**Phase en cours : intégration Frontend ↔ Backend (mock → HTTP)** — voir le plan. **Rien encore démarré** côté intégration.
+**Backend : ✅ baseline livrée** (9 microservices, phases 0-10, branche `backend/dev`).
+⚠️ **Nuance importante** : « backend livré » vaut pour la **baseline**, pas pour tout le plan. **Trois phases
+restantes exigent du développement backend neuf** : **I9** (endpoints de recherche), **I10** (génération PDF),
+**M2** (persistance du chat de réunion). Voir la colonne « Backend » ci-dessous.
 
-Progression globale intégration : **2 / 16 phases** (✅ I0, I1 · prochaine : **I2 Projects + Tasks/Kanban**).
+**Frontend : ✅ construit sur mocks.**
+**Phase en cours : intégration Frontend ↔ Backend (mock → HTTP)**, phase par phase — voir le plan.
+
+Progression intégration : **2 / 14 phases du périmètre livrable** (✅ I0, I1 · prochaine : **I2 Projects + Tasks/Kanban**).
+*(14 = 16 phases initiales − M5/M6 repassées en perspective.)*
+
+### 📌 État réel du code (vérifié 2026-07-09)
+- **Services HTTP frontend existants : 2 seulement** — `AuthHttpService`, `WorkspaceHttpService`.
+  Les **10 autres domaines** (projets, tâches, membres, canaux, conversations, GED, notifications, accueil,
+  réunions, recherche) sont liés **en dur** à leurs `*MockService` dans `data.providers.ts` (aucun `*HttpService` écrit).
+- **Client STOMP : non écrit** — `@stomp/stompjs` + `sockjs-client` sont installés, mais aucun service WebSocket.
+- **Absents du backend** : endpoints `/search` (I9), génération PDF / OpenPDF (I10), entités
+  `MeetingMessage`/`MeetingFile` (M2/M5 — les tables existent, vides).
+
+### ✅ I1 clôturée (2026-07-10)
+Le lot de corrections Auth a été **buildé, testé en navigateur et validé**. V5.1 est aligné (§3.2, §3.3, §3.4,
+§3.5, §13.1, §14.10, §15.1, §15.2, enum `ActionTokenType`). **Prochaine phase : I2.**
 
 > **Décision actée (2026-07-06)** : aucune fonctionnalité simulée ou stub dans le livrable final — recherche
-> globale, rapports PDF et Meetings M2-M6 sont **tous à implémenter réellement** (exigences du mémoire).
+> globale, rapports PDF et Meetings sont à implémenter réellement (exigences du mémoire).
+>
+> **Révision (2026-07-08)** : dans le bloc Meetings, seule la **persistance du chat de réunion (M2)** reste
+> dans le périmètre livré. Le **partage de fichiers en réunion (M5)** et l'**enregistrement (M6)** sont
+> **reportés en perspective** (l'enregistrement suppose un tier JaaS payant ou un Jibri auto-hébergé). V5.1 §4.6/§14.4 alignés.
 
 ---
 
@@ -51,33 +72,47 @@ Progression globale intégration : **2 / 16 phases** (✅ I0, I1 · prochaine : 
 
 ## 2 · Suivi INTÉGRATION Frontend ↔ Backend
 
-Référence : `PLAN_INTEGRATION_FRONTEND_BACKEND.md`. Légende : ✅ livré · 🚧 en cours · ⏳ à faire · ⛔ bloqué.
+Référence : `PLAN_INTEGRATION_FRONTEND_BACKEND.md`. Légende : ✅ livré · 🚧 en cours · ⏳ à faire · ⛔ bloqué · 🔮 perspective (reporté).
 
 **Ordre d'exécution** (Meetings volontairement **en dernier**) :
-I0 → I1 → I2 → I3 → I4 → I5 → I6 → I7 → I9 (recherche) → I10 (rapports PDF) → **bloc final Meetings** (I8 → M4 → M2 → M3 → M5 → M6).
+I0 → I1 → I2 → I3 → I4 → I5 → I6 → I7 → I9 (recherche) → I10 (rapports PDF) → **bloc final Meetings** (I8 → M4 → M2 → M3).
+*(M5/M6 sortis du périmètre → perspective.)*
 
-| Ordre | Phase | Domaine | Statut | Notes |
-| :-: | :-: | :- | :-: | :- |
-| 1 | **I0** | Socle transverse (enveloppe, context-paths, UUID, auth flux, WS, JWT/refresh) | ✅ | Livré + validé live (2026-07-06). |
-| 2 | **I1** | Auth & Workspace | ✅ | I1a-c + **I1d emails/profil/sécurité/vérif** (voir détail). `mock.auth=false`. |
-| 3 | **I2** | Projects + Tasks/Kanban | ⏳ | Cœur métier, gros recâblage d'écritures. |
-| 4 | **I3** | Members | ⏳ | Annuaire + présence Redis. |
-| 5 | **I4** | Channels + Conversations (+ STOMP) | ⏳ | Temps réel. |
-| 6 | **I5** | GED / Documents | ⏳ | CRUD + versions + grants + File Service. |
-| 7 | **I6** | Notifications (+ Web Push, STOMP) | ⏳ | Table `kind`↔`NotificationType`. |
-| 8 | **I7** | Accueil / Dashboard | ⏳ | Agrège I2/I4 ; retirer `membersOnline`. |
-| 9 | **I9** | Recherche globale (backend fédéré ILIKE + frontend) | ⏳ | **À implémenter** — endpoints `search` internes par service + agrégation Gateway. |
-| 10 | **I10** | Rapports PDF (OpenPDF backend + téléchargement réel) | ⏳ | **À implémenter** — `/projects/{id}/report` + `/workspaces/{id}/report`. |
+Colonne **Backend** : ✅ = déjà livré (baseline) · 🔴 = **développement backend neuf requis**.
+
+| Ordre | Phase | Domaine | Backend | Frontend | Statut | Notes |
+| :-: | :-: | :- | :-: | :-: | :-: | :- |
+| 1 | **I0** | Socle transverse (enveloppe, context-paths, UUID, JWT/refresh) | ✅ | ✅ | ✅ | Livré + validé live (2026-07-06). |
+| 2 | **I1** | Auth & Workspace | ✅ | ✅ | ✅ | I1a-d + **lot de corrections validé live (2026-07-10)** — voir §1bis. |
+| 3 | **I2** | Projects + Tasks/Kanban | ✅ | ⏳ | ⏳ | **Phase la plus lourde** : 2 `*HttpService` + gros recâblage des écritures (Kanban FSM, sous-tâches, commentaires). |
+| 4 | **I3** | Members | ✅ | ⏳ | ⏳ | Annuaire + présence Redis (`/presence/active`). Légère. |
+| 5 | **I4** | Channels + Conversations | ✅ | ⏳ | ⏳ | 2 `*HttpService` + **client STOMP à écrire** (temps réel). Lourde. |
+| 6 | **I5** | GED / Documents | ✅ | ⏳ | ⏳ | 1 `*HttpService` (~13 méthodes) + File Service (MinIO). Lourde. Inclut la **photo de profil** (reste de I1). |
+| 7 | **I6** | Notifications | ✅ | ⏳ | ⏳ | HttpService + STOMP + **Service Worker Web Push**. Table `kind`↔`NotificationType`. |
+| 8 | **I7** | Accueil / Dashboard | ✅ | ⏳ | ⏳ | Agrège I2/I4 ; retirer `membersOnline` ; trancher `myTasks()`. Légère. |
+| 9 | **I9** | Recherche globale | 🔴 | ⏳ | ⏳ | **À développer** : `GET .../search?q=` interne (ILIKE) par service + agrégation Gateway, en respectant REF F/G. |
+| 10 | **I10** | Rapports PDF | 🔴 | ⏳ | ⏳ | **À développer** : OpenPDF + `GET /projects/{id}/report` et `/workspaces/{id}/report` (`application/pdf`). Front : téléchargement blob. |
 
 ### Bloc final — Meetings (en dernier)
 | Ordre | Phase | Intitulé | Backend | Frontend | Statut |
 | :-: | :-: | :- | :-: | :-: | :-: |
-| 11 | **I8** | Meetings — intégration socle (+ iframe JaaS) | ✅ (M1) | ⏳ | ⏳ |
+| 11 | **I8** | Meetings — intégration socle (+ `jitsiUrl`/`jwt`) | ✅ (M1) | ⏳ | ⏳ |
 | 12 | **M4** | Intégration fine IFrame API JaaS | n/a | ⏳ | ⏳ |
-| 13 | **M2** | Persistance du chat de réunion | ⏳ | ⏳ | ⏳ |
-| 14 | **M3** | Approbation des participants (lobby JaaS) | n/a | ⏳ | ⏳ |
-| 15 | **M5** | Partage de fichiers en réunion | ⏳ | ⏳ | ⏳ |
-| 16 | **M6** | Enregistrement de la réunion | ⏳ | ⏳ | ⏳ |
+| 13 | **M2** | Persistance du chat de réunion (**F5**) | 🔴 | ⏳ | ⏳ (périmètre livré) |
+| 14 | **M3** | Approbation des participants (lobby JaaS) | 🔴 | ⏳ | ⏳ |
+| — | **M5** | Partage de fichiers en réunion | — | — | 🔮 Perspective (reporté) |
+| — | **M6** | Enregistrement de la réunion | — | — | 🔮 Perspective (reporté) |
+
+**M2 · détail du reste backend** : entité `MeetingMessage` + repository + `POST/GET {meeting}/calls/{id}/messages`
+(la table `meeting_messages` existe déjà, vide, endpoints différés en Phase 9).
+
+**M3 · détail du reste backend** : `JitsiTokenService` doit ajouter le claim `lobby_bypass: true` pour l'hôte
+et les membres **conviés explicitement** (`CallParticipant.invitedExplicitly`, déjà renseigné en base mais
+**non lu** par le service), et l'omettre pour l'invité externe et le membre **non convié** — qui passent alors
+par la salle d'attente. La v5 prévoit aussi une **expiration plus courte** pour le JWT vidéo de l'invité
+externe, alors que `TOKEN_TTL_SECONDS = 3600` s'applique aujourd'hui à tous.
+La **visibilité** est en revanche déjà correcte côté backend : `GET /calls/active` ne renvoie que les appels
+dont l'appelant est participant convié ou hôte — un membre non convié ignore l'existence de l'appel.
 
 ---
 
@@ -105,7 +140,7 @@ I0 → I1 → I2 → I3 → I4 → I5 → I6 → I7 → I9 (recherche) → I10 (
   le reste reste en mock. `environment.prod.ts` = tout à `false`. Adaptés : `data.providers.ts`, `app.config.ts`,
   `auth.guard.ts`. **Aucun flip global en fin de projet.**
 
-#### I1 · Auth & Workspace — 🚧 En cours (I1a+I1b livrés, `mock.auth=false`)
+#### I1 · Auth & Workspace — ✅ Livré (I1a→I1d) · 🚧 lot de corrections en attente de validation
 - **I1a — Auth core + redirection** : `connexion`/`inscription` → formulaires réactifs + `dispatch(login/register)` réels ;
   erreurs backend inline ; `authGuard` redirige non-connecté vers **`/auth/landing`** (page d'accueil) ; `logout` → landing ;
   `loginSuccess` → sélecteur d'espaces, `register` → verify.
@@ -148,11 +183,51 @@ I0 → I1 → I2 → I3 → I4 → I5 → I6 → I7 → I9 (recherche) → I10 (
   Ports Java hôtes (`:8080`/`:8081`) gelés par Docker Desktop → on teste **uniquement via :4200**. `register` prouvé (HTTP 201).
 - **Reste I1** : persistance photo de profil via File Service (avatar) — à faire avec I5.
 
-## 3 · Décisions/gaps à acter (voir plan §5)
-- **Recherche** : implémenter `/search` fédéré **ou** garder le mock (I9 bloquée sinon).
-- **`myTasks()`** : dériver frontend **ou** ajouter endpoint Project `/users/me/tasks`.
-- **`progress/docs/folders`** projet : dériver **ou** enrichir `ProjectResponse`.
-- **`membersOnline`** : champ frontend d'une KPI retirée → nettoyer.
+##### 1bis · Lot de corrections Auth — ✅ validé live (2026-07-10)
+Buildé (`auth-service` + `api-gateway` + `frontend`), testé en navigateur, V5.1 aligné.
+
+| # | Problème constaté | Cause racine | Correctif |
+| :-: | :- | :- | :- |
+| 1 | 2 emails à l'inscription | Image Docker périmée (le code n'en envoyait déjà qu'un) | `sendWelcomeEmail` supprimé (interface + impl) |
+| 2 | Invitation → renvoi au login, « identifiants incorrects » | **Gateway** : `PublicPathMatcher` déclarait `/invitations/*` public, or l'AntPathMatcher `*` ne matche **qu'un segment** → `/invitations/{token}/accept` (2 segments) exigeait un JWT → **401** → compte jamais créé | Ajout de `/nexawork-auth-api-v1/api/v1/invitations/*/accept` à la liste blanche |
+| 3 | Annulation d'invitation → **403** alors qu'OWNER | **Frontend** : `jwt.interceptor` traitait tout `/api/v1/invitations/` comme public → **pas de Bearer** sur `DELETE`/`resend` | Exception « publique » rendue **méthode-consciente** (GET contexte + POST `…/accept` seulement) |
+| 4 | Changement d'email : « Utilisateur introuvable », `window.prompt` natif | Le même endpoint `verify-email` rétablissait une session alors que l'ancien JWT porte **l'ancien email** en `subject` | Nouveau `ActionTokenType.EMAIL_CHANGE` + `POST /auth/email/confirm-change` (swap + **révocation de toutes les sessions**, 204) ; route front `/auth/email-change` → logout + redirection login ; **modal** design-system |
+| 5 | Règles MDP trop strictes | Front imposait majuscule + chiffre (backend déjà `@Size(min=8)`) | Critère unique **≥ 8 caractères**. Invalidation des sessions déjà en place (reset + change) |
+| 6 | Blocs **SIMU** résiduels | — | Retirés de `page-accueil` (landing) et `lien-envoye` (`/auth/forgot/sent`) |
+| 7 | Périmètre du service Auth | — | **Vérifié conforme** : membres / invitations / rôles / accès workspace = Auth. ACL **ressource** (GED, canaux, projets) = leurs services respectifs, via headers d'identité Gateway |
+| 8 | Invitation d'un email **déjà inscrit** | `accept()` levait une erreur | `accountExists` dans le contexte ; `POST /invitations/{token}/join` (authentifié, email vérifié) ; page à **3 parcours** : inscription / connexion inline / 1 clic si déjà connecté |
+
+**Seconde vague (2026-07-10), issue des tests navigateur :**
+
+| # | Problème | Cause racine | Correctif |
+| :-: | :- | :- | :- |
+| 9 | Toast « Le serveur ne répond pas » **intermittent** | **`SPRINGDOC_ENABLED=true`** : l'init springdoc prend **81 s** (mesuré) et sature le CPU → dépasse le timeout de 20 s du frontend | `SPRINGDOC_ENABLED: ${SPRINGDOC_ENABLED:-false}` — activable ponctuellement. *(Aussi : famine de threads Hikari, `config-server` à 120 % CPU — l'arrêter après le boot libère un cœur.)* |
+| 10 | Onboarding en 2 étapes | Étape 2 « Invitez votre équipe » redondante avec Paramètres ▸ Invitations | **Étape unique** : `configuration-espace` crée l'espace et y entre. `inviter-equipe` **supprimé** (composant + route + signaux `emails`/`role`). `SessionService.createWorkspace()` gagne un callback d'échec (sinon bouton bloqué sur 409 slug). |
+| 11 | Données **mock** visibles une fraction de seconde au rechargement | `SessionService.fallbackView()` renvoyait les constantes mock tant que `loadWorkspaces()` n'avait pas répondu | Placeholder neutre en backend réel. **Bug plus grave corrigé au passage** : le repli renvoyait `role: 'OWNER'` → `isAdmin` brièvement vrai pour tous (`adminGuard` laissait passer). Le rôle vient désormais du claim JWT `orgRole`. |
+| 12 | Invitation **acceptée** toujours affichée « En attente » | `list()` renvoyait tous les statuts ; le front ignorait `status` | Backend : `findAllByOrganisationIdAndStatusNot(..., ACCEPTED)`. |
+| 13 | Bouton « Créer mon compte » cliquable avec mots de passe différents → **email envoyé quand même** | `canSubmit` calculé mais **jamais utilisé** (bouton lié à `loading()` seul) | `[disabled]="!canSubmit() \|\| loading()"` + garde dans `submit()`. Message inline « ≥ 8 caractères » ajouté (inscription + invitation). |
+| 14 | Bouton affichant `{{ busy() ? … }}` en clair | Dans un *template literal* TS, `\'` devient `'` → expression Angular invalide | Guillemets doubles : `{{ busy() ? "Connexion…" : "Rejoindre l'espace" }}`. |
+
+**Aucune migration DB** (`user_action_tokens.type` est un `VARCHAR(50)`) · **aucun changement de config-repo**.
+`docker-compose.yml` : `SPRINGDOC_ENABLED` désactivé par défaut. Swagger (si activé) s'ouvre via
+`http://localhost:4200/nexawork-auth-api-v1/swagger-ui/index.html` — les ports Java hôtes (`:8080`/`:8081`) sont gelés par Docker Desktop.
+
+## 3 · Décisions/gaps (voir plan §5)
+
+**✅ Tranchés**
+- **Recherche globale (I9)** : à **implémenter réellement** — endpoints `search` internes (ILIKE) par service + agrégation Gateway.
+- **Rapports PDF (I10)** : à **implémenter réellement** — OpenPDF côté Project Service.
+- **Meetings** : **M2** (chat persistant) dans le périmètre ; **M5/M6** en perspective (2026-07-08).
+- **Abstraction visio** (`VideoConferencePort`) : **non implémentée** — présentée en **évolution cible** dans V5.1 §9.9.1 (intégration JaaS directe assumée).
+
+**⏳ Encore à trancher**
+- **`myTasks()`** (I7) : dériver côté frontend depuis `/projects/{id}/tasks` **ou** ajouter `GET {project}/users/me/tasks`.
+- **`progress`/`docs`/`folders`** d'un projet (I2) : dériver (tâches done/total ; comptes GED) **ou** enrichir `ProjectResponse`.
+
+**🧹 Nettoyages actés à faire dans leur phase**
+- **`membersOnline`** (I7) : champ frontend d'une KPI supprimée → retirer.
+- **`taskKey`** (I2) : à ajouter sur `TaskCard` (ID mono affiché sur les cartes).
+- **`jitsiUrl`/`jwt`** (I8) : à ajouter au modèle Meeting / DTO de lancement.
 
 ---
 

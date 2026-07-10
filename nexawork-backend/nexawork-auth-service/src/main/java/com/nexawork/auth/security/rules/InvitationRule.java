@@ -15,6 +15,20 @@ public class InvitationRule {
 
     static final String INVITATIONS_API_PREFIX = "/api/v1/invitations";
     static final String INVITATION_ID = "/{invId}";
+    static final String INVITATION_TOKEN = "/{token}";
+
+    /**
+     * Acceptation par un utilisateur déjà inscrit — authentifié (le service
+     * vérifie que l'email de l'appelant correspond à l'invitation). La création
+     * de compte par token ({@code /accept}) reste publique (AuthRule).
+     */
+    @Bean
+    public SecurityRule joinInvitation() {
+        return SecurityRule.builder()
+                .httpMethod(HttpMethod.POST)
+                .apiPattern(INVITATIONS_API_PREFIX + INVITATION_TOKEN + "/join")
+                .build();
+    }
 
     @Bean
     public SecurityRule resendInvitation() {

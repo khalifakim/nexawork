@@ -87,4 +87,6 @@ export interface InvitationContext {
   email: string;
   role: 'ADMIN' | 'MEMBER';
   memberCount: number;
+  /** Vrai si un compte existe déjà pour l'email invité → parcours « Rejoindre ». */
+  accountExists?: boolean;
 }

@@ -26,4 +26,11 @@ public interface InvitationService {
     InvitationContextResponse getContext(String token);
 
     AuthResponse accept(String token, AcceptInvitationRequest request);
+
+    /**
+     * Acceptation par un utilisateur DÉJÀ inscrit (§3.2) : l'appelant authentifié
+     * (dont l'email doit correspondre à l'invitation) rejoint le workspace sans
+     * re-saisir son profil. Renvoie une session scellée sur ce workspace.
+     */
+    AuthResponse join(String token);
 }

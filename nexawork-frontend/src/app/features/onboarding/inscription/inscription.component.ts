@@ -42,7 +42,7 @@ import { selectAuthError, selectAuthLoading } from '@store/auth/auth.selectors';
     <div class="su-row">
       <div class="su-field">
         <label class="su-label">Mot de passe</label>
-        <input class="su-input" type="password" placeholder="8 caractères min."
+        <input class="su-input" [class.su-input--err]="passwordTooShort()" type="password" placeholder="8 caractères min."
                [value]="password()" (input)="password.set($any($event.target).value)" />
       </div>
       <div class="su-field">
@@ -51,6 +51,9 @@ import { selectAuthError, selectAuthLoading } from '@store/auth/auth.selectors';
                [value]="confirm()" (input)="confirm.set($any($event.target).value)" />
       </div>
     </div>
+    @if (passwordTooShort()) {
+      <div class="su-err">Le mot de passe doit contenir au moins 8 caractères.</div>
+    }
     @if (passwordMismatch()) {
       <div class="su-err">Les deux mots de passe ne correspondent pas.</div>
     }
@@ -64,7 +67,7 @@ import { selectAuthError, selectAuthLoading } from '@store/auth/auth.selectors';
     @if (error()) {
       <div class="su-err" style="margin:2px 0 8px">{{ error() }}</div>
     }
-    <button class="su-primary" [disabled]="loading()" (click)="submit()">
+    <button class="su-primary" [disabled]="!canSubmit() || loading()" (click)="submit()">
       {{ loading() ? 'Création…' : 'Créer mon compte' }}
     </button>
     <p class="su-foot">Déjà un compte ? <button class="su-link" routerLink="/auth/login">Se connecter</button></p>
@@ -107,6 +110,12 @@ export class InscriptionComponent {
   confirm   = signal('');
   fn        = signal('');
 
+  /** Mot de passe saisi mais trop court (règle unique : ≥ 8 caractères). */
+  passwordTooShort = computed(() => {
+    const p = this.password();
+    return p.length > 0 && p.length < 8;
+  });
+
   passwordMismatch = computed(() => {
     const c = this.confirm();
     return c.length > 0 && c !== this.password();
@@ -124,10 +133,11 @@ export class InscriptionComponent {
 
   /**
    * Inscription (§3.5). Dispatche `register` ; l'effet `register$` appelle le
-   * backend puis redirige vers `/auth/verify`. Les erreurs inline (mots de passe)
-   * restent visuelles ; la validation reste non bloquante pour le parcours.
+   * backend puis redirige vers `/auth/verify`. **Bloquant** : aucun appel réseau
+   * (donc aucun email de vérification) tant que le formulaire est invalide.
    */
   submit(): void {
+    if (!this.canSubmit() || this.loading()) return;
     this.store.dispatch(AuthActions.register({
       request: {
         firstName: this.firstName().trim(),

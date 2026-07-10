@@ -49,6 +49,15 @@ public class InvitationController {
         return Response.<AuthResponse>created().setPayload(invitationService.accept(token, request));
     }
 
+    /**
+     * Acceptation par un utilisateur déjà inscrit (§3.2) : authentifié, rejoint
+     * le workspace sans re-saisir son profil.
+     */
+    @PostMapping("/{token}/join")
+    public Response<AuthResponse> join(@PathVariable String token) {
+        return Response.<AuthResponse>ok().setPayload(invitationService.join(token));
+    }
+
     @PostMapping("/{invId}/resend")
     public Response<InvitationResponse> resend(@PathVariable UUID invId) {
         return Response.<InvitationResponse>ok().setPayload(invitationService.resend(invId));

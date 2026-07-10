@@ -14,6 +14,13 @@ public interface InvitationRepository extends JpaRepository<Invitation, UUID> {
 
     List<Invitation> findAllByOrganisationId(UUID organisationId);
 
+    /**
+     * Invitations encore actionnables d'un workspace (Paramètres ▸ Invitations) :
+     * les invitations ACCEPTED sont exclues — la personne est devenue membre et
+     * l'invitation n'est plus « en attente ».
+     */
+    List<Invitation> findAllByOrganisationIdAndStatusNot(UUID organisationId, InvitationStatus status);
+
     Optional<Invitation> findByToken(String token);
 
     boolean existsByOrganisationIdAndEmailIgnoreCaseAndStatus(UUID organisationId, String email, InvitationStatus status);

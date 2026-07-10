@@ -78,7 +78,10 @@ public class InvitationServiceImpl implements InvitationService {
     @Transactional(readOnly = true)
     public List<InvitationResponse> list(UUID workspaceId) {
         requireAdmin(workspaceId);
-        return invitationMapper.parse(invitationRepository.findAllByOrganisationId(workspaceId));
+        // Une invitation acceptée n'est plus « en attente » : la personne est
+        // membre et se gère désormais depuis Paramètres ▸ Membres.
+        return invitationMapper.parse(
+                invitationRepository.findAllByOrganisationIdAndStatusNot(workspaceId, InvitationStatus.ACCEPTED));
     }
 
     @Override
@@ -174,6 +177,7 @@ public class InvitationServiceImpl implements InvitationService {
                 .email(invitation.getEmail())
                 .role(invitation.getRole())
                 .memberCount(organisationMemberRepository.countByOrganisationId(organisation.getId()))
+                .accountExists(userRepository.existsByEmailIgnoreCase(invitation.getEmail()))
                 .build();
     }
 
@@ -216,6 +220,45 @@ public class InvitationServiceImpl implements InvitationService {
                 organisation.getName(), invitation.getRole());
 
         // §3.2 — entrée directe dans le workspace ciblé (session.enterWorkspace)
+        return buildAuthResponse(user, membership);
+    }
+
+    @Override
+    @Journal(actionType = "INVITATION_JOIN", entityName = "Invitation")
+    public AuthResponse join(@JournalAttribute("token") String token) {
+        Invitation invitation = findPendingByToken(token);
+        Organisation organisation = invitation.getOrganisation();
+
+        String email = SecurityUtils.getCurrentUserLogin()
+                .orElseThrow(() -> new ForbiddenActionException("Authentification requise pour rejoindre l'espace."));
+        User user = userRepository.findByEmailIgnoreCase(email)
+                .orElseThrow(() -> new ResourceNotFoundException("Utilisateur introuvable."));
+
+        // L'utilisateur connecté doit être le destinataire de l'invitation.
+        if (!user.getEmail().equalsIgnoreCase(invitation.getEmail())) {
+            throw new ForbiddenActionException(
+                    "Cette invitation ne correspond pas à votre compte. Connectez-vous avec "
+                    + invitation.getEmail() + ".");
+        }
+
+        // Idempotent : déjà membre → on réutilise l'adhésion existante.
+        OrganisationMember membership = organisationMemberRepository
+                .findByOrganisationIdAndUserId(organisation.getId(), user.getId())
+                .orElseGet(() -> organisationMemberRepository.save(OrganisationMember.builder()
+                        .organisation(organisation)
+                        .user(user)
+                        .orgRole(invitation.getRole())
+                        .isOwner(false)
+                        .isDeactivated(false)
+                        .joinedAt(LocalDateTime.now())
+                        .build()));
+
+        invitation.setStatus(InvitationStatus.ACCEPTED);
+        invitationRepository.save(invitation);
+
+        log.info("Invitation rejointe (compte existant) : {} rejoint {} en {}", user.getEmail(),
+                organisation.getName(), invitation.getRole());
+
         return buildAuthResponse(user, membership);
     }
 

@@ -92,14 +92,14 @@ public class UserServiceImpl implements UserService {
         user.setPendingEmail(request.getNewEmail().toLowerCase());
         userRepository.save(user);
 
-        UserActionToken verificationToken = userActionTokenRepository.save(UserActionToken.builder()
+        UserActionToken changeToken = userActionTokenRepository.save(UserActionToken.builder()
                 .user(user)
                 .token(UUID.randomUUID().toString())
-                .type(ActionTokenType.EMAIL_VERIFICATION)
+                .type(ActionTokenType.EMAIL_CHANGE)
                 .expiresAt(LocalDateTime.now().plusHours(24))
                 .build());
         // Le lien part vers la NOUVELLE adresse — elle seule prouve sa validité
-        emailSender.sendEmailVerification(request.getNewEmail(), user.getFirstName(), verificationToken.getToken());
+        emailSender.sendEmailChangeConfirmation(request.getNewEmail(), user.getFirstName(), changeToken.getToken());
         log.info("Changement d'email demandé pour {} → {}", user.getEmail(), request.getNewEmail());
     }
 

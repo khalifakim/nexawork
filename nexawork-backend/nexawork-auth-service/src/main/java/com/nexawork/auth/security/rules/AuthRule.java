@@ -25,6 +25,7 @@ public class AuthRule {
                 .apiPattern(AUTH_API_PREFIX + "/password/reset-request")
                 .apiPattern(AUTH_API_PREFIX + "/password/reset")
                 .apiPattern(AUTH_API_PREFIX + "/verify-email")
+                .apiPattern(AUTH_API_PREFIX + "/email/confirm-change")
                 .authenticated(false)
                 .build();
     }

@@ -71,4 +71,15 @@ public class AuthController {
     public Response<AuthResponse> verifyEmail(@Valid @RequestBody VerifyEmailRequest request) {
         return Response.<AuthResponse>ok().setPayload(authenticationService.verifyEmail(request));
     }
+
+    /**
+     * Confirmation d'un changement d'email : bascule la nouvelle adresse et
+     * invalide toutes les sessions (§13.1). Pas de session renvoyée — le front
+     * déconnecte et redirige vers la connexion.
+     */
+    @PostMapping("/email/confirm-change")
+    public Response<Void> confirmEmailChange(@Valid @RequestBody VerifyEmailRequest request) {
+        authenticationService.confirmEmailChange(request);
+        return Response.ok();
+    }
 }

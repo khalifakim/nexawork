@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
-import { Router, RouterLink } from '@angular/router';
+import { RouterLink } from '@angular/router';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 import { ToastService } from '@core/services/toast.service';
 import { PasswordResetState } from '@core/services/password-reset.state';
@@ -13,9 +13,7 @@ import { PasswordResetState } from '@core/services/password-reset.state';
  *  - carte "conseil" avec liste de checks,
  *  - hiérarchie boutons : primaire (Retour connexion) + lien discret (renvoyer).
  *
- * Le raccourci « Définir un nouveau mot de passe » a été retiré : le vrai lien
- * arrive par email et pointe vers `/auth/forgot/new`. En mode simulation, un
- * bouton **SIMU** permet de sauter cet aller-retour pour tester le workflow.
+ * Le lien de réinitialisation arrive par email et pointe vers `/auth/forgot/new`.
  */
 @Component({
   selector: 'app-mdp-lien-envoye',
@@ -61,17 +59,6 @@ import { PasswordResetState } from '@core/services/password-reset.state';
       <!-- Actions -->
       <button class="primary" routerLink="/auth/login">Retour à la connexion</button>
       <button class="ghost" (click)="resend()"><app-icon name="rotateCcw" [size]="14" [stroke]="2" />Renvoyer l'email</button>
-
-      <!-- SIMULATION -->
-      <div class="simu">
-        <div class="simu__hd">
-          <span class="simu__b">SIMU</span>
-          <span class="simu__t">Outils de test — à retirer avant la mise en production.</span>
-        </div>
-        <button class="simu__btn" (click)="simulateClick()">
-          <app-icon name="link" [size]="14" [stroke]="2" />Simuler le clic sur le lien reçu
-        </button>
-      </div>
     </div>
   `,
   styles: [`
@@ -103,27 +90,13 @@ import { PasswordResetState } from '@core/services/password-reset.state';
     .primary:hover { background: var(--nx-indigo-hover); }
     .ghost { display: inline-flex; align-items: center; gap: 6px; background: none; border: none; color: var(--nx-text-500); font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer; padding: 6px 10px; }
     .ghost:hover { color: var(--nx-indigo); }
-
-    /* Bloc simulation — encart clairement identifié. */
-    .simu { width: 100%; box-sizing: border-box; margin-top: 22px; padding: 12px 14px; border: 1px dashed #E0497B; border-radius: 12px; background: rgba(224,73,123,.05); display: flex; flex-direction: column; gap: 10px; text-align: left; }
-    .simu__hd { display: flex; align-items: center; gap: 8px; }
-    .simu__b  { flex: none; padding: 2px 7px; border-radius: 5px; background: #E0497B; color: #fff; font-size: 10px; font-weight: 800; letter-spacing: .05em; }
-    .simu__t  { font-size: 11.5px; color: var(--nx-text-500); font-weight: 500; }
-    .simu__btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; width: 100%; height: 36px; border: 1px solid #E0497B; border-radius: 8px; background: #fff; color: #E0497B; font-family: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
-    .simu__btn:hover { background: rgba(224,73,123,.08); }
   `],
 })
 export class MdpLienEnvoyeComponent {
-  private router = inject(Router);
   private toast = inject(ToastService);
   state = inject(PasswordResetState);
 
   resend(): void {
     this.toast.show({ message: 'Nouvel email de réinitialisation envoyé.' });
-  }
-
-  /** SIMU — sauter la boîte mail et ouvrir directement le formulaire de reset. */
-  simulateClick(): void {
-    this.router.navigate(['/auth/forgot/new']);
   }
 }

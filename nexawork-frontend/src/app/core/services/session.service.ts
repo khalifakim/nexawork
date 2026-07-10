@@ -10,7 +10,7 @@ import { AuthService, MOCK_AUTH_RESPONSE, MOCK_WORKSPACE_NAME } from './auth.ser
 import { WorkspaceService } from './workspace.service';
 import { WorkspaceLoaderService } from './workspace-loader.service';
 import { DEFAULT_WORKSPACE_ID } from '@core/mock/workspaces';
-import { CreateWorkspacePayload, UpdateWorkspacePayload, Workspace } from '@core/models/workspace.models';
+import { CreateWorkspacePayload, UpdateWorkspacePayload, Workspace, WorkspaceRole } from '@core/models/workspace.models';
 import { environment } from '@environment/environment';
 
 /** Display-friendly view of the active workspace (denormalised). */
@@ -54,8 +54,17 @@ export class SessionService {
   /** Current signed-in user (signal). */
   readonly user = toSignal(this.store.select(selectUser), { initialValue: null });
 
-  private readonly _activeWorkspaceId = signal<string>(DEFAULT_WORKSPACE_ID);
+  // En backend réel, aucun identifiant mock : l'espace actif vient du claim JWT
+  // (`restoreSession`) ou de `enterWorkspace()`.
+  private readonly _activeWorkspaceId = signal<string>(environment.mock.auth ? DEFAULT_WORKSPACE_ID : '');
   readonly activeWorkspaceId = this._activeWorkspaceId.asReadonly();
+
+  /**
+   * Rôle restauré depuis le claim JWT au rechargement de page. Sert de source de
+   * vérité tant que `loadWorkspaces()` n'a pas répondu, pour ne pas fausser
+   * `isAdmin`/`isOwner` (et donc `adminGuard`) pendant ce court instant.
+   */
+  private readonly _restoredRole = signal<WorkspaceRole | null>(null);
 
   /** Espaces de l'utilisateur — chargés depuis le backend (ou mock) via `loadWorkspaces()`. */
   private readonly _workspaces = signal<Workspace[]>([]);
@@ -104,6 +113,7 @@ export class SessionService {
       const claims = decodeJwt(token);
       if (!token || !claims) return;
       if (claims.organisationId) this._activeWorkspaceId.set(claims.organisationId);
+      if (claims.orgRole) this._restoredRole.set(claims.orgRole as WorkspaceRole);
       if (this.user()) return; // profil déjà en session (login frais)
       this.auth.me().subscribe(u => this.store.dispatch(AuthActions.loadProfileSuccess({
         user: {
@@ -125,13 +135,23 @@ export class SessionService {
     this._ongoingCall.set(null);
   }
 
+  /**
+   * Vue de repli tant que le catalogue d'espaces n'est pas chargé.
+   *
+   * En backend réel, elle ne doit **jamais** exposer de données mock (sinon on
+   * voit brièvement « Atelier Nexa » au rechargement, avant que `loadWorkspaces()`
+   * ne réponde). On renvoie un placeholder neutre, avec le rôle issu du JWT.
+   */
   private fallbackView(): ActiveWorkspaceView {
+    if (environment.mock.auth) {
+      return { id: DEFAULT_WORKSPACE_ID, name: MOCK_WORKSPACE_NAME, color: '#6C70F0', role: 'OWNER', members: 1 };
+    }
     return {
-      id: DEFAULT_WORKSPACE_ID,
-      name: MOCK_WORKSPACE_NAME,
-      color: '#6C70F0',
-      role: 'OWNER',
-      members: 1,
+      id: this._activeWorkspaceId(),
+      name: '',
+      color: '#8E8AA0',
+      role: this._restoredRole() ?? 'MEMBER',
+      members: 0,
     };
   }
 
@@ -221,10 +241,15 @@ export class SessionService {
    * Créer un espace (REF I : ne bascule PAS l'espace actif). Recharge le
    * catalogue et retourne l'espace créé pour un toast / une navigation.
    */
-  createWorkspace(payload: CreateWorkspacePayload, done?: (ws: Workspace) => void): void {
-    this.workspaceService.create(payload).subscribe(ws => {
-      this._workspaces.update(list => [...list, ws]);
-      done?.(ws);
+  createWorkspace(payload: CreateWorkspacePayload, done?: (ws: Workspace) => void, fail?: () => void): void {
+    this.workspaceService.create(payload).subscribe({
+      next: ws => {
+        this._workspaces.update(list => [...list, ws]);
+        done?.(ws);
+      },
+      // L'erreur est déjà signalée par l'`error.interceptor` (toast) ; le
+      // callback permet à l'appelant de relâcher son état « en cours ».
+      error: () => fail?.(),
     });
   }
 

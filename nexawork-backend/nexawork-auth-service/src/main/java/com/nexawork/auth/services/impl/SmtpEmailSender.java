@@ -26,22 +26,27 @@ public class SmtpEmailSender implements EmailSender {
 
     @Override
     @Async
-    public void sendWelcomeEmail(String to, String firstName) {
-        send(to, "[NexaWork] Bienvenue !",
-                "Bonjour " + firstName + ",\n\n"
-                        + "Votre compte NexaWork a bien été créé.\n"
-                        + "Connectez-vous : " + mailProperties.getFrontendBaseUrl() + "/auth/login\n\n"
-                        + "L'équipe NexaWork");
-    }
-
-    @Override
-    @Async
     public void sendEmailVerification(String to, String firstName, String verificationToken) {
         String link = mailProperties.getFrontendBaseUrl() + "/auth/verify?token=" + verificationToken;
         send(to, "[NexaWork] Vérifiez votre adresse email",
                 "Bonjour " + firstName + ",\n\n"
                         + "Confirmez votre adresse email en cliquant sur ce lien :\n"
                         + link + "\n\n"
+                        + "L'équipe NexaWork");
+    }
+
+    @Override
+    @Async
+    public void sendEmailChangeConfirmation(String to, String firstName, String changeToken) {
+        String link = mailProperties.getFrontendBaseUrl() + "/auth/email-change?token=" + changeToken;
+        send(to, "[NexaWork] Confirmez votre nouvelle adresse email",
+                "Bonjour " + firstName + ",\n\n"
+                        + "Vous avez demandé à changer l'adresse email de votre compte NexaWork.\n"
+                        + "Confirmez cette nouvelle adresse en cliquant sur ce lien :\n"
+                        + link + "\n\n"
+                        + "Une fois confirmée, vos sessions seront fermées et vous devrez vous "
+                        + "reconnecter avec cette nouvelle adresse.\n"
+                        + "Si vous n'êtes pas à l'origine de cette demande, ignorez cet email.\n\n"
                         + "L'équipe NexaWork");
     }
 

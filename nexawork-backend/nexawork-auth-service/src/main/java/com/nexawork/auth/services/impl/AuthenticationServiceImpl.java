@@ -186,12 +186,6 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     public AuthResponse verifyEmail(VerifyEmailRequest request) {
         UserActionToken token = consumeActionToken(request.getToken(), ActionTokenType.EMAIL_VERIFICATION);
         User user = token.getUser();
-        // Changement d'email (§13.1 POST /users/me/email) : bascule de la
-        // nouvelle adresse une fois prouvée par le clic sur le lien.
-        if (user.getPendingEmail() != null) {
-            user.setEmail(user.getPendingEmail());
-            user.setPendingEmail(null);
-        }
         user.setEmailVerified(true);
         userRepository.save(user);
         log.info("Email vérifié pour {}", user.getEmail());
@@ -203,6 +197,24 @@ public class AuthenticationServiceImpl implements AuthenticationService {
                 .toList();
         OrganisationMember context = memberships.size() == 1 ? memberships.get(0) : null;
         return buildAuthResponse(user, context);
+    }
+
+    @Override
+    public void confirmEmailChange(VerifyEmailRequest request) {
+        UserActionToken token = consumeActionToken(request.getToken(), ActionTokenType.EMAIL_CHANGE);
+        User user = token.getUser();
+        // Bascule vers la nouvelle adresse, prouvée par le clic sur le lien reçu à
+        // cette adresse (§13.1 POST /users/me/email).
+        if (user.getPendingEmail() != null) {
+            user.setEmail(user.getPendingEmail());
+            user.setPendingEmail(null);
+        }
+        user.setEmailVerified(true);
+        userRepository.save(user);
+        // Toutes les sessions ouvertes sont invalidées : l'utilisateur doit se
+        // reconnecter avec sa nouvelle adresse (l'ancien JWT porte l'ancien email).
+        refreshTokenRepository.revokeAllByUserId(user.getId());
+        log.info("Changement d'email confirmé pour {}", user.getEmail());
     }
 
     // ─── Helpers ────────────────────────────────────────────────────────────

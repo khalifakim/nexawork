@@ -6,12 +6,9 @@ import { AuthService } from '@core/services/auth.service';
 import { SessionService } from '@core/services/session.service';
 
 /**
- * Écran "Vérifiez votre boîte mail" après création de compte.
- *
- * En production, l'utilisateur doit cliquer sur le lien reçu par email pour
- * activer son compte — ce lien pointe vers `/auth/workspace/name`. Un bouton
- * **SIMU** est temporairement présent ici pour permettre de sauter cet
- * aller-retour et tester le workflow complet. À retirer en production.
+ * Écran "Vérifiez votre boîte mail" après création de compte. L'utilisateur
+ * clique sur le lien reçu par email (`/auth/verify?token=…`) : l'adresse est
+ * confirmée, la session établie, puis redirection selon le contexte (§3.5).
  */
 @Component({
   selector: 'app-verification-email',

@@ -31,8 +31,13 @@ public class PublicPathMatcher {
             "/nexawork-auth-api-v1/api/v1/auth/password/reset-request",
             "/nexawork-auth-api-v1/api/v1/auth/password/reset",
             "/nexawork-auth-api-v1/api/v1/auth/verify-email",
+            // Confirmation d'un changement d'email par token (page publique côté front)
+            "/nexawork-auth-api-v1/api/v1/auth/email/confirm-change",
             // Consultation d'une invitation par son token (page publique côté front)
             "/nexawork-auth-api-v1/api/v1/invitations/*",
+            // Acceptation d'une invitation (création de compte) par token — deux
+            // segments : le motif '*' ci-dessus ne matche qu'un seul segment.
+            "/nexawork-auth-api-v1/api/v1/invitations/*/accept",
 
             // ─── Meeting Service : accès invité externe par token (V5.1 §4.6) ───
             // L'invité n'a pas de compte : il présente son token à usage unique,

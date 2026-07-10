@@ -28,4 +28,11 @@ public interface AuthenticationService {
     void resetPassword(PasswordResetConfirmRequest request);
 
     AuthResponse verifyEmail(VerifyEmailRequest request);
+
+    /**
+     * Confirme un changement d'adresse email (§13.1) : bascule la nouvelle
+     * adresse et invalide toutes les sessions (déconnexion forcée). Ne renvoie
+     * pas de session — l'utilisateur se reconnecte avec sa nouvelle adresse.
+     */
+    void confirmEmailChange(VerifyEmailRequest request);
 }

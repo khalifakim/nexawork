@@ -24,4 +24,10 @@ public class InvitationContextResponse {
     private String email;
     private OrgRole role;
     private Long memberCount;
+
+    /**
+     * Vrai si un compte existe déjà pour l'email invité (§3.2) : le front propose
+     * alors « Rejoindre » (connexion préalable) au lieu du formulaire d'inscription.
+     */
+    private Boolean accountExists;
 }

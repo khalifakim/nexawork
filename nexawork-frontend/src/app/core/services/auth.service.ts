@@ -45,12 +45,16 @@ export abstract class AuthService {
   abstract getInvitation(token: string): Observable<InvitationContext>;
   /** POST /invitations/{token}/accept — crée le compte + rejoint l'espace. */
   abstract acceptInvitation(token: string, req: AcceptInvitationRequest): Observable<AuthResponse>;
+  /** POST /invitations/{token}/join — compte existant (authentifié) rejoint l'espace. */
+  abstract joinInvitation(token: string): Observable<AuthResponse>;
   /** PATCH /users/me/profile — prénom, nom, fonction, photo. */
   abstract updateProfile(req: { firstName?: string; lastName?: string; jobTitle?: string; photoUrl?: string }): Observable<UserProfileResponse>;
   /** PATCH /users/me/password. */
   abstract changePassword(currentPassword: string, newPassword: string): Observable<unknown>;
   /** POST /users/me/email — demande de changement (lien de confirmation envoyé). */
   abstract changeEmail(newEmail: string): Observable<unknown>;
+  /** POST /auth/email/confirm-change — confirme la nouvelle adresse (sessions invalidées). */
+  abstract confirmEmailChange(token: string): Observable<unknown>;
 }
 
 @Injectable()
@@ -83,11 +87,13 @@ export class AuthMockService extends AuthService {
   acceptInvitation(_t: string, _r: AcceptInvitationRequest): Observable<AuthResponse> {
     return of(MOCK_AUTH_RESPONSE).pipe(delay(250));
   }
+  joinInvitation(_t: string): Observable<AuthResponse> { return of(MOCK_AUTH_RESPONSE).pipe(delay(250)); }
   updateProfile(req: { firstName?: string; lastName?: string; jobTitle?: string; photoUrl?: string }): Observable<UserProfileResponse> {
     return of({ ...MOCK_AUTH_RESPONSE.user, ...req } as UserProfileResponse).pipe(delay(150));
   }
   changePassword(_c: string, _n: string): Observable<unknown> { return of(null).pipe(delay(150)); }
   changeEmail(_e: string): Observable<unknown> { return of(null).pipe(delay(150)); }
+  confirmEmailChange(_t: string): Observable<unknown> { return of(null).pipe(delay(150)); }
 }
 
 /** Implémentation réelle — Auth Service via la Gateway (enveloppe dé-wrappée). */
@@ -123,6 +129,9 @@ export class AuthHttpService extends BaseHttpService implements AuthService {
   acceptInvitation(token: string, req: AcceptInvitationRequest): Observable<AuthResponse> {
     return this.post$<AuthResponse>('auth', `/invitations/${token}/accept`, req);
   }
+  joinInvitation(token: string): Observable<AuthResponse> {
+    return this.post$<AuthResponse>('auth', `/invitations/${token}/join`, {});
+  }
   updateProfile(req: { firstName?: string; lastName?: string; jobTitle?: string; photoUrl?: string }): Observable<UserProfileResponse> {
     return this.patch$<UserProfileResponse>('auth', '/users/me/profile', req);
   }
@@ -131,5 +140,8 @@ export class AuthHttpService extends BaseHttpService implements AuthService {
   }
   changeEmail(newEmail: string): Observable<unknown> {
     return this.post$<unknown>('auth', '/users/me/email', { newEmail });
+  }
+  confirmEmailChange(token: string): Observable<unknown> {
+    return this.post$<unknown>('auth', '/auth/email/confirm-change', { token });
   }
 }
