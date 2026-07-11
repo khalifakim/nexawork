@@ -15,7 +15,7 @@ export const environment = {
     channels: false,     // Phase I4 ✅ (REST + STOMP ; PJ de message différées)
     conversations: false,// Phase I4 ✅ (REST + STOMP ; accusé de lecture)
     ged: false,          // Phase I5 ✅ (arborescence, écritures, versions, accès, corbeille)
-    notifications: true, // Phase I6
+    notifications: false,// Phase I6 ✅ (REST + STOMP + Web Push)
     accueil: true,       // Phase I7
     meetings: true,      // Phase I8
     search: true,        // Phase I9
@@ -25,4 +25,6 @@ export const environment = {
   /** WebSocket routés par la Gateway (V5.1 §7.5). */
   wsMessagingUrl: 'http://localhost:8080/ws/messaging',
   wsNotificationUrl: 'http://localhost:8080/ws/notifications',
+  /** Clé publique VAPID (Web Push, V5.1 §7.6) — la clé privée reste au backend. */
+  vapidPublicKey: 'BM8AL4x-9O_5wkUspvmULp3mVYZejAsttB-ImNMnFU1RiSW2yEll4T7NbNfZBFQ6ORyBLccERe4MUip-B6OWDJA',
 };

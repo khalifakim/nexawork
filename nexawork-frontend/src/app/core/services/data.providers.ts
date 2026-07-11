@@ -7,7 +7,7 @@ import { GedService, GedMockService, GedHttpService } from './ged.service';
 import { ConversationsService, ConversationsMockService, ConversationsHttpService } from './conversations.service';
 import { ChannelsService, ChannelsMockService, ChannelsHttpService } from './channels.service';
 import { MeetingsService, MeetingsMockService } from './meetings.service';
-import { NotificationsService, NotificationsMockService } from './notifications.service';
+import { NotificationsService, NotificationsMockService, NotificationsHttpService } from './notifications.service';
 import { AccueilService, AccueilMockService } from './accueil.service';
 import { SearchService, SearchMockService } from './search.service';
 
@@ -31,7 +31,7 @@ export function provideDataServices(): Provider[] {
     { provide: ConversationsService, useClass: m.conversations ? ConversationsMockService : ConversationsHttpService },
     { provide: ChannelsService,      useClass: m.channels ? ChannelsMockService : ChannelsHttpService },
     { provide: MeetingsService,      useClass: MeetingsMockService },      // I8 → MeetingsHttpService
-    { provide: NotificationsService, useClass: NotificationsMockService }, // I6 → NotificationsHttpService
+    { provide: NotificationsService, useClass: m.notifications ? NotificationsMockService : NotificationsHttpService },
     { provide: AccueilService,       useClass: AccueilMockService },       // I7 → AccueilHttpService
     { provide: SearchService,        useClass: SearchMockService },        // I9 → SearchHttpService
   ];

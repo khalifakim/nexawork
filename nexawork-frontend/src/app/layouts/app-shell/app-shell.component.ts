@@ -27,6 +27,7 @@ import { ChannelsService } from '@core/services/channels.service';
 import { ToastService } from '@core/services/toast.service';
 import { GedOverlayBus } from '@core/services/ged-overlay.bus';
 import { DataRefreshService } from '@core/services/data-refresh.service';
+import { WebPushService } from '@core/services/web-push.service';
 import { TaskCard } from '@core/models/task.models';
 import { Project } from '@core/models/project.models';
 import { ShellBus } from './shell.bus';
@@ -111,6 +112,7 @@ export class AppShellComponent {
   session = inject(SessionService);
   private profileSvc = inject(UserProfileService);
   private refresh = inject(DataRefreshService);
+  private webPush = inject(WebPushService);
 
   readonly deleteLines = [
     'Cette suppression est irréversible.',
@@ -160,6 +162,8 @@ export class AppShellComponent {
     // Charge le catalogue des espaces + le profil réel (header, Paramètres) à l'entrée.
     this.session.loadWorkspaces();
     if (!environment.mock.auth) this.profileSvc.load();
+    // Web Push : enregistre le service worker et l'abonnement (silencieux si refusé).
+    void this.webPush.enable();
 
     // Résout la carte du `@@mention` ouvert hors d'un projet (canal / conversation).
     effect(() => {

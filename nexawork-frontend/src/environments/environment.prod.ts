@@ -17,7 +17,7 @@ export const environment = {
     channels: false,     // Phase I4
     conversations: false,// Phase I4
     ged: false,          // Phase I5
-    notifications: true,
+    notifications: false,// Phase I6
     accueil: true,
     meetings: true,
     search: true,
@@ -26,4 +26,6 @@ export const environment = {
   apiUrl: '',
   wsMessagingUrl: '/ws/messaging',
   wsNotificationUrl: '/ws/notifications',
+  /** Clé publique VAPID (Web Push, V5.1 §7.6) — la clé privée reste au backend. */
+  vapidPublicKey: 'BM8AL4x-9O_5wkUspvmULp3mVYZejAsttB-ImNMnFU1RiSW2yEll4T7NbNfZBFQ6ORyBLccERe4MUip-B6OWDJA',
 };

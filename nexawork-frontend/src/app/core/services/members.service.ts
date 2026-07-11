@@ -67,14 +67,14 @@ export class MembersHttpService extends BaseHttpService implements MembersServic
   }
 
   /**
-   * Membres en ligne (hors soi). Croise l'annuaire avec la présence Redis.
-   * NB : `GET /presence/active` renvoie une liste vide tant que la présence
-   * temps réel (WebSocket) n'est pas active — « En ligne » sera donc vide.
+   * Membres en ligne (hors soi). Croise l'annuaire avec la présence Redis, tenue
+   * par le Notification Service (`GET /presence/online`) : la connexion WebSocket
+   * du client vaut « en ligne », réarmée par un heartbeat (V5.1 §3.9).
    */
   online(): Observable<Member[]> {
     return forkJoin({
       dir: this.directory(),
-      active: this.get$<string[]>('messaging', '/presence/active'),
+      active: this.get$<string[]>('notification', '/presence/online'),
     }).pipe(
       map(({ dir, active }) => {
         const on = new Set(active);

@@ -20,7 +20,8 @@ restantes exigent du développement backend neuf** : **I9** (endpoints de recher
 **Frontend : ✅ construit sur mocks.**
 **Phase en cours : intégration Frontend ↔ Backend (mock → HTTP)**, phase par phase — voir le plan.
 
-Progression intégration : **6 / 14 phases du périmètre livrable** (✅ I0, I1, I2, I3, I4, **I5** · prochaine : **I6 Notifications**).
+Progression intégration : **7 / 14 phases du périmètre livrable** (✅ I0, I1, I2, I3, I4, I5, **I6** · prochaine : **I7 Accueil/Dashboard**).
+> 🔓 **Présence « en ligne » débloquée en I6** : elle est tenue par le **Notification Service** (`GET /presence/online` + heartbeat STOMP `/app/presence/heartbeat`), pas par le Messaging (dont `/presence/active` est un stub). `MembersService.online()` a été recâblé — le « En ligne » d'I3 fonctionne désormais.
 > ⚠️ **Sprint sans test intermédiaire (2026-07-11)** : sur décision utilisateur (machine 8 Go), on développe toutes les phases d'affilée et on teste **tout à la fin**. `ng build` (dev+prod) vert après chaque phase ; le **temps réel STOMP (I4/I6)** et le **backend neuf (I9/I10/M2/M3)** ne seront validés qu'à la session finale.
 *(14 = 16 phases initiales − M5/M6 repassées en perspective.)*
 
@@ -89,7 +90,7 @@ Colonne **Backend** : ✅ = déjà livré (baseline) · 🔴 = **développement 
 | 4 | **I3** | Members | ✅ | ✅ | ✅ | **Livrée** : `MembersHttpService` (annuaire Auth réel). ⚠️ présence « en ligne » vide tant que l'infra WebSocket (I4/I6) n'alimente pas Redis — `/presence/active` est un stub côté backend. |
 | 5 | **I4** | Channels + Conversations | ✅ | ✅ | 🚧 | **Code livré** (2 `*HttpService` + client STOMP `core/ws/`). ⚠️ **temps réel non testable avant la session finale**. Routing par slug conservé (résolution slug↔UUID interne). PJ de message différées (dépendance circulaire `messageId`). |
 | 6 | **I5** | GED / Documents | ✅ | ✅ | ✅ | **Livrée** (a+b+c) : arborescence, écritures (import File Service), versions, **accès/grants réels par UUID** (R16 : bénéficiaires = membres+équipes du projet), bibliothèque (mes-docs/partagés/corbeille), **photo de profil** (File Service `avatar`). `ged` → `false`. Builds dev+prod verts. |
-| 7 | **I6** | Notifications | ✅ | ⏳ | ⏳ | HttpService + STOMP + **Service Worker Web Push**. Table `kind`↔`NotificationType`. |
+| 7 | **I6** | Notifications | ✅ | ✅ | ✅ | **Livrée** : `NotificationsHttpService` (liste, lu, masquer), **STOMP** `/user/queue/notifications` (temps réel), **Web Push** (`public/sw-push.js` + `WebPushService` + clé VAPID), **présence réelle** (heartbeat STOMP → Redis). Client STOMP refondu en 2 connexions (messaging + notifications). |
 | 8 | **I7** | Accueil / Dashboard | ✅ | ⏳ | ⏳ | Agrège I2/I4 ; retirer `membersOnline` ; trancher `myTasks()`. Légère. |
 | 9 | **I9** | Recherche globale | 🔴 | ⏳ | ⏳ | **À développer** : `GET .../search?q=` interne (ILIKE) par service + agrégation Gateway, en respectant REF F/G. |
 | 10 | **I10** | Rapports PDF | 🔴 | ⏳ | ⏳ | **À développer** : OpenPDF + `GET /projects/{id}/report` et `/workspaces/{id}/report` (`application/pdf`). Front : téléchargement blob. |

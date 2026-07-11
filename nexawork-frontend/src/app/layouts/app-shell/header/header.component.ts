@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, EventEmitter, Output, computed, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router, RouterLink } from '@angular/router';
 import { SessionService } from '@core/services/session.service';
 import { WorkspaceLoaderService } from '@core/services/workspace-loader.service';
@@ -238,7 +239,10 @@ export class HeaderComponent {
   }
   /** Notifications of the active workspace (reload on workspace switch). */
   private notifsSvc = inject(NotificationsService);
-  notifs = workspaceSignal<Notif[]>(this.session, () => this.notifsSvc.list(), []);
+  private fetched = workspaceSignal<Notif[]>(this.session, () => this.notifsSvc.list(), []);
+  /** Notifications reçues en temps réel (STOMP), empilées au-dessus de la liste. */
+  private pushed = signal<Notif[]>([]);
+  notifs = computed<Notif[]>(() => [...this.pushed(), ...this.fetched()]);
 
   visibleNotifs = computed(() => {
     const list = this.visibleNotifsAll();
@@ -250,9 +254,19 @@ export class HeaderComponent {
     return this.notifs().map(n => ({ ...n, read: n.read || read.includes(n.id) }));
   });
 
+  constructor() {
+    // Réception temps réel : la notification s'ajoute en tête de la liste.
+    this.notifsSvc.live().pipe(takeUntilDestroyed()).subscribe(n =>
+      this.pushed.update(l => [n, ...l]));
+  }
+
   toggle(m: Menu): void { this.menu.set(this.menu() === m ? null : m); }
   close(): void { this.menu.set(null); }
-  markRead(id: string): void { this.readIds.update(l => l.includes(id) ? l : [...l, id]); }
+  /** Marque lue localement (retour immédiat) puis persiste côté serveur. */
+  markRead(id: string): void {
+    this.readIds.update(l => l.includes(id) ? l : [...l, id]);
+    this.notifsSvc.markRead(id).subscribe({ error: () => {} });
+  }
   ini(name: string): string { return initials(name); }
   logout(): void { this.close(); this.session.logout(); }
 
@@ -260,6 +274,11 @@ export class HeaderComponent {
   openNotif(n: Notif): void {
     this.markRead(n.id);
     this.close();
+    // Backend réel : `target` est l'URL cible calculée par le serveur.
+    if (n.target.startsWith('/')) {
+      this.router.navigateByUrl(n.target);
+      return;
+    }
     switch (n.kind) {
       case 'tache':
         // Task notifications (assignment, comment mention) open the task detail
