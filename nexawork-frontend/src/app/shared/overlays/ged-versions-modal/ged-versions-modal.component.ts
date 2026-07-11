@@ -1,6 +1,10 @@
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output, computed, inject, signal } from '@angular/core';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 import { ToastService } from '@core/services/toast.service';
+import { GedService } from '@core/services/ged.service';
+import { GedOverlayBus } from '@core/services/ged-overlay.bus';
+import { avatarColorFor } from '@core/util/ui.util';
+import { environment } from '@environment/environment';
 
 interface Version { v: number; by: string; color: string; date: string; size: string; note: string; }
 
@@ -48,7 +52,10 @@ interface Version { v: number; by: string; color: string; date: string; size: st
         </div>
 
         <div class="ft">
-          <button class="ft__up" (click)="addVersion()"><app-icon name="upload" [size]="15" />Importer une nouvelle version</button>
+          <input #verFile type="file" hidden (change)="onPickVersion($event)" />
+          <button class="ft__up" (click)="isReal ? verFile.click() : addVersionMock()">
+            <app-icon name="upload" [size]="15" />Importer une nouvelle version
+          </button>
           <button class="ft__close" (click)="closed.emit()">Fermer</button>
         </div>
       </div>
@@ -92,22 +99,78 @@ export class GedVersionsModalComponent {
   @Output() closed = new EventEmitter<void>();
 
   private toast = inject(ToastService);
+  private ged = inject(GedService);
+  private overlay = inject(GedOverlayBus);
 
-  versions = signal<Version[]>([
+  /** Mode réel : l'historique vient du backend (par UUID du fichier). */
+  private readonly real = !environment.mock.ged;
+
+  versions = signal<Version[]>(this.real ? [] : [
     { v: 3, by: 'Sarah Diallo', color: '#F2693C', date: "Aujourd'hui, 14:23", size: '2,4 Mo', note: 'Ajustement des marges et libellés.' },
     { v: 2, by: 'Akim Koné',    color: '#F5A623', date: 'Hier, 09:10',        size: '2,2 Mo', note: 'Intégration des retours de revue.' },
     { v: 1, by: 'Yacine Sow',   color: '#E0497B', date: '12 mai 2026',        size: '2,0 Mo', note: 'Version initiale.' },
   ]);
+
+  constructor() {
+    if (this.real) this.load();
+  }
+
+  private fileId(): string | undefined { return this.overlay.targetItem()?.id; }
+
+  private load(): void {
+    const id = this.fileId();
+    if (!id) return;
+    this.ged.versions(id).subscribe(list => this.versions.set(
+      list
+        .sort((a, b) => b.number - a.number)
+        .map(v => ({ v: v.number, by: v.author, color: avatarColorFor(v.author), date: v.date, size: v.size, note: v.note ?? '' })),
+    ));
+  }
 
   current = computed(() => this.versions().reduce((m, v) => Math.max(m, v.v), 0));
 
   ini(n: string): string { return n.split(/\s+/).map(w => w[0]).join('').slice(0, 2); }
 
   download(v: number): void { this.toast.show({ message: 'Téléchargement de la version ' + v + '…' }); }
-  restore(v: number): void { this.toast.show({ message: 'Version ' + v + ' restaurée comme version actuelle' }); this.closed.emit(); }
-  addVersion(): void {
+
+  restore(v: number): void {
+    const id = this.fileId();
+    if (!this.real || !id) {
+      this.toast.show({ message: 'Version ' + v + ' restaurée comme version actuelle' });
+      this.closed.emit();
+      return;
+    }
+    // Retrouve l'UUID de la version depuis son numéro.
+    this.ged.versions(id).subscribe(list => {
+      const target = list.find(x => x.number === v);
+      if (!target) return;
+      this.ged.restoreVersion(id, target.id).subscribe(() => {
+        this.toast.show({ message: 'Version ' + v + ' restaurée comme version actuelle' });
+        this.closed.emit();
+      });
+    });
+  }
+
+  /** Import d'une nouvelle version — ouvre le sélecteur de fichier. */
+  onPickVersion(ev: Event): void {
+    const input = ev.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    const id = this.fileId();
+    if (!file || !id) return;
+    this.toast.show({ message: 'Import de la nouvelle version…' });
+    this.ged.addVersion(id, null, file, '').subscribe(() => {
+      this.load();
+      this.toast.show({ message: 'Nouvelle version importée' });
+    });
+  }
+
+  /** Mock : conserve l'ancien comportement (ajout local). */
+  addVersionMock(): void {
     const next = this.current() + 1;
     this.versions.update(l => [{ v: next, by: 'Akim Koné', color: '#F5A623', date: "À l'instant", size: '2,5 Mo', note: 'Nouvelle version importée.' }, ...l]);
     this.toast.show({ message: 'Version ' + next + ' importée' });
   }
+
+  protected readonly isReal = this.real;
 }

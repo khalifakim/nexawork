@@ -1,13 +1,22 @@
 import { ChangeDetectionStrategy, Component, ElementRef, EventEmitter, HostListener, Input, Output, computed, inject, signal } from '@angular/core';
+import { toSignal, toObservable } from '@angular/core/rxjs-interop';
+import { of } from 'rxjs';
+import { switchMap } from 'rxjs/operators';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 import { ToastService } from '@core/services/toast.service';
 import { GedOverlayBus } from '@core/services/ged-overlay.bus';
+import { GedService, GedGrantInput } from '@core/services/ged.service';
+import { MembersService } from '@core/services/members.service';
+import { ProjectsService } from '@core/services/projects.service';
+import { AccessMode } from '@core/models/ged.models';
+import { ProjectMember, ProjectTeam } from '@core/models/project.models';
+import { environment } from '@environment/environment';
 import { ME } from '@core/util/ui.util';
 
 type Mode = 'open' | 'private' | 'shared';
 type Level = 'READER' | 'EDITOR';
-interface Grant { type: 'user' | 'team'; name: string; level: Level; }
-interface Person { type: 'user' | 'team'; name: string; color: string; }
+interface Grant { type: 'user' | 'team'; name: string; level: Level; granteeId?: string; }
+interface Person { type: 'user' | 'team'; name: string; color: string; granteeId?: string; }
 
 /**
  * Workspace-wide candidates. R16 — used as-is when the scope is `org`;
@@ -192,10 +201,32 @@ const PROJECT_TEAM_NAMES = new Set(['Design produit', 'Développement']);
 export class GedAccessModalComponent {
   private toast = inject(ToastService);
   private overlay = inject(GedOverlayBus);
+  private ged = inject(GedService);
+  private membersSvc = inject(MembersService);
+  private projectsSvc = inject(ProjectsService);
+
+  /** Mode réel : les grants viennent du backend (par UUID) ; sinon du bus local. */
+  private readonly real = !environment.mock.ged;
 
   /** Pre-loads the current restriction of the document when set. */
   @Input({ required: true }) set name(value: string) {
     this._name = value;
+
+    const item = this.overlay.targetItem();
+    if (this.real && item?.id) {
+      // Mode réel : le mode d'accès et les bénéficiaires viennent du serveur.
+      this.mode.set(item.restricted ? 'shared' : 'open');
+      this.ged.grantsOf(item).subscribe(list => {
+        const owner = list.find(g => g.owner);
+        this._loadedOwner.set(owner?.name ?? this.meName());
+        this.grants.set(list.filter(g => !g.owner)
+          .map(g => ({ type: g.type, name: g.name, level: g.level, granteeId: g.granteeId })));
+        // Restreint sans bénéficiaire = privé ; avec bénéficiaires = partagé.
+        if (item.restricted) this.mode.set(list.some(g => !g.owner) ? 'shared' : 'private');
+      });
+      return;
+    }
+
     const r = this.overlay.restrictionOf(value);
     this.mode.set(r.mode);
     this.grants.set(r.grants.map(g => ({ ...g })));
@@ -203,6 +234,8 @@ export class GedAccessModalComponent {
     // implicitly the creator of any document that has no explicit owner.
     this._loadedOwner.set(r.owner ?? ME);
   }
+
+  private meName(): string { return ME; }
   get name(): string { return this._name; }
   private _name = '';
   /**
@@ -236,15 +269,60 @@ export class GedAccessModalComponent {
   /** R13 — owner display name, always shown as the locked first row. */
   ownerName = computed(() => this._loadedOwner());
 
-  private allPool = [...TEAMS, ...USERS];
+  /** Annuaire réel (mode HTTP) — les bénéficiaires sont des membres du workspace. */
+  private directory = toSignal(this.membersSvc.directory(), { initialValue: [] });
+
+  /** Projet du document ciblé (vide = document d'organisation). */
+  private projectId = computed(() => this.overlay.targetItem()?.projectId ?? null);
+
+  /**
+   * R16 — pour un document de projet, les bénéficiaires possibles sont les
+   * **membres du projet** (et ses **équipes**), pas tout le workspace.
+   */
+  private projectMembers = toSignal(
+    toObservable(this.projectId).pipe(
+      switchMap(pid => pid ? this.projectsSvc.members(pid) : of([] as ProjectMember[])),
+    ),
+    { initialValue: [] as ProjectMember[] },
+  );
+  private projectTeams = toSignal(
+    toObservable(this.projectId).pipe(
+      switchMap(pid => pid ? this.projectsSvc.teams(pid) : of([] as ProjectTeam[])),
+    ),
+    { initialValue: [] as ProjectTeam[] },
+  );
+
+  private allPoolMock = [...TEAMS, ...USERS];
+
+  /** Pool complet selon le mode (réel = annuaire + équipes ; mock = fixtures). */
+  private allPool = computed<Person[]>(() => {
+    if (!this.real) return this.allPoolMock;
+
+    const pid = this.projectId();
+    const dir = this.directory();
+    if (!pid) {
+      // Document d'organisation : tout le workspace, pas d'équipes (notion projet).
+      return dir.map(m => ({ type: 'user' as const, name: m.name, color: m.color, granteeId: m.userId }));
+    }
+
+    // R16 — document de projet : membres du projet uniquement + équipes du projet.
+    const memberIds = new Set(this.projectMembers().map(m => m.userId));
+    const users: Person[] = dir
+      .filter(m => m.userId && memberIds.has(m.userId))
+      .map(m => ({ type: 'user' as const, name: m.name, color: m.color, granteeId: m.userId }));
+    const teams: Person[] = this.projectTeams()
+      .map(t => ({ type: 'team' as const, name: t.name, color: t.color ?? '#6C70F0', granteeId: t.id }));
+    return [...teams, ...users];
+  });
+
   /**
    * Candidate pool computed from the scope. The owner is excluded because
    * they are represented by the dedicated locked row above the list.
    */
   private pool = computed<Person[]>(() => {
     const ownerN = this.ownerName();
-    return this.allPool
-      .filter(p => this.scope === 'org' || (p.type === 'user'
+    return this.allPool()
+      .filter(p => this.real || this.scope === 'org' || (p.type === 'user'
         ? PROJECT_USER_NAMES.has(p.name)
         : PROJECT_TEAM_NAMES.has(p.name)))
       .filter(p => !(p.type === 'user' && p.name === ownerN));
@@ -256,10 +334,10 @@ export class GedAccessModalComponent {
     return this.pool().filter(p => !taken.has(p.type + ':' + p.name) && p.name.toLowerCase().includes(q));
   });
 
-  colorOf(g: Grant): string { return this.allPool.find(p => p.type === g.type && p.name === g.name)?.color ?? '#86828e'; }
+  colorOf(g: Grant): string { return this.allPool().find(p => p.type === g.type && p.name === g.name)?.color ?? '#86828e'; }
 
   addGrant(p: Person): void {
-    this.grants.update(l => [...l, { type: p.type, name: p.name, level: 'READER' }]);
+    this.grants.update(l => [...l, { type: p.type, name: p.name, level: 'READER', granteeId: p.granteeId }]);
     // Reset the search field and close the dropdown after each pick — matches
     // the UX asked by the user: the picked row appears below, the input clears,
     // and the next keystroke re-opens the picker with a fresh query.
@@ -277,6 +355,22 @@ export class GedAccessModalComponent {
   }
 
   save(): void {
+    const item = this.overlay.targetItem();
+    if (this.real && item?.id) {
+      // Mode réel : bascule de l'accessMode + réconciliation des grants (UUID).
+      const mode: AccessMode = this.mode() === 'open' ? 'OPEN' : this.mode() === 'private' ? 'PRIVATE' : 'SHARED';
+      const grants: GedGrantInput[] = this.mode() === 'shared'
+        ? this.grants()
+            .filter(g => !!g.granteeId)
+            .map(g => ({ granteeId: g.granteeId!, type: g.type, level: g.level }))
+        : [];
+      this.ged.saveAccess(item, mode, grants).subscribe(() => {
+        this.toast.show({ message: 'Accès mis à jour pour « ' + this.name + ' »' });
+        this.closed.emit();
+      });
+      return;
+    }
+
     this.overlay.setRestriction(this.name, { mode: this.mode(), grants: this.grants(), owner: this._loadedOwner() });
     this.toast.show({ message: 'Accès mis à jour pour « ' + this.name + ' »' });
     this.closed.emit();

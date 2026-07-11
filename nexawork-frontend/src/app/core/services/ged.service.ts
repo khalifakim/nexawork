@@ -5,13 +5,15 @@ import { BaseHttpService } from '@core/http/base-http.service';
 import { FilesHttpService } from '@core/http/files.http.service';
 import {
   AccessMode, FileResponse, FolderContentResponse, FolderResponse, GedItem, GedType,
-  TaskAttachmentLineResponse, VersionResponse,
+  GrantResponse, TaskAttachmentLineResponse, VersionResponse,
 } from '@core/models/ged.models';
-import { TASK_FOLDER } from '@core/util/ui.util';
+import { TASK_FOLDER, avatarColorFor } from '@core/util/ui.util';
 import { FOLDER_DATA, projectRoot, SYSTEM_FOLDER_CONTENT } from '@core/mock/ged';
 import { MembersService } from './members.service';
 import { SessionService } from './session.service';
+import { ProjectsService } from './projects.service';
 import { Member } from '@core/models/member.models';
+import { ProjectTeam } from '@core/models/project.models';
 
 export abstract class GedService {
   /**
@@ -49,6 +51,30 @@ export abstract class GedService {
   /** Ajoute une version (upload File Service puis référencement). */
   abstract addVersion(fileId: string, projectId: string | null, file: File, note: string): Observable<void>;
   abstract restoreVersion(fileId: string, versionId: string): Observable<void>;
+
+  // ── Accès / grants (I5c) ────────────────────────────────────────────────────
+  /** Grants d'un élément (dossier ou fichier), par UUID. */
+  abstract grantsOf(item: GedItem): Observable<GedGrant[]>;
+  /** Applique le mode d'accès + la liste de bénéficiaires (diff côté service). */
+  abstract saveAccess(item: GedItem, mode: AccessMode, grants: GedGrantInput[]): Observable<void>;
+}
+
+/** Bénéficiaire d'un accès — vue d'affichage (nom résolu). */
+export interface GedGrant {
+  id: string;
+  granteeId: string;
+  type: 'user' | 'team';
+  name: string;
+  color: string;
+  level: 'READER' | 'EDITOR';
+  owner: boolean;
+}
+
+/** Bénéficiaire soumis à l'enregistrement (par UUID). */
+export interface GedGrantInput {
+  granteeId: string;
+  type: 'user' | 'team';
+  level: 'READER' | 'EDITOR';
 }
 
 /** Version d'un document GED — vue d'affichage. */
@@ -89,6 +115,8 @@ export class GedMockService extends GedService {
   versions(): Observable<GedVersion[]> { return of([]).pipe(delay(60)); }
   addVersion(): Observable<void> { return of(void 0).pipe(delay(60)); }
   restoreVersion(): Observable<void> { return of(void 0).pipe(delay(60)); }
+  grantsOf(): Observable<GedGrant[]> { return of([]).pipe(delay(60)); }
+  saveAccess(): Observable<void> { return of(void 0).pipe(delay(60)); }
 }
 
 @Injectable()
@@ -96,6 +124,7 @@ export class GedHttpService extends BaseHttpService implements GedService {
   private readonly members = inject(MembersService);
   private readonly files = inject(FilesHttpService);
   private readonly session = inject(SessionService);
+  private readonly projects = inject(ProjectsService);
 
   createFolder(path: string[], projectId: string | null, name: string, restricted: boolean): Observable<void> {
     return this.parentFolderId(path, projectId).pipe(switchMap(parentId =>
@@ -201,6 +230,81 @@ export class GedHttpService extends BaseHttpService implements GedService {
     return this.post$<VersionResponse>('ged', `/ged/files/${fileId}/versions/${versionId}/restore`, {}).pipe(map(() => void 0));
   }
 
+  // ── Accès / grants ──────────────────────────────────────────────────────────
+  grantsOf(item: GedItem): Observable<GedGrant[]> {
+    if (!item.id) return of([]);
+    const targetType = item.type === 'folder' ? 'FOLDER' : 'FILE';
+    return forkJoin({
+      grants: this.get$<GrantResponse[]>('ged', '/ged/grants', { targetType, targetId: item.id }),
+      dir: this.members.directory(),
+      // Les équipes sont une notion de projet : résolues seulement pour un document projet.
+      teams: item.projectId ? this.projects.teams(item.projectId) : of([] as ProjectTeam[]),
+    }).pipe(map(({ grants, dir, teams }) => {
+      const byId = new Map<string, Member>(dir.map(m => [m.userId ?? '', m]));
+      const teamById = new Map<string, ProjectTeam>(teams.map(t => [t.id, t]));
+      return grants.map(g => {
+        const isTeam = g.granteeType === 'TEAM';
+        const team = isTeam ? teamById.get(g.granteeId) : undefined;
+        const member = isTeam ? undefined : byId.get(g.granteeId);
+        return {
+          id: g.id,
+          granteeId: g.granteeId,
+          type: isTeam ? 'team' as const : 'user' as const,
+          name: team?.name ?? member?.name ?? (isTeam ? 'Équipe' : 'Membre'),
+          color: team?.color ?? member?.color ?? avatarColorFor(g.granteeId),
+          level: g.accessLevel,
+          owner: g.owner,
+        };
+      });
+    }));
+  }
+
+  /**
+   * Enregistre les accès : bascule le mode (OPEN/PRIVATE/SHARED) puis réconcilie
+   * la liste des bénéficiaires (ajoute les nouveaux, retire les absents). Le
+   * propriétaire n'est jamais retiré (R13, garanti côté serveur).
+   */
+  saveAccess(item: GedItem, mode: AccessMode, grants: GedGrantInput[]): Observable<void> {
+    if (!item.id) return of(void 0);
+    const isFolder = item.type === 'folder';
+    const targetType = isFolder ? 'FOLDER' : 'FILE';
+    const base = isFolder ? `/ged/folders/${item.id}/access` : `/ged/files/${item.id}/access`;
+
+    return this.patch$<void>('ged', base, { accessMode: mode }).pipe(
+      switchMap(() => this.grantsOf(item)),
+      switchMap(existing => {
+        const keep = new Set(grants.map(g => g.granteeId));
+        const had = new Map(existing.filter(g => !g.owner).map(g => [g.granteeId, g]));
+
+        const toRemove = existing.filter(g => !g.owner && !keep.has(g.granteeId));
+        const toAdd = mode === 'SHARED'
+          ? grants.filter(g => !had.has(g.granteeId) || had.get(g.granteeId)!.level !== g.level)
+          : [];
+        // Un niveau modifié = retrait puis ré-ajout (pas d'endpoint PATCH grant).
+        const changed = mode === 'SHARED'
+          ? grants.filter(g => had.has(g.granteeId) && had.get(g.granteeId)!.level !== g.level)
+          : [];
+        const removals = [
+          ...toRemove,
+          ...changed.map(g => had.get(g.granteeId)!),
+          // Mode non partagé : on retire tous les bénéficiaires.
+          ...(mode !== 'SHARED' ? existing.filter(g => !g.owner) : []),
+        ];
+
+        const calls: Observable<unknown>[] = [
+          ...dedupe(removals).map(g => this.delete$<void>('ged', `/ged/grants/${g.id}`)),
+          ...toAdd.map(g => this.post$<GrantResponse>('ged', '/ged/grants', {
+            targetType, targetId: item.id,
+            granteeType: g.type === 'team' ? 'TEAM' : 'USER',
+            granteeId: g.granteeId,
+            accessLevel: g.level,
+          })),
+        ];
+        return calls.length ? forkJoin(calls).pipe(map(() => void 0)) : of(void 0);
+      }),
+    );
+  }
+
   folderContent(path: string[], projectId: string | null): Observable<GedItem[]> {
     return forkJoin({
       roots: this.roots(projectId),
@@ -245,6 +349,11 @@ export class GedHttpService extends BaseHttpService implements GedService {
   }
 }
 
+/** Dédoublonne des grants par id (un niveau modifié peut apparaître deux fois). */
+function dedupe(grants: GedGrant[]): GedGrant[] {
+  return [...new Map(grants.map(g => [g.id, g])).values()];
+}
+
 // ── Mapping payloads → GedItem ───────────────────────────────────────────────
 
 /** Nom affiché d'un dossier (le dossier système porte le libellé attendu par l'UI). */
@@ -278,6 +387,7 @@ function toFileItem(f: FileResponse, byId: Map<string, Member>): GedItem {
     by: byId.get(f.addedByUserId)?.name ?? 'Membre',
     added: formatDate(f.addedAt),
     restricted: f.restricted,
+    projectId: f.projectId,
   };
 }
 

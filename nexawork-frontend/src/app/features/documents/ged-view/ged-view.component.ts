@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, Input, computed, inject, signal } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
-import { switchMap } from 'rxjs/operators';
+import { switchMap, tap } from 'rxjs/operators';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 import { ApercuDocumentComponent } from '@shared/overlays/apercu-document/apercu-document.component';
 import { FilterChipComponent, FilterOption } from '@shared/ui/filter-chip/filter-chip.component';
@@ -81,7 +81,7 @@ import { GED_COLOR, GED_ICON, TASK_FOLDER } from '@core/util/ui.util';
               @if (!it.system && gedOverlay.hasRestriction(it.name)) {
                 <button class="lk" [class.lk--priv]="gedOverlay.restrictionOf(it.name).mode === 'private'"
                         title="Accès restreint — gérer les accès"
-                        (click)="gedOverlay.openAccess(it.name); $event.stopPropagation()">
+                        (click)="gedOverlay.openAccessFor(it); $event.stopPropagation()">
                   <app-icon name="lock" [size]="13" />
                 </button>
               }
@@ -173,7 +173,11 @@ export class GedViewComponent {
   private refresh = signal(0);
   private trigger = computed(() => ({ p: this.path(), r: this.refresh() }));
   private current = toSignal(
-    toObservable(this.trigger).pipe(switchMap(t => this.ged.folderContent(t.p, this.projectId))),
+    toObservable(this.trigger).pipe(
+      switchMap(t => this.ged.folderContent(t.p, this.projectId)),
+      // Le cadenas « accès restreint » suit le `restricted` calculé par le backend.
+      tap(items => this.gedOverlay.setRestrictedNames(items.filter(i => i.restricted).map(i => i.name))),
+    ),
     { initialValue: [] as GedItem[] },
   );
   private reload(): void { this.refresh.update(v => v + 1); }
@@ -294,8 +298,8 @@ export class GedViewComponent {
       case 'preview':  this.preview.set(it.name); break;
       case 'open':     this.path.update(p => [...p, it.name]); break;
       case 'download': this.toast('Téléchargement de « ' + it.name + ' »…'); break;
-      case 'versions': this.gedOverlay.openVersions(it.name); break;
-      case 'access':   this.gedOverlay.openAccess(it.name); break;
+      case 'versions': this.gedOverlay.openVersionsFor(it); break;
+      case 'access':   this.gedOverlay.openAccessFor(it); break;
       case 'rename':   this.toast('Renommer « ' + it.name + ' »'); break;
       case 'delete':
         this.deleted.update(d => [...d, it.name]);

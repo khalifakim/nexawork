@@ -3,7 +3,7 @@ import { Observable, map, of } from 'rxjs';
 import { delay } from 'rxjs/operators';
 import { BaseHttpService } from '@core/http/base-http.service';
 import {
-  CreateProjectPayload, Project, ProjectResponse, UpdateProjectPayload,
+  CreateProjectPayload, Project, ProjectMember, ProjectResponse, ProjectTeam, UpdateProjectPayload,
 } from '@core/models/project.models';
 import { ARCHIVED_PROJECTS, PROJECTS_BY_WORKSPACE } from '@core/mock/projects';
 import { SessionService } from './session.service';
@@ -22,6 +22,10 @@ export abstract class ProjectsService {
   abstract restore(id: string): Observable<void>;
   abstract remove(id: string): Observable<void>;
   abstract listArchived(): Observable<Project[]>;
+  /** Équipes d'un projet (bénéficiaires possibles d'un partage GED). */
+  abstract teams(projectId: string): Observable<ProjectTeam[]>;
+  /** Membres d'un projet — R16 : périmètre des bénéficiaires d'un document projet. */
+  abstract members(projectId: string): Observable<ProjectMember[]>;
 }
 
 @Injectable()
@@ -97,6 +101,17 @@ export class ProjectsMockService extends ProjectsService {
   listArchived(): Observable<Project[]> {
     return of(this.archived.map(p => ({ ...p }))).pipe(delay(80));
   }
+
+  teams(_projectId: string): Observable<ProjectTeam[]> {
+    return of([
+      { id: 't1', name: 'Design produit', color: '#6C70F0' },
+      { id: 't2', name: 'Développement',  color: '#2BB673' },
+      { id: 't3', name: 'QA & Tests',     color: '#E89A2C' },
+    ]).pipe(delay(60));
+  }
+  members(_projectId: string): Observable<ProjectMember[]> {
+    return of([]).pipe(delay(60));
+  }
 }
 
 @Injectable()
@@ -125,6 +140,12 @@ export class ProjectsHttpService extends BaseHttpService implements ProjectsServ
   }
   listArchived(): Observable<Project[]> {
     return this.get$<ProjectResponse[]>('project', '/archived-projects').pipe(map(rs => rs.map(toProject)));
+  }
+  teams(projectId: string): Observable<ProjectTeam[]> {
+    return this.get$<ProjectTeam[]>('project', `/projects/${projectId}/teams`);
+  }
+  members(projectId: string): Observable<ProjectMember[]> {
+    return this.get$<ProjectMember[]>('project', `/projects/${projectId}/members`);
   }
 }
 

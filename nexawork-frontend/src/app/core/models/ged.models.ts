@@ -14,6 +14,8 @@ export interface GedItem {
   id?: string;
   /** Restriction d'accès portée par le backend (open/private/shared). */
   restricted?: boolean;
+  /** Projet d'appartenance (vide = GED d'organisation). */
+  projectId?: string;
 }
 
 // ── Payloads backend (GED service) ──────────────────────────────────────────

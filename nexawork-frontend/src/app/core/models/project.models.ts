@@ -53,6 +53,24 @@ export interface CreateProjectPayload {
   endDate?: string;
 }
 
+/** Équipe d'un projet (`GET /projects/{id}/teams`). */
+export interface ProjectTeam {
+  id: string;
+  name: string;
+  color?: string;
+}
+
+/** Membre d'un projet (`GET /projects/{id}/members`) — R16, assignation. */
+export interface ProjectMember {
+  id: string;
+  userId: string;
+  projectRole: 'PROJECT_LEAD' | 'PROJECT_MEMBER';
+  teamId?: string;
+  teamName?: string;
+  isProjectLead: boolean;
+  joinedAt: string;
+}
+
 export interface UpdateProjectPayload {
   name?: string;
   prefix?: string;

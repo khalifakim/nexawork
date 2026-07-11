@@ -14,7 +14,7 @@ export const environment = {
     members: false,      // Phase I3 ✅ (annuaire réel ; présence en attente de l'infra WS)
     channels: false,     // Phase I4 ✅ (REST + STOMP ; PJ de message différées)
     conversations: false,// Phase I4 ✅ (REST + STOMP ; accusé de lecture)
-    ged: true,           // Phase I5
+    ged: false,          // Phase I5 ✅ (arborescence, écritures, versions, accès, corbeille)
     notifications: true, // Phase I6
     accueil: true,       // Phase I7
     meetings: true,      // Phase I8

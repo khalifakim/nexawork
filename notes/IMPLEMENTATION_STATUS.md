@@ -20,7 +20,7 @@ restantes exigent du développement backend neuf** : **I9** (endpoints de recher
 **Frontend : ✅ construit sur mocks.**
 **Phase en cours : intégration Frontend ↔ Backend (mock → HTTP)**, phase par phase — voir le plan.
 
-Progression intégration : **5 / 14 phases du périmètre livrable** (✅ I0, I1, I2, I3, **I4** code livré · prochaine : **I5 GED**).
+Progression intégration : **6 / 14 phases du périmètre livrable** (✅ I0, I1, I2, I3, I4, **I5** · prochaine : **I6 Notifications**).
 > ⚠️ **Sprint sans test intermédiaire (2026-07-11)** : sur décision utilisateur (machine 8 Go), on développe toutes les phases d'affilée et on teste **tout à la fin**. `ng build` (dev+prod) vert après chaque phase ; le **temps réel STOMP (I4/I6)** et le **backend neuf (I9/I10/M2/M3)** ne seront validés qu'à la session finale.
 *(14 = 16 phases initiales − M5/M6 repassées en perspective.)*
 
@@ -88,7 +88,7 @@ Colonne **Backend** : ✅ = déjà livré (baseline) · 🔴 = **développement 
 | 3 | **I2** | Projects + Tasks/Kanban | ✅ (+`comment_attachments`) | ✅ | ✅ | **Livrée (I2a+b+c)** : projets, board FSM, tâches, fiche complète, commentaires+PJ, **statuts/workflow persistés, vue d'ensemble, gantt réels**. Voir « Détail I2a/b/c ». |
 | 4 | **I3** | Members | ✅ | ✅ | ✅ | **Livrée** : `MembersHttpService` (annuaire Auth réel). ⚠️ présence « en ligne » vide tant que l'infra WebSocket (I4/I6) n'alimente pas Redis — `/presence/active` est un stub côté backend. |
 | 5 | **I4** | Channels + Conversations | ✅ | ✅ | 🚧 | **Code livré** (2 `*HttpService` + client STOMP `core/ws/`). ⚠️ **temps réel non testable avant la session finale**. Routing par slug conservé (résolution slug↔UUID interne). PJ de message différées (dépendance circulaire `messageId`). |
-| 6 | **I5** | GED / Documents | ✅ | 🚧 | ⏳ | **I5a** (arborescence lecture) + **I5b** (écritures : créer dossier, importer avec **vrai input fichier** → File Service, supprimer→corbeille) livrés, **build vert mais `ged` gardé en mock** (inerte). Reste **I5c** : versions, accès/grants, bibliothèque (mes-docs/partagés/corbeille), **photo de profil**, puis flip `ged`. |
+| 6 | **I5** | GED / Documents | ✅ | ✅ | ✅ | **Livrée** (a+b+c) : arborescence, écritures (import File Service), versions, **accès/grants réels par UUID** (R16 : bénéficiaires = membres+équipes du projet), bibliothèque (mes-docs/partagés/corbeille), **photo de profil** (File Service `avatar`). `ged` → `false`. Builds dev+prod verts. |
 | 7 | **I6** | Notifications | ✅ | ⏳ | ⏳ | HttpService + STOMP + **Service Worker Web Push**. Table `kind`↔`NotificationType`. |
 | 8 | **I7** | Accueil / Dashboard | ✅ | ⏳ | ⏳ | Agrège I2/I4 ; retirer `membersOnline` ; trancher `myTasks()`. Légère. |
 | 9 | **I9** | Recherche globale | 🔴 | ⏳ | ⏳ | **À développer** : `GET .../search?q=` interne (ILIKE) par service + agrégation Gateway, en respectant REF F/G. |
