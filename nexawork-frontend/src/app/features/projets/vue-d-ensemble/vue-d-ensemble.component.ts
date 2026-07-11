@@ -4,6 +4,7 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { switchMap } from 'rxjs/operators';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 import { TasksService } from '@core/services/tasks.service';
+import { ReportsService } from '@core/services/reports.service';
 import { ProjectOverviewResponse } from '@core/models/task.models';
 
 interface Seg { l: string; v: number; c: string; }
@@ -17,7 +18,7 @@ interface Seg { l: string; v: number; c: string; }
     <div class="wrap">
       @if (!readonly) {
         <div class="topbar">
-          <button class="report"><app-icon name="file" [size]="15" [stroke]="2" />Générer un rapport</button>
+          <button class="report" [disabled]="reports.busy()" (click)="generateReport()"><app-icon name="file" [size]="15" [stroke]="2" />{{ reports.busy() ? 'Génération…' : 'Générer un rapport' }}</button>
         </div>
       }
 
@@ -120,6 +121,12 @@ export class VueDEnsembleComponent {
   private router = inject(Router);
   private route = inject(ActivatedRoute);
   private tasksSvc = inject(TasksService);
+  protected reports = inject(ReportsService);
+
+  generateReport(): void {
+    const id = this.projectId();
+    if (id) this.reports.projectReport(id);
+  }
 
   private projectId(): string {
     return this.route.snapshot.paramMap.get('id')

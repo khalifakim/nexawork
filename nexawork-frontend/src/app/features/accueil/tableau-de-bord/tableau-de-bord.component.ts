@@ -3,6 +3,7 @@ import { Router } from '@angular/router';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 import { AccueilService } from '@core/services/accueil.service';
 import { SessionService } from '@core/services/session.service';
+import { ReportsService } from '@core/services/reports.service';
 import { Dashboard } from '@core/models/accueil.models';
 import { workspaceSignal } from '@core/util/workspace-signal';
 
@@ -23,7 +24,7 @@ const EMPTY_DASHBOARD: Dashboard = {
           <h1>Tableau de bord</h1>
           <p>Vue globale de l'espace de travail : projets, activité et membres.</p>
         </div>
-        <button class="report"><app-icon name="file" [size]="15" [stroke]="2" />Générer un rapport</button>
+        <button class="report" [disabled]="reports.busy()" (click)="generateReport()"><app-icon name="file" [size]="15" [stroke]="2" />{{ reports.busy() ? 'Génération…' : 'Générer un rapport' }}</button>
       </div>
 
       <div class="kpis">
@@ -131,6 +132,12 @@ export class TableauDeBordComponent {
   private router = inject(Router);
   private session = inject(SessionService);
   private accueil = inject(AccueilService);
+  protected reports = inject(ReportsService);
+
+  generateReport(): void {
+    const id = this.session.activeWorkspaceId();
+    if (id) this.reports.workspaceReport(id);
+  }
 
   /** Dashboard of the active workspace (reload on workspace switch). */
   dash = workspaceSignal<Dashboard>(this.session, () => this.accueil.dashboard(), EMPTY_DASHBOARD);
