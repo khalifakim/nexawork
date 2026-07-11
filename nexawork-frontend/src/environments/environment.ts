@@ -18,7 +18,7 @@ export const environment = {
     notifications: false,// Phase I6 ✅ (REST + STOMP + Web Push)
     accueil: false,      // Phase I7 ✅ (dashboard, mentions, mes tâches)
     meetings: true,      // Phase I8
-    search: true,        // Phase I9
+    search: false,       // Phase I9 ✅ (recherche fédérée : 4 domaines, REF F/G respectées)
   },
   /** Gateway — toutes les routes API passent par elle (context-paths, cf. core/http/api.config.ts). */
   apiUrl: 'http://localhost:8080',

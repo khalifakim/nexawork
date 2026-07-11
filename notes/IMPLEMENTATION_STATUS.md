@@ -20,7 +20,7 @@ restantes exigent du développement backend neuf** : **I9** (endpoints de recher
 **Frontend : ✅ construit sur mocks.**
 **Phase en cours : intégration Frontend ↔ Backend (mock → HTTP)**, phase par phase — voir le plan.
 
-Progression intégration : **8 / 14 phases du périmètre livrable** (✅ I0, I1, I2, I3, I4, I5, I6, **I7** · prochaine : **I9 Recherche** — backend neuf).
+Progression intégration : **9 / 14 phases du périmètre livrable** (✅ I0, I1, I2, I3, I4, I5, I6, I7, **I9** · prochaine : **I10 Rapports PDF** — backend neuf).
 > 🔓 **Présence « en ligne » débloquée en I6** : elle est tenue par le **Notification Service** (`GET /presence/online` + heartbeat STOMP `/app/presence/heartbeat`), pas par le Messaging (dont `/presence/active` est un stub). `MembersService.online()` a été recâblé — le « En ligne » d'I3 fonctionne désormais.
 > ⚠️ **Sprint sans test intermédiaire (2026-07-11)** : sur décision utilisateur (machine 8 Go), on développe toutes les phases d'affilée et on teste **tout à la fin**. `ng build` (dev+prod) vert après chaque phase ; le **temps réel STOMP (I4/I6)** et le **backend neuf (I9/I10/M2/M3)** ne seront validés qu'à la session finale.
 *(14 = 16 phases initiales − M5/M6 repassées en perspective.)*
@@ -92,7 +92,7 @@ Colonne **Backend** : ✅ = déjà livré (baseline) · 🔴 = **développement 
 | 6 | **I5** | GED / Documents | ✅ | ✅ | ✅ | **Livrée** (a+b+c) : arborescence, écritures (import File Service), versions, **accès/grants réels par UUID** (R16 : bénéficiaires = membres+équipes du projet), bibliothèque (mes-docs/partagés/corbeille), **photo de profil** (File Service `avatar`). `ged` → `false`. Builds dev+prod verts. |
 | 7 | **I6** | Notifications | ✅ | ✅ | ✅ | **Livrée** : `NotificationsHttpService` (liste, lu, masquer), **STOMP** `/user/queue/notifications` (temps réel), **Web Push** (`public/sw-push.js` + `WebPushService` + clé VAPID), **présence réelle** (heartbeat STOMP → Redis). Client STOMP refondu en 2 connexions (messaging + notifications). |
 | 8 | **I7** | Accueil / Dashboard | ✅ (+2 ajouts) | ✅ | ✅ | **Livrée** : `AccueilHttpService` (dashboard, mentions, mes tâches). **Backend neuf** : `GET /users/me/tasks` (le gap `myTasks()` tranché — endpoint dédié plutôt que N+1 côté front) et `MentionResponse` enrichi (auteur, extrait, canal/conversation) pour « Mentions reçues ». `membersOnline` retirée (V5.1 §5.2). R1 déjà couverte par `adminGuard`. |
-| 9 | **I9** | Recherche globale | 🔴 | ⏳ | ⏳ | **À développer** : `GET .../search?q=` interne (ILIKE) par service + agrégation Gateway, en respectant REF F/G. |
+| 9 | **I9** | Recherche globale | ✅ **développé** | ✅ | ✅ | **Livrée** : `GET /search?q=` dans **4 services** (Project : projets+tâches R15 · GED : dossiers+fichiers **REF G** · Messaging : canaux+messages **REF F** · Auth : personnes). Agrégation **côté frontend** (forkJoin des 4, tolérant aux pannes) plutôt qu'un orchestrateur Gateway — même résultat, aucun service neuf. Overlay : requête serveur debouncée (250 ms), navigation par UUID. |
 | 10 | **I10** | Rapports PDF | 🔴 | ⏳ | ⏳ | **À développer** : OpenPDF + `GET /projects/{id}/report` et `/workspaces/{id}/report` (`application/pdf`). Front : téléchargement blob. |
 
 ### Bloc final — Meetings (en dernier)

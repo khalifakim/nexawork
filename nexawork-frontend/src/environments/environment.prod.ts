@@ -20,7 +20,7 @@ export const environment = {
     notifications: false,// Phase I6
     accueil: false,      // Phase I7
     meetings: true,
-    search: true,
+    search: false,       // Phase I9
   },
   /** Même origine : nginx proxifie /nexawork-*-api-v1 vers la Gateway. */
   apiUrl: '',

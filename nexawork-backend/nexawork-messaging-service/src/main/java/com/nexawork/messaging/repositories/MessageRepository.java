@@ -49,4 +49,28 @@ public interface MessageRepository extends JpaRepository<Message, UUID> {
     List<Message> findByChannelIdAndAttachmentUrlIsNotNullAndIsDeletedFalseOrderBySentAtDesc(UUID channelId);
 
     List<Message> findByConversationIdAndAttachmentUrlIsNotNullAndIsDeletedFalseOrderBySentAtDesc(UUID conversationId);
+
+    /**
+     * Recherche globale (§4.8) : messages dont le contenu contient le terme, dans
+     * les **fils accessibles à l'appelant** — canaux du workspace (visibilité REF F
+     * appliquée en aval) ou conversations dont il est participant.
+     */
+    @Query("""
+            SELECT m FROM Message m
+            LEFT JOIN FETCH m.channel c
+            WHERE m.isDeleted = false
+              AND LOWER(m.content) LIKE LOWER(CONCAT('%', :q, '%'))
+              AND (
+                    (c IS NOT NULL AND c.organisationId = :orgId)
+                 OR (m.conversationId IS NOT NULL
+                     AND EXISTS (SELECT 1 FROM ConversationParticipant p
+                                 WHERE p.conversation.id = m.conversationId
+                                   AND p.userId = :userId))
+              )
+            ORDER BY m.sentAt DESC
+            """)
+    List<Message> search(@Param("orgId") UUID orgId,
+                         @Param("userId") UUID userId,
+                         @Param("q") String q,
+                         Pageable pageable);
 }

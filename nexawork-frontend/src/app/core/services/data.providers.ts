@@ -9,7 +9,7 @@ import { ChannelsService, ChannelsMockService, ChannelsHttpService } from './cha
 import { MeetingsService, MeetingsMockService } from './meetings.service';
 import { NotificationsService, NotificationsMockService, NotificationsHttpService } from './notifications.service';
 import { AccueilService, AccueilMockService, AccueilHttpService } from './accueil.service';
-import { SearchService, SearchMockService } from './search.service';
+import { SearchService, SearchMockService, SearchHttpService } from './search.service';
 
 /**
  * Single point of truth for domain-data wiring. Every feature reads its data
@@ -33,6 +33,6 @@ export function provideDataServices(): Provider[] {
     { provide: MeetingsService,      useClass: MeetingsMockService },      // I8 → MeetingsHttpService
     { provide: NotificationsService, useClass: m.notifications ? NotificationsMockService : NotificationsHttpService },
     { provide: AccueilService,       useClass: m.accueil ? AccueilMockService : AccueilHttpService },
-    { provide: SearchService,        useClass: SearchMockService },        // I9 → SearchHttpService
+    { provide: SearchService,        useClass: m.search ? SearchMockService : SearchHttpService },
   ];
 }

@@ -2,12 +2,13 @@ import {
   AfterViewInit, ChangeDetectionStrategy, Component, ElementRef, EventEmitter,
   HostListener, Output, QueryList, ViewChild, ViewChildren, computed, effect, inject, signal,
 } from '@angular/core';
+import { toObservable, toSignal } from '@angular/core/rxjs-interop';
+import { debounceTime, distinctUntilChanged, switchMap } from 'rxjs/operators';
 import { Router } from '@angular/router';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 import { SearchService } from '@core/services/search.service';
 import { SessionService } from '@core/services/session.service';
 import { SearchResult as Result } from '@core/models/search.models';
-import { workspaceSignal } from '@core/util/workspace-signal';
 import { slugify } from '@core/util/ui.util';
 import { ShellBus } from '@layouts/app-shell/shell.bus';
 
@@ -83,16 +84,24 @@ export class RechercheGlobaleComponent implements AfterViewInit {
   private searchSvc = inject(SearchService);
   private router = inject(Router);
   private bus = inject(ShellBus);
-  /** All searchable entries of the active workspace (filtered client-side below). */
-  private all = workspaceSignal<Result[]>(this.session, () => this.searchSvc.all(), []);
+
+  /**
+   * Résultats de la recherche fédérée. La requête part au serveur (debounce
+   * 250 ms) qui interroge chaque domaine en respectant les droits ; le filtre
+   * par type reste appliqué côté client sur le jeu renvoyé.
+   */
+  private results = toSignal(
+    toObservable(this.query).pipe(
+      debounceTime(250),
+      distinctUntilChanged(),
+      switchMap(q => this.searchSvc.query(q)),
+    ),
+    { initialValue: [] as Result[] },
+  );
 
   shown = computed(() => {
     const f = this.filter();
-    const q = this.query().toLowerCase().trim();
-    return this.all().filter(r =>
-      (f === 'tous' || r.type === f) &&
-      (!q || r.name.toLowerCase().includes(q) || (r.mono ?? '').toLowerCase().includes(q) || r.ctx.toLowerCase().includes(q)),
-    );
+    return this.results().filter(r => f === 'tous' || r.type === f);
   });
 
   @ViewChildren('resRow') private rows!: QueryList<ElementRef<HTMLDivElement>>;
@@ -146,12 +155,13 @@ export class RechercheGlobaleComponent implements AfterViewInit {
     this.closed.emit();
     switch (r.type) {
       case 'taches':
-        if (r.mono) this.bus.openTask(r.mono);
+        // Backend réel : `id` est l'UUID de la tâche ; en mock, `mono` est sa clé.
+        this.bus.openTask(r.id ?? r.mono ?? '');
         break;
       case 'documents': this.bus.openDocument(r.name); break;
-      case 'projets':   this.router.navigate(['/app/projets', slugify(r.name), 'kanban']); break;
+      case 'projets':   this.router.navigate(['/app/projets', r.id ?? slugify(r.name), 'kanban']); break;
       case 'canaux':    this.router.navigate(['/app/canaux', slugify(r.name)]); break;
-      case 'messages':  this.router.navigate(['/app/conversations', 'sarah-diallo']); break;
+      case 'messages':  this.router.navigate(['/app/conversations']); break;
       case 'personnes': this.bus.openProfile(r.name); break;
     }
   }
