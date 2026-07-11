@@ -49,6 +49,12 @@ public class TaskController {
         return Response.<TaskResponse>created().setPayload(taskService.createTask(projectId, request));
     }
 
+    /** Vue « Mes tâches » (§5.1) : tâches assignées à l'appelant, triées par échéance. */
+    @GetMapping("/users/me/tasks")
+    public Response<List<TaskResponse>> myTasks() {
+        return Response.<List<TaskResponse>>ok().setPayload(taskService.listMyTasks());
+    }
+
     @GetMapping("/tasks/{id}")
     public Response<TaskResponse> get(@PathVariable UUID id) {
         return Response.<TaskResponse>ok().setPayload(taskService.getTask(id));

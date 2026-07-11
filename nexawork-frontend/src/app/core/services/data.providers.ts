@@ -8,7 +8,7 @@ import { ConversationsService, ConversationsMockService, ConversationsHttpServic
 import { ChannelsService, ChannelsMockService, ChannelsHttpService } from './channels.service';
 import { MeetingsService, MeetingsMockService } from './meetings.service';
 import { NotificationsService, NotificationsMockService, NotificationsHttpService } from './notifications.service';
-import { AccueilService, AccueilMockService } from './accueil.service';
+import { AccueilService, AccueilMockService, AccueilHttpService } from './accueil.service';
 import { SearchService, SearchMockService } from './search.service';
 
 /**
@@ -32,7 +32,7 @@ export function provideDataServices(): Provider[] {
     { provide: ChannelsService,      useClass: m.channels ? ChannelsMockService : ChannelsHttpService },
     { provide: MeetingsService,      useClass: MeetingsMockService },      // I8 → MeetingsHttpService
     { provide: NotificationsService, useClass: m.notifications ? NotificationsMockService : NotificationsHttpService },
-    { provide: AccueilService,       useClass: AccueilMockService },       // I7 → AccueilHttpService
+    { provide: AccueilService,       useClass: m.accueil ? AccueilMockService : AccueilHttpService },
     { provide: SearchService,        useClass: SearchMockService },        // I9 → SearchHttpService
   ];
 }

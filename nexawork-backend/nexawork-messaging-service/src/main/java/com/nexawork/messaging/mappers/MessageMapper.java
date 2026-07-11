@@ -21,6 +21,11 @@ public interface MessageMapper {
     MessageResponse asDto(Message entity);
 
     @Mapping(target = "messageId", source = "message.id")
+    @Mapping(target = "authorUserId", source = "message.senderUserId")
+    @Mapping(target = "messageContent", source = "message.content")
+    @Mapping(target = "channelId", source = "message.channel.id")
+    @Mapping(target = "channelName", source = "message.channel.name")
+    @Mapping(target = "conversationId", source = "message.conversationId")
     MentionResponse asMentionDto(MessageMention entity);
 
     List<MentionResponse> parseMentions(List<MessageMention> entities);

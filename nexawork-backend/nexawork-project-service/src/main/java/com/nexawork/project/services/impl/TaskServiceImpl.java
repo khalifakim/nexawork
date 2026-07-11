@@ -12,6 +12,7 @@ import com.nexawork.project.entities.Task;
 import com.nexawork.project.entities.WorkflowStatus;
 import com.nexawork.project.entities.WorkflowTransition;
 import com.nexawork.project.entities.enums.AssigneeType;
+import com.nexawork.project.entities.enums.ProjectStatus;
 import com.nexawork.project.entities.enums.TaskPriority;
 import com.nexawork.project.entities.enums.TransitionResponsibleType;
 import com.nexawork.project.events.publishers.LivrableValidatedEvent;
@@ -71,6 +72,18 @@ public class TaskServiceImpl implements TaskService {
     public List<TaskResponse> listTasks(UUID projectId) {
         guard.participantProject(projectId);
         return taskRepository.findByProjectId(projectId).stream().map(this::toDto).toList();
+    }
+
+    /**
+     * Vue « Mes tâches » (§5.1) : les tâches assignées à l'appelant dans les
+     * projets actifs du workspace courant, triées par échéance.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public List<TaskResponse> listMyTasks() {
+        return taskRepository
+                .findAssignedTo(caller.organisationId(), caller.userId(), ProjectStatus.ACTIVE)
+                .stream().map(this::toDto).toList();
     }
 
     @Override

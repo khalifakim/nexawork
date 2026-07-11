@@ -18,7 +18,7 @@ export const environment = {
     conversations: false,// Phase I4
     ged: false,          // Phase I5
     notifications: false,// Phase I6
-    accueil: true,
+    accueil: false,      // Phase I7
     meetings: true,
     search: true,
   },

@@ -16,7 +16,7 @@ export const environment = {
     conversations: false,// Phase I4 ✅ (REST + STOMP ; accusé de lecture)
     ged: false,          // Phase I5 ✅ (arborescence, écritures, versions, accès, corbeille)
     notifications: false,// Phase I6 ✅ (REST + STOMP + Web Push)
-    accueil: true,       // Phase I7
+    accueil: false,      // Phase I7 ✅ (dashboard, mentions, mes tâches)
     meetings: true,      // Phase I8
     search: true,        // Phase I9
   },
