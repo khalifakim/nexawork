@@ -25,7 +25,11 @@ familles de code **n'ont jamais été exécutées** :
    - IFrame JaaS (M4) : exige la **vraie clé JaaS** configurée.
 
 **Rebuilds obligatoires** (schéma/dépendance/code Java modifiés) :
-`project-service`, `messaging-service`, `ged-service`, `auth-service`, `meeting-service`, `notification-service`, `frontend`.
+`project-service`, `messaging-service`, `ged-service`, `auth-service`, `meeting-service`, `frontend`.
+> `api-gateway` et `file-service` **n'ont pas été modifiés** ce sprint → pas de rebuild nécessaire
+> (mais `file-service` doit **tourner** : uploads GED, pièces jointes, avatar).
+> `notification-service` : rebuild seulement si tu veux être sûr (son code n'a pas changé, mais il porte
+> la présence Redis et le Web Push — les deux consommés par le frontend).
 
 ---
 
@@ -36,19 +40,25 @@ familles de code **n'ont jamais été exécutées** :
 > http://localhost:4200**. Couper `config-server` une fois tout `healthy` libère un cœur.
 
 ### Étape A — Infra (toujours nécessaire)
+> ⚠️ **Le `docker-compose.yml` est dans `memoire-master/nexawork/`** (pas à la racine).
+> Toutes les commandes `docker compose` de ce plan se lancent depuis ce dossier.
 ```bash
-cd D:/memoire-master
+cd D:/memoire-master/nexawork
 docker compose up -d postgres redis rabbitmq minio
 docker compose up -d minio-init rabbitmq-init
 docker compose up -d config-server
 docker compose ps          # attendre postgres/redis/rabbitmq/minio healthy
 ```
+> `redis` n'est consommé que par **notification-service** (présence « en ligne »).
+> `minio` sert les uploads (GED, pièces jointes, avatar) via **file-service**.
 
-### Étape B — Rebuild de tout le backend modifié (⚠️ tu lances, ~long au 1er build)
+### Étape B — Rebuild du backend modifié (⚠️ tu lances, ~long au 1er build)
 ```bash
-docker compose build auth-service project-service messaging-service ged-service meeting-service notification-service file-service
+docker compose build auth-service project-service messaging-service ged-service meeting-service
 docker compose build frontend
 ```
+> ⚠️ **Jamais `--no-cache` sur `frontend`** (le proxy TLS ferait échouer le `npm install`).
+> Un build normal suffit. Une date d'image inchangée = le code était déjà à jour, ce n'est pas une anomalie.
 > **Surveiller le build `project-service`** : c'est lui qui télécharge **OpenPDF** (1re dépendance
 > Maven ajoutée) et compile le plus de code neuf. Si un build Java échoue → me copier l'erreur.
 
