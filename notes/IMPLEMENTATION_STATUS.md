@@ -20,7 +20,7 @@ restantes exigent du développement backend neuf** : **I9** (endpoints de recher
 **Frontend : ✅ construit sur mocks.**
 **Phase en cours : intégration Frontend ↔ Backend (mock → HTTP)**, phase par phase — voir le plan.
 
-Progression intégration : **10 / 14 phases du périmètre livrable** (✅ I0, I1, I2, I3, I4, I5, I6, I7, I9, **I10** · prochain : **bloc Meetings** I8 → M4 → M2 → M3).
+Progression intégration : **14 / 14 phases du périmètre livrable** (✅ I0, I1, I2, I3, I4, I5, I6, I7, I9, I10, **I8, M4, M2, M3**). 🎉 **Intégration frontend↔backend code-complète.** Reste : la **session de test finale** (lancer la stack, corriger). M5/M6 = perspectives hors périmètre.
 > 🔓 **Présence « en ligne » débloquée en I6** : elle est tenue par le **Notification Service** (`GET /presence/online` + heartbeat STOMP `/app/presence/heartbeat`), pas par le Messaging (dont `/presence/active` est un stub). `MembersService.online()` a été recâblé — le « En ligne » d'I3 fonctionne désormais.
 > ⚠️ **Sprint sans test intermédiaire (2026-07-11)** : sur décision utilisateur (machine 8 Go), on développe toutes les phases d'affilée et on teste **tout à la fin**. `ng build` (dev+prod) vert après chaque phase ; le **temps réel STOMP (I4/I6)** et le **backend neuf (I9/I10/M2/M3)** ne seront validés qu'à la session finale.
 *(14 = 16 phases initiales − M5/M6 repassées en perspective.)*
@@ -98,10 +98,10 @@ Colonne **Backend** : ✅ = déjà livré (baseline) · 🔴 = **développement 
 ### Bloc final — Meetings (en dernier)
 | Ordre | Phase | Intitulé | Backend | Frontend | Statut |
 | :-: | :-: | :- | :-: | :-: | :-: |
-| 11 | **I8** | Meetings — intégration socle (+ `jitsiUrl`/`jwt`) | ✅ (M1) | ⏳ | ⏳ |
-| 12 | **M4** | Intégration fine IFrame API JaaS | n/a | ⏳ | ⏳ |
-| 13 | **M2** | Persistance du chat de réunion (**F5**) | 🔴 | ⏳ | ⏳ (périmètre livré) |
-| 14 | **M3** | Approbation des participants (lobby JaaS) | 🔴 | ⏳ | ⏳ |
+| 11 | **I8** | Meetings — intégration socle (+ `jitsiUrl`/`jwt`) | ✅ (M1) | ✅ | ✅ | `MeetingsHttpService` (history/active/create/join/leave/end/hide/remove/inviteParticipants/inviteGuest). `lancer` crée un appel réel → ouvre la salle. |
+| 12 | **M4** | Intégration fine IFrame API JaaS | n/a | ✅ | ✅ | Composant `salle-reunion` : charge `external_api.js`, `JitsiMeetExternalAPI`, events `videoConferenceJoined`/`readyToClose`→`startCall`/`endCall`. Non exerçable sans clé JaaS réelle. |
+| 13 | **M2** | Persistance du chat de réunion (**F5**) | ✅ **développé** | ✅ | ✅ | **Backend neuf** : entité `MeetingMessage` + repo + `MeetingChatService` + `POST/GET /calls/{id}/messages` (réservé participants). Front : `MeetingChatService` capte `incoming/outgoingMessage` → POST. |
+| 14 | **M3** | Approbation des participants (lobby JaaS) | ✅ **développé** | ✅ | ✅ | **Backend** : `JitsiTokenService` émet `lobby_bypass` = `true` pour hôte + membres conviés (`invitedExplicitly`), `false` pour externe et membre non convié. Front lobby (knocking) : activable dans la config salle. |
 | — | **M5** | Partage de fichiers en réunion | — | — | 🔮 Perspective (reporté) |
 | — | **M6** | Enregistrement de la réunion | — | — | 🔮 Perspective (reporté) |
 

@@ -17,7 +17,7 @@ export const environment = {
     ged: false,          // Phase I5 ✅ (arborescence, écritures, versions, accès, corbeille)
     notifications: false,// Phase I6 ✅ (REST + STOMP + Web Push)
     accueil: false,      // Phase I7 ✅ (dashboard, mentions, mes tâches)
-    meetings: true,      // Phase I8
+    meetings: false,     // Phase I8/M2/M3/M4 ✅ (appels réels, IFrame JaaS, chat persistant, lobby)
     search: false,       // Phase I9 ✅ (recherche fédérée : 4 domaines, REF F/G respectées)
   },
   /** Gateway — toutes les routes API passent par elle (context-paths, cf. core/http/api.config.ts). */

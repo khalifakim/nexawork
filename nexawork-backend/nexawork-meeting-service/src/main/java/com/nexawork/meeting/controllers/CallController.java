@@ -2,12 +2,15 @@ package com.nexawork.meeting.controllers;
 
 import com.nexawork.commons.models.Response;
 import com.nexawork.meeting.dtos.requests.CreateCallRequest;
+import com.nexawork.meeting.dtos.requests.CreateMeetingMessageRequest;
 import com.nexawork.meeting.dtos.requests.InviteGuestRequest;
 import com.nexawork.meeting.dtos.requests.InviteParticipantsRequest;
 import com.nexawork.meeting.dtos.responses.CallResponse;
 import com.nexawork.meeting.dtos.responses.GuestInviteResponse;
+import com.nexawork.meeting.dtos.responses.MeetingMessageResponse;
 import com.nexawork.meeting.services.CallService;
 import com.nexawork.meeting.services.GuestService;
+import com.nexawork.meeting.services.MeetingChatService;
 import jakarta.validation.Valid;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -37,11 +40,26 @@ public class CallController {
 
     CallService callService;
     GuestService guestService;
+    MeetingChatService meetingChatService;
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public Response<CallResponse> create(@Valid @RequestBody CreateCallRequest request) {
         return Response.<CallResponse>created().setPayload(callService.create(request));
+    }
+
+    /** Chat de réunion (M2) — ingestion d'un message capté côté client. */
+    @PostMapping("/{id}/messages")
+    @ResponseStatus(HttpStatus.CREATED)
+    public Response<MeetingMessageResponse> addMessage(@PathVariable UUID id,
+                                                       @Valid @RequestBody CreateMeetingMessageRequest request) {
+        return Response.<MeetingMessageResponse>created().setPayload(meetingChatService.add(id, request));
+    }
+
+    /** Chat de réunion (M2) — fil complet, consultable après la réunion. */
+    @GetMapping("/{id}/messages")
+    public Response<List<MeetingMessageResponse>> messages(@PathVariable UUID id) {
+        return Response.<List<MeetingMessageResponse>>ok().setPayload(meetingChatService.list(id));
     }
 
     @GetMapping

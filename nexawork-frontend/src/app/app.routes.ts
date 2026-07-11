@@ -72,6 +72,7 @@ export const routes: Routes = [
       // --- Réunions ---
       { path: 'reunions', pathMatch: 'full', redirectTo: 'reunions/lancer' },
       { path: 'reunions/lancer',          loadComponent: () => import('@features/reunions/lancer/lancer.component').then(m => m.LancerReunionComponent) },
+      { path: 'reunions/salle/:id',       loadComponent: () => import('@features/reunions/salle/salle-reunion.component').then(m => m.SalleReunionComponent) },
       { path: 'reunions/historique',      loadComponent: () => import('@features/reunions/historique/historique.component').then(m => m.HistoriqueReunionsComponent) },
       { path: 'reunions/historique/:id',  loadComponent: () => import('@features/reunions/discussion/discussion.component').then(m => m.DiscussionReunionComponent) },
 

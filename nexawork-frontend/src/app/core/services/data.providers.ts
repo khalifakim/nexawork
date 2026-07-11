@@ -6,7 +6,7 @@ import { TasksService, TasksMockService, TasksHttpService } from './tasks.servic
 import { GedService, GedMockService, GedHttpService } from './ged.service';
 import { ConversationsService, ConversationsMockService, ConversationsHttpService } from './conversations.service';
 import { ChannelsService, ChannelsMockService, ChannelsHttpService } from './channels.service';
-import { MeetingsService, MeetingsMockService } from './meetings.service';
+import { MeetingsService, MeetingsMockService, MeetingsHttpService } from './meetings.service';
 import { NotificationsService, NotificationsMockService, NotificationsHttpService } from './notifications.service';
 import { AccueilService, AccueilMockService, AccueilHttpService } from './accueil.service';
 import { SearchService, SearchMockService, SearchHttpService } from './search.service';
@@ -30,7 +30,7 @@ export function provideDataServices(): Provider[] {
     { provide: GedService,           useClass: m.ged ? GedMockService : GedHttpService }, // I5 (flag flippé quand écritures réelles)
     { provide: ConversationsService, useClass: m.conversations ? ConversationsMockService : ConversationsHttpService },
     { provide: ChannelsService,      useClass: m.channels ? ChannelsMockService : ChannelsHttpService },
-    { provide: MeetingsService,      useClass: MeetingsMockService },      // I8 → MeetingsHttpService
+    { provide: MeetingsService,      useClass: m.meetings ? MeetingsMockService : MeetingsHttpService },
     { provide: NotificationsService, useClass: m.notifications ? NotificationsMockService : NotificationsHttpService },
     { provide: AccueilService,       useClass: m.accueil ? AccueilMockService : AccueilHttpService },
     { provide: SearchService,        useClass: m.search ? SearchMockService : SearchHttpService },
