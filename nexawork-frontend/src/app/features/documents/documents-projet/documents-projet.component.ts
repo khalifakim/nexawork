@@ -19,7 +19,7 @@ import { Project } from '@core/models/project.models';
         <span class="ic" [style.background]="color()"><app-icon name="folder" [size]="14" /></span>
         <div><div class="t">{{ name() }}</div><div class="s">Espace documentaire du projet — {{ name() }}.</div></div>
       </div>
-      <app-ged-view [project]="name()" />
+      <app-ged-view [projectId]="id()" />
     </div>
   `,
   styles: [`
@@ -38,7 +38,7 @@ export class DocumentsProjetComponent {
   private router = inject(Router);
   private projectsSvc = inject(ProjectsService);
   private allProjects = toSignal(this.projectsSvc.list(), { initialValue: [] as Project[] });
-  private id = toSignal(this.route.paramMap.pipe(map(p => p.get('id') ?? 'refonte-app-mobile')), { initialValue: 'refonte-app-mobile' });
+  protected id = toSignal(this.route.paramMap.pipe(map(p => p.get('id') ?? 'refonte-app-mobile')), { initialValue: 'refonte-app-mobile' });
   private current = computed(() => this.allProjects().find(p => p.id === this.id()));
   name = computed(() => this.current()?.name ?? 'Refonte App Mobile');
   color = computed(() => this.current()?.color ?? '#6C70F0');

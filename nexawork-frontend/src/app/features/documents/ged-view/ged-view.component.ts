@@ -128,13 +128,14 @@ import { GED_COLOR, GED_ICON, TASK_FOLDER } from '@core/util/ui.util';
   styleUrl: './ged-view.component.scss',
 })
 export class GedViewComponent {
-  @Input() project: string | null = null;
+  /** UUID du projet (GED de projet) ou `null` (GED d'organisation). */
+  @Input() projectId: string | null = null;
   @Input() readonly = false;
   /** Hide the system "Pièces jointes aux tâches" folder (used by the org space). */
   @Input() hideTaskFolder = false;
 
   /** R16 — the scope passed to the create/import modals: project vs org. */
-  modalScope = computed<'org' | 'project'>(() => this.project ? 'project' : 'org');
+  modalScope = computed<'org' | 'project'>(() => this.projectId ? 'project' : 'org');
 
   path = signal<string[]>([]);
   q = signal('');
@@ -169,7 +170,7 @@ export class GedViewComponent {
   inSystem = computed(() => this.path()[this.path().length - 1] === TASK_FOLDER);
 
   private current = toSignal(
-    toObservable(this.path).pipe(switchMap(p => this.ged.folderContent(p, this.project))),
+    toObservable(this.path).pipe(switchMap(p => this.ged.folderContent(p, this.projectId))),
     { initialValue: [] as GedItem[] },
   );
 

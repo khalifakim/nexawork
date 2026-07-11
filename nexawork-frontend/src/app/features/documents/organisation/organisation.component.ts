@@ -13,7 +13,7 @@ import { GedViewComponent } from '@features/documents/ged-view/ged-view.componen
         <span class="ic"><app-icon name="building" [size]="14" /></span>
         <div><div class="t">Espace Organisation</div><div class="s">Documents et dossiers partagés à l'échelle de l'organisation.</div></div>
       </div>
-      <app-ged-view [project]="null" [hideTaskFolder]="true" />
+      <app-ged-view [projectId]="null" [hideTaskFolder]="true" />
     </div>
   `,
   styles: [`

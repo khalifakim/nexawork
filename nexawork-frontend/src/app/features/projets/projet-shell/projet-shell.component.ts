@@ -103,7 +103,7 @@ interface ConfirmCfg { title: string; danger: boolean; btn: string; icon: string
           @case ('vue-d-ensemble') { <app-vue-d-ensemble [readonly]="isRo()" /> }
           @case ('kanban') { <app-kanban [readonly]="isRo()" [canManageBoard]="isAdmin()" (openTask)="openTask($event)" (create)="createCol.set($event)" (openStatuses)="statutsOpen.set(true)" (openWorkflow)="workflowOpen.set(true)" /> }
           @case ('gantt') { <app-gantt /> }
-          @case ('documents') { <app-ged-view [project]="displayName()" [readonly]="isRo()" /> }
+          @case ('documents') { <app-ged-view [projectId]="id()" [readonly]="isRo()" /> }
           @case ('equipes') { <app-equipes [readonly]="isRo()" [canManage]="isAdmin() || isProjectLead()" /> }
           @case ('canaux') { <app-canaux-projet [readonly]="isRo()" [projectName]="displayName()" /> }
           @default {

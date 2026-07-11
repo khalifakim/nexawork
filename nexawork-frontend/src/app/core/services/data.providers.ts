@@ -3,7 +3,7 @@ import { environment } from '@environment/environment';
 import { MembersService, MembersMockService, MembersHttpService } from './members.service';
 import { ProjectsService, ProjectsMockService, ProjectsHttpService } from './projects.service';
 import { TasksService, TasksMockService, TasksHttpService } from './tasks.service';
-import { GedService, GedMockService } from './ged.service';
+import { GedService, GedMockService, GedHttpService } from './ged.service';
 import { ConversationsService, ConversationsMockService, ConversationsHttpService } from './conversations.service';
 import { ChannelsService, ChannelsMockService, ChannelsHttpService } from './channels.service';
 import { MeetingsService, MeetingsMockService } from './meetings.service';
@@ -27,7 +27,7 @@ export function provideDataServices(): Provider[] {
     { provide: MembersService,       useClass: m.members ? MembersMockService : MembersHttpService },
     { provide: ProjectsService,      useClass: m.projects ? ProjectsMockService : ProjectsHttpService },
     { provide: TasksService,         useClass: m.tasks ? TasksMockService : TasksHttpService },
-    { provide: GedService,           useClass: GedMockService },           // I5 → GedHttpService
+    { provide: GedService,           useClass: m.ged ? GedMockService : GedHttpService }, // I5 (flag flippé quand écritures réelles)
     { provide: ConversationsService, useClass: m.conversations ? ConversationsMockService : ConversationsHttpService },
     { provide: ChannelsService,      useClass: m.channels ? ChannelsMockService : ChannelsHttpService },
     { provide: MeetingsService,      useClass: MeetingsMockService },      // I8 → MeetingsHttpService
