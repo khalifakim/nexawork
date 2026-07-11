@@ -1,11 +1,12 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { toSignal, toObservable } from '@angular/core/rxjs-interop';
+import { switchMap } from 'rxjs/operators';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 import { ConfirmDialogComponent } from '@shared/overlays/confirm-dialog/confirm-dialog.component';
-import { GedType } from '@core/models/ged.models';
+import { GedItem, GedType } from '@core/models/ged.models';
 import { GED_COLOR, GED_ICON } from '@core/util/ui.util';
 import { ToastService } from '@core/services/toast.service';
-
-interface Trash { name: string; by: string; date: string; type: string; size: string; t: GedType; }
+import { GedService } from '@core/services/ged.service';
 
 @Component({
   selector: 'app-documents-corbeille',
@@ -21,16 +22,16 @@ interface Trash { name: string; by: string; date: string; type: string; size: st
       @if (shown().length) {
         <div class="tbl">
           <div class="thead"><span>Nom</span><span>Supprimé par</span><span>Supprimé le</span><span>Type</span><span>Taille</span><span>Actions</span></div>
-          @for (it of shown(); track it.name) {
+          @for (it of shown(); track it.id) {
             <div class="row">
-              <div class="name"><span class="ic" [style.color]="color(it.t)"><app-icon [name]="icon(it.t)" [size]="18" /></span><span class="nm">{{ it.name }}</span></div>
-              <span class="muted">{{ it.by }}</span>
-              <span class="muted">{{ it.date }}</span>
-              <span class="muted">{{ it.type }}</span>
+              <div class="name"><span class="ic" [style.color]="color(it.type)"><app-icon [name]="icon(it.type)" [size]="18" /></span><span class="nm">{{ it.name }}</span></div>
+              <span class="muted">{{ it.owner }}</span>
+              <span class="muted">{{ it.mod }}</span>
+              <span class="muted">{{ typeLabel(it.type) }}</span>
               <span class="muted">{{ it.size }}</span>
               <div class="acts">
-                <button class="restore" (click)="restore(it.name)"><app-icon name="restore" [size]="13" />Restaurer</button>
-                <button class="del" title="Supprimer définitivement" (click)="askDelete(it.name)"><app-icon name="trash" [size]="14" /></button>
+                <button class="restore" (click)="restore(it)"><app-icon name="restore" [size]="13" />Restaurer</button>
+                <button class="del" title="Supprimer définitivement" (click)="askDelete(it)"><app-icon name="trash" [size]="14" /></button>
               </div>
             </div>
           }
@@ -44,7 +45,7 @@ interface Trash { name: string; by: string; date: string; type: string; size: st
       <app-confirm-dialog
         [danger]="true"
         title="Supprimer définitivement"
-        [subtitle]="target"
+        [subtitle]="target.name"
         icon="trash"
         confirmLabel="Supprimer définitivement"
         [lines]="[
@@ -73,41 +74,53 @@ interface Trash { name: string; by: string; date: string; type: string; size: st
 })
 export class DocumentsCorbeilleComponent {
   private toast = inject(ToastService);
+  private ged = inject(GedService);
 
-  private hidden = signal<string[]>([]);
-  /**
-   * Seeds: initially every item was authored by the current user (« Moi »).
-   * R11 — the trash view shows only items the current user has authored.
-   */
-  private all: Trash[] = [
-    { name: 'Ancienne charte graphique.pdf', by: 'Moi', date: 'Il y a 2 j', type: 'PDF', size: '890 Ko', t: 'pdf' },
-    { name: 'Brief_créatif_v1.docx', by: 'Moi', date: 'Il y a 4 j', type: 'Document', size: '120 Ko', t: 'doc' },
-    { name: 'Archive maquettes 2024', by: 'Moi', date: 'Il y a 7 j', type: 'Dossier', size: '—', t: 'folder' },
-  ];
+  /** Bumpé après restauration / suppression pour recharger la corbeille. */
+  private refresh = signal(0);
+  private items = toSignal(
+    toObservable(this.refresh).pipe(switchMap(() => this.ged.trash())),
+    { initialValue: [] as GedItem[] },
+  );
 
-  /** R11 — display only the current user's own trashed items. */
-  shown = computed(() => this.all.filter(it => it.by === 'Moi' && !this.hidden().includes(it.name)));
+  /** R11 — la corbeille backend ne renvoie que les éléments de l'appelant. */
+  shown = computed(() => this.items());
 
-  confirmDelete = signal<string | null>(null);
+  confirmDelete = signal<GedItem | null>(null);
   confirmEmpty = signal(false);
 
   icon(t: GedType): string { return GED_ICON[t]; }
   color(t: GedType): string { return GED_COLOR[t]; }
 
-  restore(n: string): void {
-    this.hidden.update(l => [...l, n]);
-    this.toast.show({ message: '« ' + n + ' » restauré depuis la corbeille' });
+  /** Libellé de type affiché dans la colonne « Type ». */
+  typeLabel(t: GedType): string {
+    return ({ folder: 'Dossier', pdf: 'PDF', doc: 'Document', img: 'Image', sheet: 'Tableur', fig: 'Figma' } as const)[t] ?? 'Document';
   }
-  askDelete(n: string): void { this.confirmDelete.set(n); }
-  doDelete(n: string): void {
-    this.hidden.update(l => [...l, n]);
+
+  private reload(): void { this.refresh.update(v => v + 1); }
+
+  restore(it: GedItem): void {
+    if (!it.id) return;
+    this.ged.restoreFile(it.id).subscribe(() => {
+      this.reload();
+      this.toast.show({ message: '« ' + it.name + ' » restauré depuis la corbeille' });
+    });
+  }
+  askDelete(it: GedItem): void { this.confirmDelete.set(it); }
+  doDelete(it: GedItem): void {
     this.confirmDelete.set(null);
-    this.toast.show({ message: '« ' + n + ' » supprimé définitivement' });
+    if (!it.id) return;
+    this.ged.purgeFile(it.id).subscribe(() => {
+      this.reload();
+      this.toast.show({ message: '« ' + it.name + ' » supprimé définitivement' });
+    });
   }
   askEmptyAll(): void { this.confirmEmpty.set(true); }
   doEmptyAll(): void {
-    this.hidden.update(l => [...l, ...this.shown().map(it => it.name)]);
     this.confirmEmpty.set(false);
-    this.toast.show({ message: 'Corbeille vidée' });
+    this.ged.emptyTrash().subscribe(() => {
+      this.reload();
+      this.toast.show({ message: 'Corbeille vidée' });
+    });
   }
 }

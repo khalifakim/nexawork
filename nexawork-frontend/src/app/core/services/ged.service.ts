@@ -5,7 +5,7 @@ import { BaseHttpService } from '@core/http/base-http.service';
 import { FilesHttpService } from '@core/http/files.http.service';
 import {
   AccessMode, FileResponse, FolderContentResponse, FolderResponse, GedItem, GedType,
-  TaskAttachmentLineResponse,
+  TaskAttachmentLineResponse, VersionResponse,
 } from '@core/models/ged.models';
 import { TASK_FOLDER } from '@core/util/ui.util';
 import { FOLDER_DATA, projectRoot, SYSTEM_FOLDER_CONTENT } from '@core/mock/ged';
@@ -29,6 +29,37 @@ export abstract class GedService {
   abstract renameItem(item: GedItem, newName: string): Observable<void>;
   /** Supprime (corbeille pour un fichier) un dossier ou un fichier. */
   abstract deleteItem(item: GedItem): Observable<void>;
+
+  // ── Bibliothèque (I5c) ──────────────────────────────────────────────────────
+  /** Documents dont l'appelant est l'auteur. */
+  abstract myDocuments(): Observable<GedItem[]>;
+  /** Documents partagés avec l'appelant (grants). */
+  abstract sharedWithMe(): Observable<GedItem[]>;
+  /** Corbeille de l'appelant (suppression logique). */
+  abstract trash(): Observable<GedItem[]>;
+  /** Restaure un fichier depuis la corbeille. */
+  abstract restoreFile(fileId: string): Observable<void>;
+  /** Supprime définitivement un fichier de la corbeille. */
+  abstract purgeFile(fileId: string): Observable<void>;
+  /** Vide entièrement la corbeille. */
+  abstract emptyTrash(): Observable<void>;
+
+  // ── Versions (I5c) ──────────────────────────────────────────────────────────
+  abstract versions(fileId: string): Observable<GedVersion[]>;
+  /** Ajoute une version (upload File Service puis référencement). */
+  abstract addVersion(fileId: string, projectId: string | null, file: File, note: string): Observable<void>;
+  abstract restoreVersion(fileId: string, versionId: string): Observable<void>;
+}
+
+/** Version d'un document GED — vue d'affichage. */
+export interface GedVersion {
+  id: string;
+  number: number;
+  size: string;
+  note?: string;
+  author: string;
+  date: string;
+  current: boolean;
 }
 
 @Injectable()
@@ -48,6 +79,16 @@ export class GedMockService extends GedService {
   importFile(): Observable<void> { return of(void 0).pipe(delay(60)); }
   renameItem(): Observable<void> { return of(void 0).pipe(delay(60)); }
   deleteItem(): Observable<void> { return of(void 0).pipe(delay(60)); }
+
+  myDocuments(): Observable<GedItem[]> { return of([]).pipe(delay(60)); }
+  sharedWithMe(): Observable<GedItem[]> { return of([]).pipe(delay(60)); }
+  trash(): Observable<GedItem[]> { return of([]).pipe(delay(60)); }
+  restoreFile(): Observable<void> { return of(void 0).pipe(delay(60)); }
+  purgeFile(): Observable<void> { return of(void 0).pipe(delay(60)); }
+  emptyTrash(): Observable<void> { return of(void 0).pipe(delay(60)); }
+  versions(): Observable<GedVersion[]> { return of([]).pipe(delay(60)); }
+  addVersion(): Observable<void> { return of(void 0).pipe(delay(60)); }
+  restoreVersion(): Observable<void> { return of(void 0).pipe(delay(60)); }
 }
 
 @Injectable()
@@ -97,6 +138,67 @@ export class GedHttpService extends BaseHttpService implements GedService {
   private parentFolderId(path: string[], projectId: string | null): Observable<string | undefined> {
     if (path.length === 0) return of(undefined);
     return this.roots(projectId).pipe(switchMap(roots => this.resolveFolder(roots, path)));
+  }
+
+  // ── Bibliothèque ────────────────────────────────────────────────────────────
+  myDocuments(): Observable<GedItem[]> { return this.library('/ged/my-documents'); }
+  sharedWithMe(): Observable<GedItem[]> { return this.library('/ged/shared-with-me'); }
+  trash(): Observable<GedItem[]> { return this.library('/ged/trash'); }
+
+  private library(path: string): Observable<GedItem[]> {
+    return forkJoin({
+      files: this.get$<FileResponse[]>('ged', path),
+      dir: this.members.directory(),
+    }).pipe(map(({ files, dir }) => {
+      const byId = new Map<string, Member>(dir.map(m => [m.userId ?? '', m]));
+      return files.map(f => toFileItem(f, byId));
+    }));
+  }
+
+  restoreFile(fileId: string): Observable<void> {
+    return this.post$<FileResponse>('ged', `/ged/files/${fileId}/restore`, {}).pipe(map(() => void 0));
+  }
+  purgeFile(fileId: string): Observable<void> {
+    return this.delete$<void>('ged', `/ged/trash/${fileId}`);
+  }
+  emptyTrash(): Observable<void> {
+    return this.delete$<void>('ged', '/ged/trash');
+  }
+
+  // ── Versions ────────────────────────────────────────────────────────────────
+  versions(fileId: string): Observable<GedVersion[]> {
+    return forkJoin({
+      list: this.get$<VersionResponse[]>('ged', `/ged/files/${fileId}/versions`),
+      dir: this.members.directory(),
+    }).pipe(map(({ list, dir }) => {
+      const byId = new Map<string, Member>(dir.map(m => [m.userId ?? '', m]));
+      return list.map(v => ({
+        id: v.id,
+        number: v.versionNumber,
+        size: formatSize(v.fileSize),
+        note: v.note,
+        author: byId.get(v.uploadedBy)?.name ?? 'Membre',
+        date: formatDate(v.createdAt),
+        current: v.current,
+      }));
+    }));
+  }
+
+  addVersion(fileId: string, projectId: string | null, file: File, note: string): Observable<void> {
+    return this.files.upload('ged', file, {
+      workspaceId: this.session.activeWorkspaceId(),
+      ...(projectId ? { projectId } : {}),
+    }).pipe(switchMap(stored =>
+      this.post$<VersionResponse>('ged', `/ged/files/${fileId}/versions`, {
+        sourceFileId: stored.id,
+        fileUrl: stored.downloadUrl,
+        fileSize: stored.size,
+        note: note || undefined,
+      }).pipe(map(() => void 0))));
+  }
+
+  restoreVersion(fileId: string, versionId: string): Observable<void> {
+    return this.post$<VersionResponse>('ged', `/ged/files/${fileId}/versions/${versionId}/restore`, {}).pipe(map(() => void 0));
   }
 
   folderContent(path: string[], projectId: string | null): Observable<GedItem[]> {

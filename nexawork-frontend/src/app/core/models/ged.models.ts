@@ -70,3 +70,32 @@ export interface FolderContentResponse {
   files: FileResponse[];
   taskAttachments: TaskAttachmentLineResponse[];
 }
+
+export interface VersionResponse {
+  id: string;
+  gedFileId: string;
+  versionNumber: number;
+  sourceFileId?: string;
+  fileUrl: string;
+  fileSize?: number;
+  note?: string;
+  uploadedBy: string;
+  createdAt: string;
+  current: boolean;
+}
+
+export type TargetType = 'FOLDER' | 'FILE';
+export type GranteeType = 'USER' | 'TEAM';
+export type AccessLevel = 'READER' | 'EDITOR';
+
+export interface GrantResponse {
+  id: string;
+  targetType: TargetType;
+  targetId: string;
+  granteeType: GranteeType;
+  granteeId: string;
+  accessLevel: AccessLevel;
+  grantedBy: string;
+  createdAt: string;
+  owner: boolean;
+}
