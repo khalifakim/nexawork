@@ -248,6 +248,11 @@ export class CanalComponent {
         this.msgs.set(thread);
         this.searchQ.set('');
       });
+    // Réception temps réel : on n'ajoute que les messages des autres (mon propre
+    // message est déjà affiché de façon optimiste à l'envoi, évitant un doublon).
+    toObservable(this.name)
+      .pipe(switchMap(id => this.channelsSvc.live(id)), takeUntilDestroyed())
+      .subscribe(msg => { if (!msg.mine) this.msgs.update(list => [...list, msg]); });
     // Pin the scroll to the bottom whenever the visible thread changes
     // (open a channel, switch channel, or send a new message).
     effect(() => {
@@ -294,12 +299,15 @@ export class CanalComponent {
     this.mentionsOpen.update(v => !v);
   }
 
-  onSend(payload: { parts: RichPart[]; files: AttachedFile[] }): void {
+  onSend(payload: { parts: RichPart[]; files: AttachedFile[]; text?: string }): void {
     if (!payload.parts.length && !payload.files.length) return;
     const now = new Date();
     const time = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
     const files: ChannelFile[] | undefined = payload.files.length ? payload.files.map(f => ({ id: f.id, name: f.name, size: f.size })) : undefined;
+    // Affichage optimiste immédiat, puis persistance réelle (texte).
     this.msgs.update(list => [...list, { author: 'Akim Koné', color: '#F5A623', time, parts: payload.parts, mine: true, files }]);
+    const text = payload.text ?? payload.parts.map(p => p.val).join('');
+    if (text.trim()) this.channelsSvc.sendMessage(this.name(), text).subscribe();
   }
 
   onChipOpen(ev: MentionChipEvent): void {

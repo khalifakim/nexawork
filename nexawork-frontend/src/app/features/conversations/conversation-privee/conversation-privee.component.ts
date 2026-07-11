@@ -201,6 +201,18 @@ export class ConversationPriveeComponent {
       .subscribe(thread => {
         this.msgs.set(thread);
         this.searchQ.set('');
+        // À l'ouverture, marquer la conversation comme lue (accusé de lecture).
+        this.conversationsSvc.markRead(this.slug());
+      });
+    // Réception temps réel des messages du pair (mes propres messages sont déjà
+    // affichés de façon optimiste à l'envoi).
+    toObservable(this.slug)
+      .pipe(switchMap(s => this.conversationsSvc.live(s)), takeUntilDestroyed())
+      .subscribe(msg => {
+        if (!msg.me) {
+          this.msgs.update(list => [...list, msg]);
+          this.conversationsSvc.markRead(this.slug());
+        }
       });
     // Pin the scroll to the bottom whenever the thread changes (open a
     // conversation, switch peer, or send a new message).
@@ -248,14 +260,17 @@ export class ConversationPriveeComponent {
     this.mentionsOpen.update(v => !v);
   }
 
-  onSend(payload: { parts: RichPart[]; files: AttachedFile[] }): void {
+  onSend(payload: { parts: RichPart[]; files: AttachedFile[]; text?: string }): void {
     if (!payload.parts.length && !payload.files.length) return;
     const now = new Date();
     const time = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
     const files: ConversationFile[] | undefined = payload.files.length
       ? payload.files.map(f => ({ id: f.id, name: f.name, size: f.size }))
       : undefined;
+    // Affichage optimiste immédiat, puis persistance réelle (texte).
     this.msgs.update(list => [...list, { me: true, parts: payload.parts, time, read: false, files }]);
+    const text = payload.text ?? payload.parts.map(p => p.val).join('');
+    if (text.trim()) this.conversationsSvc.sendMessage(this.slug(), text).subscribe();
   }
 
   onChipOpen(ev: MentionChipEvent): void {

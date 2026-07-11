@@ -9,6 +9,22 @@ export interface Member {
   projects: string[];
 }
 
+/** Payload brut d'un membre de workspace (Auth `GET /workspaces/{id}/members`). */
+export interface MemberResponse {
+  id: string;
+  userId: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  displayName: string;
+  jobTitle?: string;
+  photoUrl?: string;
+  orgRole: 'OWNER' | 'ADMIN' | 'MEMBER';
+  joinedAt: string;
+  isOwner: boolean;
+  isDeactivated: boolean;
+}
+
 /** Ligne de la liste d'administration des membres (Paramètres ▸ Membres). */
 export interface WorkspaceMemberAdmin {
   memberId: string;      // OrganisationMember.id (cible des endpoints /workspace-members/{id})

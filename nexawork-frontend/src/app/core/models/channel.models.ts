@@ -8,6 +8,64 @@ export interface Channel {
   kind: 'bell' | 'hash'; // announcement channel (bell) vs standard (#)
   project?: string;    // owning project name when scope === 'project'
   readonly?: boolean;  // write reserved to admins / project lead
+  /** UUID backend (résolu par le service HTTP ; absent des fixtures mock). */
+  uuid?: string;
+  /** Visibilité restreinte (canal privé). */
+  isPrivate?: boolean;
+  /** L'appelant peut-il écrire ? (REF D, déjà calculé backend `canWrite`). */
+  canWrite?: boolean;
+  /** projectId backend, pour la résolution du nom de projet. */
+  projectId?: string;
+}
+
+/** Payload brut d'un canal (Messaging `GET /channels`). */
+export interface ChannelResponse {
+  id: string;
+  name: string;
+  icon: 'HASH' | 'BELL';
+  channelType: 'GLOBAL_ORG' | 'PROJECT';
+  organisationId: string;
+  projectId?: string;
+  createdByUserId?: string;
+  isSystem: boolean;
+  readonly: boolean;
+  isPrivate: boolean;
+  canWrite: boolean;
+  createdAt: string;
+}
+
+/** Payload brut d'une mention portée par un message. */
+export interface MentionResponse {
+  id: string;
+  messageId: string;
+  mentionType: 'USER' | 'TASK' | 'DOCUMENT' | 'CHANNEL';
+  targetId?: string;
+  targetText?: string;
+  isRead: boolean;
+  createdAt: string;
+}
+
+/** Payload brut d'un message (canal ou conversation). */
+export interface MessageResponse {
+  id: string;
+  channelId?: string;
+  conversationId?: string;
+  senderUserId: string;
+  content: string;
+  attachmentUrl?: string;
+  attachmentName?: string;
+  messageType: 'USER' | 'SYSTEM';
+  edited: boolean;
+  sentAt: string;
+  readAt?: string;
+  mentions: MentionResponse[];
+}
+
+/** Page de messages (historique paginé par curseur). */
+export interface MessagePageResponse {
+  messages: MessageResponse[];
+  nextCursor?: string;
+  hasMore: boolean;
 }
 
 /** Attached file on a message (canal / conversation / comment). */

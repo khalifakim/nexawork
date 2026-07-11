@@ -13,9 +13,9 @@ export const environment = {
     auth: false,
     projects: false,     // Phase I2a
     tasks: false,        // Phase I2a
-    members: true,
-    channels: true,
-    conversations: true,
+    members: false,      // Phase I3
+    channels: false,     // Phase I4
+    conversations: false,// Phase I4
     ged: true,
     notifications: true,
     accueil: true,

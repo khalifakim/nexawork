@@ -20,7 +20,8 @@ restantes exigent du développement backend neuf** : **I9** (endpoints de recher
 **Frontend : ✅ construit sur mocks.**
 **Phase en cours : intégration Frontend ↔ Backend (mock → HTTP)**, phase par phase — voir le plan.
 
-Progression intégration : **3 / 14 phases du périmètre livrable** (✅ I0, I1, **I2** · prochaine : **I3 Members**).
+Progression intégration : **5 / 14 phases du périmètre livrable** (✅ I0, I1, I2, I3, **I4** code livré · prochaine : **I5 GED**).
+> ⚠️ **Sprint sans test intermédiaire (2026-07-11)** : sur décision utilisateur (machine 8 Go), on développe toutes les phases d'affilée et on teste **tout à la fin**. `ng build` (dev+prod) vert après chaque phase ; le **temps réel STOMP (I4/I6)** et le **backend neuf (I9/I10/M2/M3)** ne seront validés qu'à la session finale.
 *(14 = 16 phases initiales − M5/M6 repassées en perspective.)*
 
 ### 📌 État réel du code (vérifié 2026-07-09)
@@ -85,8 +86,8 @@ Colonne **Backend** : ✅ = déjà livré (baseline) · 🔴 = **développement 
 | 1 | **I0** | Socle transverse (enveloppe, context-paths, UUID, JWT/refresh) | ✅ | ✅ | ✅ | Livré + validé live (2026-07-06). |
 | 2 | **I1** | Auth & Workspace | ✅ | ✅ | ✅ | I1a-d + **lot de corrections validé live (2026-07-10)** — voir §1bis. |
 | 3 | **I2** | Projects + Tasks/Kanban | ✅ (+`comment_attachments`) | ✅ | ✅ | **Livrée (I2a+b+c)** : projets, board FSM, tâches, fiche complète, commentaires+PJ, **statuts/workflow persistés, vue d'ensemble, gantt réels**. Voir « Détail I2a/b/c ». |
-| 4 | **I3** | Members | ✅ | ⏳ | ⏳ | Annuaire + présence Redis (`/presence/active`). Légère. |
-| 5 | **I4** | Channels + Conversations | ✅ | ⏳ | ⏳ | 2 `*HttpService` + **client STOMP à écrire** (temps réel). Lourde. |
+| 4 | **I3** | Members | ✅ | ✅ | ✅ | **Livrée** : `MembersHttpService` (annuaire Auth réel). ⚠️ présence « en ligne » vide tant que l'infra WebSocket (I4/I6) n'alimente pas Redis — `/presence/active` est un stub côté backend. |
+| 5 | **I4** | Channels + Conversations | ✅ | ✅ | 🚧 | **Code livré** (2 `*HttpService` + client STOMP `core/ws/`). ⚠️ **temps réel non testable avant la session finale**. Routing par slug conservé (résolution slug↔UUID interne). PJ de message différées (dépendance circulaire `messageId`). |
 | 6 | **I5** | GED / Documents | ✅ | ⏳ | ⏳ | 1 `*HttpService` (~13 méthodes) + File Service (MinIO). Lourde. Inclut la **photo de profil** (reste de I1). |
 | 7 | **I6** | Notifications | ✅ | ⏳ | ⏳ | HttpService + STOMP + **Service Worker Web Push**. Table `kind`↔`NotificationType`. |
 | 8 | **I7** | Accueil / Dashboard | ✅ | ⏳ | ⏳ | Agrège I2/I4 ; retirer `membersOnline` ; trancher `myTasks()`. Légère. |

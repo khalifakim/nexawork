@@ -1,11 +1,11 @@
 import { Provider } from '@angular/core';
 import { environment } from '@environment/environment';
-import { MembersService, MembersMockService } from './members.service';
+import { MembersService, MembersMockService, MembersHttpService } from './members.service';
 import { ProjectsService, ProjectsMockService, ProjectsHttpService } from './projects.service';
 import { TasksService, TasksMockService, TasksHttpService } from './tasks.service';
 import { GedService, GedMockService } from './ged.service';
-import { ConversationsService, ConversationsMockService } from './conversations.service';
-import { ChannelsService, ChannelsMockService } from './channels.service';
+import { ConversationsService, ConversationsMockService, ConversationsHttpService } from './conversations.service';
+import { ChannelsService, ChannelsMockService, ChannelsHttpService } from './channels.service';
 import { MeetingsService, MeetingsMockService } from './meetings.service';
 import { NotificationsService, NotificationsMockService } from './notifications.service';
 import { AccueilService, AccueilMockService } from './accueil.service';
@@ -24,12 +24,12 @@ import { SearchService, SearchMockService } from './search.service';
 export function provideDataServices(): Provider[] {
   const m = environment.mock;
   return [
-    { provide: MembersService,       useClass: MembersMockService },       // I3 → MembersHttpService
+    { provide: MembersService,       useClass: m.members ? MembersMockService : MembersHttpService },
     { provide: ProjectsService,      useClass: m.projects ? ProjectsMockService : ProjectsHttpService },
     { provide: TasksService,         useClass: m.tasks ? TasksMockService : TasksHttpService },
     { provide: GedService,           useClass: GedMockService },           // I5 → GedHttpService
-    { provide: ConversationsService, useClass: ConversationsMockService }, // I4 → ConversationsHttpService
-    { provide: ChannelsService,      useClass: ChannelsMockService },      // I4 → ChannelsHttpService
+    { provide: ConversationsService, useClass: m.conversations ? ConversationsMockService : ConversationsHttpService },
+    { provide: ChannelsService,      useClass: m.channels ? ChannelsMockService : ChannelsHttpService },
     { provide: MeetingsService,      useClass: MeetingsMockService },      // I8 → MeetingsHttpService
     { provide: NotificationsService, useClass: NotificationsMockService }, // I6 → NotificationsHttpService
     { provide: AccueilService,       useClass: AccueilMockService },       // I7 → AccueilHttpService

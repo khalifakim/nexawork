@@ -11,9 +11,9 @@ export const environment = {
     auth: false,         // Phase I1 ✅ (auth + workspaces branchés au backend réel)
     projects: false,     // Phase I2a ✅ (projets : liste, CRUD, archivage)
     tasks: false,        // Phase I2a ✅ (board Kanban : lecture, drag-drop FSM, suppression)
-    members: true,       // Phase I3
-    channels: true,      // Phase I4
-    conversations: true, // Phase I4
+    members: false,      // Phase I3 ✅ (annuaire réel ; présence en attente de l'infra WS)
+    channels: false,     // Phase I4 ✅ (REST + STOMP ; PJ de message différées)
+    conversations: false,// Phase I4 ✅ (REST + STOMP ; accusé de lecture)
     ged: true,           // Phase I5
     notifications: true, // Phase I6
     accueil: true,       // Phase I7

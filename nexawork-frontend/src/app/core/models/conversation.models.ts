@@ -10,6 +10,20 @@ export interface Conversation {
   unread: number;
   /** Relative time of the last message (e.g. '2 min', '1 h', '3 h', 'hier'). */
   time: string;
+  /** UUID backend de la conversation (résolu par le service HTTP). */
+  uuid?: string;
+  /** UUID de l'autre participant (pour ouvrir/retrouver la conversation). */
+  peerUserId?: string;
+}
+
+/** Payload brut d'une conversation (Messaging `GET /conversations`). */
+export interface ConversationResponse {
+  id: string;
+  workspaceId: string;
+  type: string;
+  participantUserIds: string[];
+  isRead: boolean;
+  createdAt: string;
 }
 
 /** Attached file on a conversation message (matches ChannelFile). */
