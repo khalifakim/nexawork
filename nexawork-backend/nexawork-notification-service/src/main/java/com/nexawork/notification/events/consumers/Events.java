@@ -28,7 +28,7 @@ public final class Events {
 
     public record CallEnded(
             UUID callId, String topic, String roomName, UUID organisationId,
-            UUID projectId, UUID hostUserId, Long durationSeconds) {
+            UUID hostUserId, Long durationSeconds) {
     }
 
     public record ExternalGuestInvited(
@@ -37,7 +37,7 @@ public final class Events {
     }
 
     public record MeetingParticipantInvited(
-            UUID callId, String topic, UUID organisationId, UUID projectId,
+            UUID callId, String topic, UUID organisationId,
             UUID inviterUserId, String inviterDisplayName, UUID recipientUserId) {
     }
 }

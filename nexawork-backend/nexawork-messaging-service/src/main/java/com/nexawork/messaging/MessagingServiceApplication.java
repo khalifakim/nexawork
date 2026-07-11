@@ -10,8 +10,8 @@ import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
  * §13.5, §7.5).
  *
  * <p>Identité via headers Gateway (pas de secret JWT). Consomme
- * {@code project.created} (canaux par défaut) et {@code call.ended} (message
- * système). Scan restreint aux sous-packages commons réutilisables.</p>
+ * {@code project.created} (canaux par défaut). Scan restreint aux sous-packages
+ * commons réutilisables.</p>
  */
 @SpringBootApplication(scanBasePackages = {
         "com.nexawork.messaging",

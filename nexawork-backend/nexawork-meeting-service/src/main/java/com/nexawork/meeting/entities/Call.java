@@ -21,7 +21,8 @@ import java.util.UUID;
 
 /**
  * Appel vidéo (V5.1 §4.6). {@code roomName} = nom technique unique de la salle
- * JaaS. Références logiques (organisationId, projectId, hostUserId) sans FK.
+ * JaaS. Références logiques (organisationId, hostUserId) sans FK. Une réunion est
+ * rattachée au workspace (organisationId), jamais à un projet.
  */
 @Entity
 @Table(name = "calls")
@@ -44,9 +45,6 @@ public class Call {
 
     @Column(name = "organisation_id", nullable = false)
     private UUID organisationId;
-
-    @Column(name = "project_id")
-    private UUID projectId;
 
     @Column(name = "host_user_id", nullable = false)
     private UUID hostUserId;

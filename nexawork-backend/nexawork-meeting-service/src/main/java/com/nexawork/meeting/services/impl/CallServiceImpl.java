@@ -60,7 +60,6 @@ public class CallServiceImpl implements CallService {
                 .topic(request.getTopic())
                 .roomName(generateRoomName())
                 .organisationId(caller.organisationId())
-                .projectId(request.getProjectId())
                 .hostUserId(host)
                 .status(CallStatus.ACTIVE)
                 .startedAt(LocalDateTime.now())
@@ -145,7 +144,7 @@ public class CallServiceImpl implements CallService {
                 ? Duration.between(call.getStartedAt(), now).getSeconds() : 0;
         eventPublisher.publishCallEnded(new CallEndedEvent(
                 call.getId(), call.getTopic(), call.getRoomName(),
-                call.getOrganisationId(), call.getProjectId(), call.getHostUserId(), durationSeconds));
+                call.getOrganisationId(), call.getHostUserId(), durationSeconds));
         log.info("Appel {} terminé (durée {}s)", callId, durationSeconds);
     }
 
@@ -235,7 +234,7 @@ public class CallServiceImpl implements CallService {
                             .call(call).userId(uid).invitedExplicitly(true).build());
                     eventPublisher.publish(MeetingEventPublisher.ROUTING_PARTICIPANT_INVITED,
                             new MeetingParticipantInvitedEvent(call.getId(), call.getTopic(),
-                                    call.getOrganisationId(), call.getProjectId(),
+                                    call.getOrganisationId(),
                                     inviter, inviterName, uid),
                             "membre " + uid);
                 });
@@ -273,7 +272,7 @@ public class CallServiceImpl implements CallService {
                 .toList();
         return CallResponse.builder()
                 .id(c.getId()).topic(c.getTopic()).roomName(c.getRoomName())
-                .organisationId(c.getOrganisationId()).projectId(c.getProjectId()).hostUserId(c.getHostUserId())
+                .organisationId(c.getOrganisationId()).hostUserId(c.getHostUserId())
                 .status(c.getStatus()).scheduledAt(c.getScheduledAt())
                 .startedAt(c.getStartedAt()).endedAt(c.getEndedAt()).createdAt(c.getCreatedAt())
                 .participants(participants)

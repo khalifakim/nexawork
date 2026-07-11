@@ -20,7 +20,6 @@ public class CallResponse {
     private String topic;
     private String roomName;
     private UUID organisationId;
-    private UUID projectId;
     private UUID hostUserId;
     private CallStatus status;
     private LocalDateTime scheduledAt;
