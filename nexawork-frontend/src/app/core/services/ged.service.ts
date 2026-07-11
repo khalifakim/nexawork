@@ -2,12 +2,15 @@ import { Injectable, inject } from '@angular/core';
 import { Observable, forkJoin, of, switchMap } from 'rxjs';
 import { map, delay } from 'rxjs/operators';
 import { BaseHttpService } from '@core/http/base-http.service';
+import { FilesHttpService } from '@core/http/files.http.service';
 import {
-  FileResponse, FolderContentResponse, FolderResponse, GedItem, GedType, TaskAttachmentLineResponse,
+  AccessMode, FileResponse, FolderContentResponse, FolderResponse, GedItem, GedType,
+  TaskAttachmentLineResponse,
 } from '@core/models/ged.models';
 import { TASK_FOLDER } from '@core/util/ui.util';
 import { FOLDER_DATA, projectRoot, SYSTEM_FOLDER_CONTENT } from '@core/mock/ged';
 import { MembersService } from './members.service';
+import { SessionService } from './session.service';
 import { Member } from '@core/models/member.models';
 
 export abstract class GedService {
@@ -16,6 +19,16 @@ export abstract class GedService {
    * `projectId` (UUID) = GED de projet ; `null` = GED d'organisation.
    */
   abstract folderContent(path: string[], projectId: string | null): Observable<GedItem[]>;
+
+  // ── Écritures (I5b) ─────────────────────────────────────────────────────────
+  /** Crée un dossier dans le dossier courant (résolu depuis `path`). */
+  abstract createFolder(path: string[], projectId: string | null, name: string, restricted: boolean): Observable<void>;
+  /** Importe un fichier dans le dossier courant (upload File Service puis référencement GED). */
+  abstract importFile(path: string[], projectId: string | null, file: File, name: string, restricted: boolean): Observable<void>;
+  /** Renomme un dossier ou un fichier. */
+  abstract renameItem(item: GedItem, newName: string): Observable<void>;
+  /** Supprime (corbeille pour un fichier) un dossier ou un fichier. */
+  abstract deleteItem(item: GedItem): Observable<void>;
 }
 
 @Injectable()
@@ -30,11 +43,61 @@ export class GedMockService extends GedService {
     }
     return of(items).pipe(delay(80));
   }
+  // Mock : les écritures ne persistent pas (le mock sert d'affichage figé).
+  createFolder(): Observable<void> { return of(void 0).pipe(delay(60)); }
+  importFile(): Observable<void> { return of(void 0).pipe(delay(60)); }
+  renameItem(): Observable<void> { return of(void 0).pipe(delay(60)); }
+  deleteItem(): Observable<void> { return of(void 0).pipe(delay(60)); }
 }
 
 @Injectable()
 export class GedHttpService extends BaseHttpService implements GedService {
   private readonly members = inject(MembersService);
+  private readonly files = inject(FilesHttpService);
+  private readonly session = inject(SessionService);
+
+  createFolder(path: string[], projectId: string | null, name: string, restricted: boolean): Observable<void> {
+    return this.parentFolderId(path, projectId).pipe(switchMap(parentId =>
+      this.post$<FolderResponse>('ged', '/ged/folders', {
+        name, parentId: parentId ?? null, projectId: projectId ?? null,
+        accessMode: restricted ? 'PRIVATE' : 'OPEN' as AccessMode,
+      }).pipe(map(() => void 0))));
+  }
+
+  importFile(path: string[], projectId: string | null, file: File, name: string, restricted: boolean): Observable<void> {
+    return this.parentFolderId(path, projectId).pipe(switchMap(folderId =>
+      this.files.upload('ged', file, {
+        workspaceId: this.session.activeWorkspaceId(),
+        ...(projectId ? { projectId } : {}),
+      }).pipe(switchMap(stored =>
+        this.post$<FileResponse>('ged', '/ged/files', {
+          folderId: folderId ?? null,
+          name: name.trim() || stored.fileName,
+          fileUrl: stored.downloadUrl,
+          fileSize: stored.size,
+          contentType: stored.contentType,
+          sourceFileId: stored.id,
+          accessMode: restricted ? 'PRIVATE' : 'OPEN' as AccessMode,
+        }).pipe(map(() => void 0))))));
+  }
+
+  renameItem(item: GedItem, newName: string): Observable<void> {
+    if (!item.id) return of(void 0);
+    const path = item.type === 'folder' ? `/ged/folders/${item.id}` : `/ged/files/${item.id}`;
+    return this.patch$<unknown>('ged', path, { name: newName }).pipe(map(() => void 0));
+  }
+
+  deleteItem(item: GedItem): Observable<void> {
+    if (!item.id) return of(void 0);
+    const path = item.type === 'folder' ? `/ged/folders/${item.id}` : `/ged/files/${item.id}`;
+    return this.delete$<void>('ged', path);
+  }
+
+  /** UUID du dossier courant (fin de `path`), ou `undefined` à la racine. */
+  private parentFolderId(path: string[], projectId: string | null): Observable<string | undefined> {
+    if (path.length === 0) return of(undefined);
+    return this.roots(projectId).pipe(switchMap(roots => this.resolveFolder(roots, path)));
+  }
 
   folderContent(path: string[], projectId: string | null): Observable<GedItem[]> {
     return forkJoin({

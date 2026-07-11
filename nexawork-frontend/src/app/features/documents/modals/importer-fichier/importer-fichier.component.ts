@@ -12,11 +12,17 @@ import { ME } from '@core/util/ui.util';
   imports: [ModalShellComponent, IconComponent, GedShareOptionsComponent],
   template: `
     <app-modal-shell title="Importer un fichier" subtitle="Ajoutez un fichier à l'espace courant." [width]="520" (closed)="closed.emit()">
-      <div class="drop">
+      <input #fileInput type="file" hidden (change)="onPick($event)" />
+      <button type="button" class="drop" [class.drop--set]="file()" (click)="fileInput.click()">
         <app-icon name="upload" [size]="30" />
-        <span class="drop__t">Glissez un fichier ici ou parcourez</span>
-        <span class="drop__s">PDF, images, documents — 50 Mo max.</span>
-      </div>
+        @if (file(); as f) {
+          <span class="drop__t">{{ f.name }}</span>
+          <span class="drop__s">{{ sizeOf(f.size) }} — cliquez pour changer</span>
+        } @else {
+          <span class="drop__t">Cliquez pour choisir un fichier</span>
+          <span class="drop__s">PDF, images, documents — 50 Mo max.</span>
+        }
+      </button>
       <label class="lbl">Nom du fichier</label>
       <input class="in" placeholder="ex. Brief client.pdf" [value]="name()" (input)="name.set($any($event.target).value)" />
       <div class="ro" [class.ro--on]="restrict()">
@@ -33,7 +39,7 @@ import { ME } from '@core/util/ui.util';
 
       <div footer>
         <button class="ghost" (click)="closed.emit()">Annuler</button>
-        <button class="primary" (click)="doImport()">Importer</button>
+        <button class="primary" [disabled]="!file()" (click)="doImport()">Importer</button>
       </div>
     </app-modal-shell>
   `,
@@ -43,25 +49,44 @@ export class ImporterFichierComponent {
   /** R16 — scope propagated to the share picker (workspace vs project members). */
   @Input() scope: 'org' | 'project' = 'org';
   @Output() closed = new EventEmitter<void>();
-  @Output() imported = new EventEmitter<void>();
+  @Output() imported = new EventEmitter<{ file: File; name: string; restricted: boolean }>();
 
   private gedOverlay = inject(GedOverlayBus);
 
   name = signal('');
+  file = signal<File | null>(null);
   restrict = signal(false);
   private shareValue: GedShareValue = { mode: 'private', grants: [] };
 
   onShareChange(v: GedShareValue): void { this.shareValue = v; }
 
+  onPick(ev: Event): void {
+    const input = ev.target as HTMLInputElement;
+    const f = input.files?.[0] ?? null;
+    this.file.set(f);
+    // Pré-remplit le nom avec celui du fichier s'il est encore vide.
+    if (f && !this.name().trim()) this.name.set(f.name);
+    input.value = '';
+  }
+
+  /** Taille lisible (Ko / Mo). */
+  sizeOf(bytes: number): string {
+    if (bytes < 1024) return bytes + ' o';
+    if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + ' Ko';
+    return (bytes / (1024 * 1024)).toFixed(1).replace('.', ',') + ' Mo';
+  }
+
   doImport(): void {
-    const n = this.name().trim();
-    if (n && this.restrict()) {
+    const f = this.file();
+    if (!f) return;
+    const n = this.name().trim() || f.name;
+    if (this.restrict()) {
       this.gedOverlay.setRestriction(n, {
         mode: this.shareValue.mode,
         grants: this.shareValue.grants,
         owner: ME,
       });
     }
-    this.imported.emit();
+    this.imported.emit({ file: f, name: n, restricted: this.restrict() });
   }
 }

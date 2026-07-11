@@ -120,8 +120,8 @@ import { GED_COLOR, GED_ICON, TASK_FOLDER } from '@core/util/ui.util';
     </div>
 
     @if (preview(); as p) { <app-apercu-document [name]="p" (closed)="preview.set(null)" /> }
-    @if (newFolder()) { <app-nouveau-dossier [scope]="modalScope()" (closed)="newFolder.set(false)" (created)="toast('Dossier « ' + $event + ' » créé'); newFolder.set(false)" /> }
-    @if (upload()) { <app-importer-fichier [scope]="modalScope()" (closed)="upload.set(false)" (imported)="toast('Fichier importé'); upload.set(false)" /> }
+    @if (newFolder()) { <app-nouveau-dossier [scope]="modalScope()" (closed)="newFolder.set(false)" (created)="onCreateFolder($event)" /> }
+    @if (upload()) { <app-importer-fichier [scope]="modalScope()" (closed)="upload.set(false)" (imported)="onImportFile($event)" /> }
 
     @if (toastMsg(); as t) { <div class="gtoast"><span class="gtoast__i"><app-icon name="check" [size]="14" /></span>{{ t }}</div> }
   `,
@@ -169,10 +169,27 @@ export class GedViewComponent {
   private bus = inject(ShellBus);
   inSystem = computed(() => this.path()[this.path().length - 1] === TASK_FOLDER);
 
+  /** Bumpé après une écriture pour recharger le dossier courant. */
+  private refresh = signal(0);
+  private trigger = computed(() => ({ p: this.path(), r: this.refresh() }));
   private current = toSignal(
-    toObservable(this.path).pipe(switchMap(p => this.ged.folderContent(p, this.projectId))),
+    toObservable(this.trigger).pipe(switchMap(t => this.ged.folderContent(t.p, this.projectId))),
     { initialValue: [] as GedItem[] },
   );
+  private reload(): void { this.refresh.update(v => v + 1); }
+
+  onCreateFolder(ev: { name: string; restricted: boolean }): void {
+    this.newFolder.set(false);
+    this.ged.createFolder(this.path(), this.projectId, ev.name, ev.restricted)
+      .subscribe(() => { this.reload(); this.toast('Dossier « ' + ev.name + ' » créé'); });
+  }
+
+  onImportFile(ev: { file: File; name: string; restricted: boolean }): void {
+    this.upload.set(false);
+    this.toast('Import de « ' + ev.name + ' » en cours…');
+    this.ged.importFile(this.path(), this.projectId, ev.file, ev.name, ev.restricted)
+      .subscribe(() => { this.reload(); this.toast('« ' + ev.name + ' » importé'); });
+  }
 
   shown = computed(() => {
     const q = this.q().toLowerCase().trim();
@@ -228,6 +245,11 @@ export class GedViewComponent {
       return;
     }
     this.deleted.update(d => [...d, ...allowed]);
+    // Suppression réelle de chaque élément autorisé (corbeille pour les fichiers).
+    for (const name of allowed) {
+      const it = bag.find(x => x.name === name);
+      if (it) this.ged.deleteItem(it).subscribe({ error: () => this.deleted.update(d => d.filter(n => n !== name)) });
+    }
     this.selected.set([]);
     if (skipped > 0) {
       this.toast(allowed.length + ' déplacé' + (allowed.length > 1 ? 's' : '') + ' vers la corbeille · ' + skipped + ' ignoré' + (skipped > 1 ? 's' : '') + ' (droits insuffisants)');
@@ -275,7 +297,11 @@ export class GedViewComponent {
       case 'versions': this.gedOverlay.openVersions(it.name); break;
       case 'access':   this.gedOverlay.openAccess(it.name); break;
       case 'rename':   this.toast('Renommer « ' + it.name + ' »'); break;
-      case 'delete':   this.deleted.update(d => [...d, it.name]); this.toast('« ' + it.name + ' » déplacé vers la corbeille'); break;
+      case 'delete':
+        this.deleted.update(d => [...d, it.name]);
+        this.ged.deleteItem(it).subscribe({ error: () => this.deleted.update(d => d.filter(n => n !== it.name)) });
+        this.toast('« ' + it.name + ' » déplacé vers la corbeille');
+        break;
       case 'task':     this.openTaskChip(it.task?.id, null); break;
     }
   }
