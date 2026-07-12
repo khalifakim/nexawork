@@ -363,10 +363,22 @@ const IC_USER   = '<circle cx="12" cy="8" r="3.4"/><path d="M5.5 20c0-3.6 2.9-6.
           <!-- Pièces jointes -->
           <div class="section">
             <div class="sec__h">Pièces jointes</div>
-            <div class="dropzone">
+            @if (attachedFiles().length) {
+              <div class="att-list">
+                @for (f of attachedFiles(); track $index; let i = $index) {
+                  <div class="att-item">
+                    <span class="att-ic">{{ fileExt(f.name) }}</span>
+                    <div class="att-meta"><span class="att-nm">{{ f.name }}</span><span class="att-sz">{{ sizeOf(f.size) }}</span></div>
+                    <button class="att-rm" (click)="removeFile(i)" title="Retirer"><app-icon name="trash" [size]="15" /></button>
+                  </div>
+                }
+              </div>
+            }
+            <label class="dropzone" (dragover)="$event.preventDefault()" (drop)="onDrop($event)">
               <app-icon name="upload" [size]="20" />
               <span>Déposez vos fichiers ici ou <strong style="color:#5B5FE9">parcourir</strong></span>
-            </div>
+              <input type="file" hidden multiple (change)="onFilesPicked($event)" />
+            </label>
           </div>
 
         </div><!-- /lsc -->
@@ -663,6 +675,29 @@ const IC_USER   = '<circle cx="12" cy="8" r="3.4"/><path d="M5.5 20c0-3.6 2.9-6.
     .dropzone:hover { border-color: #5B5FE9; }
     .dropzone app-icon { color: #b4b0bb; }
 
+    /* Selected files (pre-upload) */
+    .att-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+    .att-item {
+      display: flex; align-items: center; gap: 11px;
+      padding: 9px 11px; border-radius: 10px;
+      border: 1px solid #F0EEE9; background: #FBFAF7;
+    }
+    .att-ic {
+      width: 34px; height: 34px; flex: none; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(91,95,233,.1); color: #5B5FE9;
+      font-size: 9.5px; font-weight: 800; letter-spacing: .02em;
+    }
+    .att-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .att-nm { font-size: 13px; font-weight: 600; color: #1d1b25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .att-sz { font-size: 11.5px; color: #9b97a3; }
+    .att-rm {
+      width: 30px; height: 30px; flex: none; border: none; border-radius: 8px;
+      background: transparent; color: #b4b0bb; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .att-rm:hover { background: #FBE9E7; color: #E0497B; }
+
     /* ── Footer ─────────────────────────────────────────────────────── */
     .footer {
       flex: none; display: flex; align-items: center; gap: 10px;
@@ -729,6 +764,8 @@ export class CreerTacheComponent implements OnInit, AfterViewInit {
   subs         = signal<string[]>([]);
   subAdding    = signal(false);
   subDraft     = signal('');
+  /** Fichiers choisis avant création — téléversés une fois la tâche créée. */
+  attachedFiles = signal<File[]>([]);
   busy         = signal(false);
 
   // ── Computed ─────────────────────────────────────────────────────────────
@@ -797,6 +834,35 @@ export class CreerTacheComponent implements OnInit, AfterViewInit {
 
   removeSub(i: number): void { this.subs.update(l => l.filter((_, j) => j !== i)); }
 
+  // ── Pièces jointes ─────────────────────────────────────────────────────────
+  onFilesPicked(ev: Event): void {
+    const input = ev.target as HTMLInputElement;
+    this.addFiles(input.files);
+    input.value = ''; // autorise de re-choisir le même fichier
+  }
+  onDrop(ev: DragEvent): void {
+    ev.preventDefault();
+    this.addFiles(ev.dataTransfer?.files ?? null);
+  }
+  private addFiles(list: FileList | null): void {
+    const files = Array.from(list ?? []);
+    if (files.length) this.attachedFiles.update(l => [...l, ...files]);
+  }
+  removeFile(i: number): void { this.attachedFiles.update(l => l.filter((_, j) => j !== i)); }
+
+  /** Extension courte affichée dans la pastille du fichier. */
+  fileExt(name: string): string {
+    const parts = name.split('.');
+    return parts.length > 1 ? parts.pop()!.slice(0, 4).toUpperCase() : 'FIC';
+  }
+  /** Taille lisible d'un fichier. */
+  sizeOf(bytes?: number): string {
+    if (bytes == null) return '';
+    if (bytes < 1024) return bytes + ' o';
+    if (bytes < 1_048_576) return Math.round(bytes / 1024) + ' Ko';
+    return (bytes / 1_048_576).toFixed(1) + ' Mo';
+  }
+
   create(): void {
     const title = this.title().trim();
     const statusId = this.statusId();
@@ -816,11 +882,13 @@ export class CreerTacheComponent implements OnInit, AfterViewInit {
 
     this.tasksSvc.createTask(this.projectId, payload).subscribe({
       next: card => {
-        const subs = this.subs();
-        if (subs.length === 0) { this.finish(card); return; }
-        // Les sous-tâches se créent après la tâche (elles ont besoin de son id).
-        forkJoin(subs.map(s => this.tasksSvc.addSubtask(card.id, s)))
-          .subscribe({ next: () => this.finish(card), error: () => this.finish(card) });
+        // Sous-tâches et pièces jointes se créent après la tâche (besoin de son id).
+        const after$ = [
+          ...this.subs().map(s => this.tasksSvc.addSubtask(card.id, s)),
+          ...this.attachedFiles().map(f => this.tasksSvc.addAttachment(card.id, this.projectId, f)),
+        ];
+        if (after$.length === 0) { this.finish(card); return; }
+        forkJoin(after$).subscribe({ next: () => this.finish(card), error: () => this.finish(card) });
       },
       error: () => this.busy.set(false),
     });
