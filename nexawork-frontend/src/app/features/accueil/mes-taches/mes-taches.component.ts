@@ -53,6 +53,12 @@ const PRIO_BG: Record<string, string> = { 'Haute': '#FDECEB', 'Moyenne': '#FBF1E
             }
           }
         </div>
+      } @empty {
+        <div class="empty">
+          <span class="empty__ic"><app-icon name="taskCheck" [size]="26" /></span>
+          <div class="empty__t">Aucune tâche ne vous a été assignée</div>
+          <div class="empty__s">Vous n'avez aucune tâche à échéance aujourd'hui ou en retard. Profitez-en !</div>
+        </div>
       }
     </div>
 

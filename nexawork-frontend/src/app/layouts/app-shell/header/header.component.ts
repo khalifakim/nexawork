@@ -29,7 +29,7 @@ type Menu = 'ws' | 'user' | 'notif' | 'call' | null;
         <div class="wswrap">
           <button class="ws" (click)="toggle('ws')">
             <span class="ws__logo" [style.background]="wsColor()">{{ wsMono() }}</span>
-            <span class="ws__t"><span class="ws__name">{{ wsName() }}</span><span class="ws__sub">12 membres</span></span>
+            <span class="ws__t"><span class="ws__name">{{ wsName() }}</span><span class="ws__sub">{{ wsMembersLabel() }}</span></span>
             <app-icon name="chevronDown" [size]="13" [stroke]="2.4" />
           </button>
           @if (menu() === 'ws') { <div class="bd" (click)="close()"></div>
@@ -37,7 +37,7 @@ type Menu = 'ws' | 'user' | 'notif' | 'call' | null;
               <div class="wsm__head">
                 <div style="display:flex;align-items:center;gap:11px;margin-bottom:11px">
                   <span class="wsm__logo" [style.background]="wsColor()">{{ wsMono() }}</span>
-                  <div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:700">{{ wsName() }}</div><div style="font-size:12.5px;color:var(--nx-text-500)">12 membres</div></div>
+                  <div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:700">{{ wsName() }}</div><div style="font-size:12.5px;color:var(--nx-text-500)">{{ wsMembersLabel() }}</div></div>
                   @if (isAdmin()) {
                     <button class="iconbtn" routerLink="/app/parametres/general" (click)="close()" title="Paramètres du workspace"><app-icon name="gear" [size]="17" /></button>
                   }
@@ -192,6 +192,11 @@ export class HeaderComponent {
   wsName = computed(() => this.session.activeWorkspace().name);
   wsColor = computed(() => this.session.activeWorkspace().color);
   wsMono = computed(() => initials(this.session.activeWorkspace().name));
+  /** Nombre réel de membres du workspace actif (memberCount backend), avec pluriel. */
+  wsMembersLabel = computed(() => {
+    const n = this.session.activeWorkspace().members ?? 0;
+    return n + (n > 1 ? ' membres' : ' membre');
+  });
 
   /** Other workspaces the user belongs to — filtered from `session.workspaces()`. */
   others = computed(() => this.session.workspaces().filter(w => w.id !== this.session.activeWorkspaceId()));

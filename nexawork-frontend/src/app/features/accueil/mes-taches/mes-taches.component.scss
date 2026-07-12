@@ -25,3 +25,9 @@
 .more { margin-top: 10px; display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 13px; border-radius: 8px; border: 1px solid var(--nx-border); background: #fff; color: var(--nx-text-700); font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
 .more:hover { background: var(--nx-surface-2); }
 .more__cv { display: flex; transition: transform .15s; }
+
+/* État vide : aucune tâche assignée (aujourd'hui / en retard) */
+.empty { text-align: center; padding: 48px 24px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.empty__ic { width: 60px; height: 60px; border-radius: 16px; background: rgba(43,182,115,.12); color: #2BB673; display: flex; align-items: center; justify-content: center; margin-bottom: 8px; }
+.empty__t { font-size: 15.5px; font-weight: 700; color: var(--nx-text); }
+.empty__s { font-size: 13.5px; color: var(--nx-text-500); max-width: 360px; line-height: 1.5; }
