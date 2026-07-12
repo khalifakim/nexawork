@@ -53,23 +53,43 @@ public class GedFileServiceImpl implements GedFileService {
 
     @Override
     public FileResponse addFile(CreateFileRequest request) {
-        GedFolder folder = guard.loadFolderInOrg(request.getFolderId());
-        guard.rejectIfSystemFolder(folder, "importer un fichier"); // §13.4
-        access.requireViewable(folder);
+        GedFolder folder = null;
+        UUID projectId;
+        if (request.getFolderId() != null) {
+            // Dépôt dans un dossier : scope projet hérité du dossier.
+            folder = guard.loadFolderInOrg(request.getFolderId());
+            guard.rejectIfSystemFolder(folder, "importer un fichier"); // §13.4
+            access.requireViewable(folder);
+            projectId = folder.getProjectId();
+        } else {
+            // Dépôt à la racine (V2) : scope porté par le request (null = espace Organisation).
+            projectId = request.getProjectId();
+        }
 
         GedFile file = fileRepository.save(GedFile.builder()
                 .folder(folder)
+                .organisationId(caller.organisationId())
                 .name(request.getName())
                 .fileUrl(request.getFileUrl())
                 .fileSize(request.getFileSize())
                 .contentType(request.getContentType())
                 .sourceFileId(request.getSourceFileId())
-                .projectId(folder.getProjectId())
+                .projectId(projectId)
                 .accessMode(request.getAccessMode() != null ? request.getAccessMode() : AccessMode.OPEN)
                 .addedByUserId(caller.userId())
                 .isDeleted(false)
                 .build());
         return fileMapper.asDto(file);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<FileResponse> listRootFiles(UUID projectId) {
+        UUID org = caller.organisationId();
+        List<GedFile> files = projectId != null
+                ? fileRepository.findByOrganisationIdAndProjectIdAndFolderIsNullAndIsDeletedFalse(org, projectId)
+                : fileRepository.findByOrganisationIdAndProjectIdIsNullAndFolderIsNullAndIsDeletedFalse(org);
+        return files.stream().filter(access::canView).map(fileMapper::asDto).toList();
     }
 
     @Override

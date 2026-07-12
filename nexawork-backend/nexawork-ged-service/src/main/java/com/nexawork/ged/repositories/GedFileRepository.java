@@ -15,19 +15,25 @@ public interface GedFileRepository extends JpaRepository<GedFile, UUID> {
 
     long countByFolderIdAndIsDeletedFalse(UUID folderId);
 
+    /** Fichiers racine (sans dossier) d'un espace projet (V2). */
+    List<GedFile> findByOrganisationIdAndProjectIdAndFolderIsNullAndIsDeletedFalse(UUID organisationId, UUID projectId);
+
+    /** Fichiers racine (sans dossier) de l'espace Organisation (projet null, V2). */
+    List<GedFile> findByOrganisationIdAndProjectIdIsNullAndFolderIsNullAndIsDeletedFalse(UUID organisationId);
+
     List<GedFile> findByAddedByUserIdAndIsDeletedFalse(UUID userId);
 
     List<GedFile> findByAddedByUserIdAndIsDeletedTrue(UUID userId);
 
     /**
      * Recherche globale (§4.8) : fichiers non supprimés du workspace dont le nom
-     * contient le terme. L'organisation est portée par le dossier parent. La
-     * visibilité (REF G) est appliquée en aval par {@code AccessEvaluator}.
+     * contient le terme. L'organisation est portée par le fichier (V2 : inclut les
+     * fichiers racine, sans dossier). La visibilité (REF G) est appliquée en aval
+     * par {@code AccessEvaluator}.
      */
     @Query("""
             SELECT f FROM GedFile f
-            JOIN FETCH f.folder d
-            WHERE d.organisationId = :orgId
+            WHERE f.organisationId = :orgId
               AND f.isDeleted = FALSE
               AND LOWER(f.name) LIKE LOWER(CONCAT('%', :q, '%'))
             ORDER BY f.addedAt DESC

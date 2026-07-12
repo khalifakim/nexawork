@@ -142,6 +142,8 @@ export class GedHttpService extends BaseHttpService implements GedService {
       }).pipe(switchMap(stored =>
         this.post$<FileResponse>('ged', '/ged/files', {
           folderId: folderId ?? null,
+          // À la racine (pas de dossier), on scope par projet (null = espace Organisation).
+          projectId: folderId ? null : (projectId ?? null),
           name: name.trim() || stored.fileName,
           fileUrl: stored.downloadUrl,
           fileSize: stored.size,
@@ -312,7 +314,11 @@ export class GedHttpService extends BaseHttpService implements GedService {
     }).pipe(switchMap(({ roots, dir }) => {
       const byId = new Map<string, Member>(dir.map(m => [m.userId ?? '', m]));
       if (path.length === 0) {
-        return of(roots.map(f => toFolderItem(f, byId)));
+        // Racine : dossiers racine + fichiers déposés à la racine (sans dossier, V2).
+        return this.rootFiles(projectId).pipe(map(files => [
+          ...roots.map(f => toFolderItem(f, byId)),
+          ...files.map(f => toFileItem(f, byId)),
+        ]));
       }
       return this.resolveFolder(roots, path).pipe(switchMap(folderId => {
         if (!folderId) return of<GedItem[]>([]);
@@ -325,6 +331,11 @@ export class GedHttpService extends BaseHttpService implements GedService {
 
   private roots(projectId: string | null): Observable<FolderResponse[]> {
     return this.get$<FolderResponse[]>('ged', '/ged/folders', projectId ? { projectId } : undefined);
+  }
+
+  /** Fichiers à la racine de l'espace (sans dossier, V2). */
+  private rootFiles(projectId: string | null): Observable<FileResponse[]> {
+    return this.get$<FileResponse[]>('ged', '/ged/files/root', projectId ? { projectId } : undefined);
   }
 
   /**
