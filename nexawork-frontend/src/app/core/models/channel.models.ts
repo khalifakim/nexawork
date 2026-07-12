@@ -67,7 +67,7 @@ export interface MessageResponse {
   attachmentUrl?: string;
   /** @deprecated cf. attachmentUrl. */
   attachmentName?: string;
-  messageType: 'USER' | 'SYSTEM';
+  messageType: 'USER';
   edited: boolean;
   sentAt: string;
   readAt?: string;
