@@ -39,38 +39,60 @@ familles de code **n'ont jamais été exécutées** :
 > `api-gateway` a un `depends_on` sur tout → **toujours `--no-deps`**. Tester **uniquement via
 > http://localhost:4200**. Couper `config-server` une fois tout `healthy` libère un cœur.
 
+> 💡 **Toutes les commandes ci-dessous sont en `cmd.exe`** (pas de `grep` sous Windows → `findstr`).
+
 ### Étape A — Infra (toujours nécessaire)
 > ⚠️ **Le `docker-compose.yml` est dans `memoire-master/nexawork/`** (pas à la racine).
-> Toutes les commandes `docker compose` de ce plan se lancent depuis ce dossier.
-```bash
-cd D:/memoire-master/nexawork
+```cmd
+cd D:\memoire-master\nexawork
 docker compose up -d postgres redis rabbitmq minio
 docker compose up -d minio-init rabbitmq-init
 docker compose up -d config-server
-docker compose ps          # attendre postgres/redis/rabbitmq/minio healthy
+docker compose ps
 ```
 > `redis` n'est consommé que par **notification-service** (présence « en ligne »).
 > `minio` sert les uploads (GED, pièces jointes, avatar) via **file-service**.
 
-### Étape B — Rebuild du backend modifié (⚠️ tu lances, ~long au 1er build)
-```bash
+### Étape B — Builds  ✅ FAIT (2026-07-12)
+```cmd
 docker compose build auth-service project-service messaging-service ged-service meeting-service
 docker compose build frontend
 ```
 > ⚠️ **Jamais `--no-cache` sur `frontend`** (le proxy TLS ferait échouer le `npm install`).
-> Un build normal suffit. Une date d'image inchangée = le code était déjà à jour, ce n'est pas une anomalie.
-> **Surveiller le build `project-service`** : c'est lui qui télécharge **OpenPDF** (1re dépendance
-> Maven ajoutée) et compile le plus de code neuf. Si un build Java échoue → me copier l'erreur.
+>
+> **Vérifier ce qui est réellement construit** (un build échoué ne produit PAS d'image ; l'âge fait foi) :
+> ```cmd
+> docker images --format "{{.Repository}}\t{{.CreatedSince}}" | findstr nexawork
+> ```
+> *Corrections déjà appliquées pendant les builds : import manquant dans `MeetingChatServiceImpl` (M2)
+> et mauvais package `SecurityRule` dans `SearchRule` (I9). Les 6 images compilent désormais.*
 
-### Étape C — Démarrage progressif par domaine à tester
-Ne démarre que les services de la phase que tu testes (voir §2). Base minimale commune :
-```bash
+### Étape C — Démarrer les services
+
+**Base minimale (toujours) :**
+```cmd
 docker compose up -d --no-deps --force-recreate auth-service
 docker compose up -d --no-deps --force-recreate api-gateway
 docker compose up -d --no-deps --force-recreate frontend
 ```
-Puis ajoute au fur et à mesure : `project-service`, `file-service`, `ged-service`,
-`messaging-service`, `notification-service`, `meeting-service`.
+
+**⚠️ Puis démarrer les services des domaines à tester** (sinon leurs pages ne renverront rien) :
+```cmd
+docker compose up -d --no-deps --force-recreate project-service
+docker compose up -d --no-deps --force-recreate file-service
+docker compose up -d --no-deps --force-recreate ged-service
+docker compose up -d --no-deps --force-recreate messaging-service
+docker compose up -d --no-deps --force-recreate notification-service
+docker compose up -d --no-deps --force-recreate meeting-service
+```
+> Sur 8 Go, tout démarrer d'un coup est possible mais lourd. Si ça rame, ne garde que les services
+> du domaine testé (voir la colonne « requiert » de la checklist §2) et **coupe `config-server`**
+> une fois tout `healthy` : `docker compose stop config-server` (à rallumer avant tout `--force-recreate`).
+
+**Vérifier ce qui tourne :**
+```cmd
+docker compose ps
+```
 
 ### Étape D — Vérifier les migrations neuves (le point le plus à risque)
 
@@ -160,8 +182,8 @@ docker exec nexawork-postgres psql -U postgres -d nexawork_project_db -c "SELECT
 
 ## 3 · Réinitialiser des données de test
 
-```bash
-# Repartir de zéro sur les projets (garde l'auth) :
+```cmd
+REM Repartir de zéro sur les projets (garde l'auth / les comptes) :
 docker exec nexawork-postgres psql -U postgres -d nexawork_project_db -c "TRUNCATE projects, workflow_statuses, workflow_transitions, tasks, sub_tasks, task_comments, comment_attachments, task_attachments, project_members, teams CASCADE;"
 ```
 
@@ -169,7 +191,7 @@ docker exec nexawork-postgres psql -U postgres -d nexawork_project_db -c "TRUNCA
 
 ## 4 · En cas de problème — quoi me copier
 
-- **Un service ne démarre pas** → `docker compose logs <service> | tail -50` (surtout Flyway / stacktrace Java).
+- **Un service ne démarre pas** → `docker compose logs --tail 60 <service>` (surtout Flyway / stacktrace Java).
 - **Toast « serveur ne répond pas »** → d'abord vérifier que `SPRINGDOC_ENABLED` n'est **pas** activé.
 - **Un flux front échoue** → la console navigateur (F12) + l'onglet Réseau (statut HTTP de l'appel).
 - **STOMP muet** → vérifier la connexion WebSocket dans l'onglet Réseau (frames `/ws/messaging`, `/ws/notifications`).
