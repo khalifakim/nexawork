@@ -1,4 +1,4 @@
-import { Injectable, effect, inject, signal } from '@angular/core';
+import { Injectable, computed, effect, inject, signal } from '@angular/core';
 import { Observable } from 'rxjs';
 import { TasksService } from '@core/services/tasks.service';
 import { ToastService } from '@core/services/toast.service';
@@ -8,7 +8,7 @@ import { toStatusCategory } from '@core/util/task-display.util';
 export type { StatusCat } from '@core/models/task.models';
 
 export interface KanbanFilters {
-  assigne: string | null;   // avatar color
+  assigne: string | null;   // assignee id (userId) — filtre « Assigné à »
   prio: string | null;      // priority label
   ech: DueBucket | null;    // échéance bucket
 }
@@ -62,12 +62,28 @@ export class KanbanStore {
     const f = this.filters();
     const list = this.board()[colId] ?? [];
     return list.filter(t => {
-      if (f.assigne && !(t.team ?? []).includes(f.assigne)) return false;
+      if (f.assigne && t.assigneeId !== f.assigne) return false;
       if (f.prio && t.prio[0] !== f.prio) return false;
       if (f.ech && t.due !== f.ech) return false;
       return true;
     });
   }
+
+  /**
+   * Identifiants des assignés (utilisateurs) réellement présents sur le board —
+   * c.-à-d. qui portent au moins une tâche. Alimente le filtre « Assigné à » :
+   * un membre du projet sans tâche assignée n'y figure pas (il ne filtrerait
+   * rien). Les assignations d'équipe sont exclues (résolues par nom ailleurs).
+   */
+  readonly assignedUserIds = computed<string[]>(() => {
+    const ids = new Set<string>();
+    for (const list of Object.values(this.board())) {
+      for (const t of list) {
+        if (t.assigneeId && t.assigneeType !== 'TEAM') ids.add(t.assigneeId);
+      }
+    }
+    return [...ids];
+  });
 
   setFilter<K extends keyof KanbanFilters>(key: K, value: KanbanFilters[K]): void {
     this.filters.update(f => ({ ...f, [key]: value }));

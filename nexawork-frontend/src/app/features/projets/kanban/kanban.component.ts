@@ -1,9 +1,12 @@
 import { ChangeDetectionStrategy, Component, ElementRef, EventEmitter, Input, Output, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 import { FilterChipComponent, FilterOption } from '@shared/ui/filter-chip/filter-chip.component';
 import { DueBucket, KanbanColumn, TaskCard } from '@core/models/task.models';
-import { tintOf } from '@core/util/ui.util';
+import { Member } from '@core/models/member.models';
+import { MembersService } from '@core/services/members.service';
+import { avatarColorFor, tintOf } from '@core/util/ui.util';
 import { KanbanStore } from './kanban.store';
 
 @Component({
@@ -159,6 +162,10 @@ export class KanbanComponent {
   store = inject(KanbanStore);
   private el = inject(ElementRef);
   private route = inject(ActivatedRoute);
+  private members = inject(MembersService);
+
+  /** Annuaire des membres du workspace (résout `assigneeId` → nom/couleur). */
+  private directory = toSignal(this.members.directory(), { initialValue: [] as Member[] });
 
   constructor() {
     // Allow deep-links from the project overview (e.g. "Tâches en retard" card)
@@ -187,14 +194,20 @@ export class KanbanComponent {
     '#F2693C', '#6C70F0',
   ];
 
-  /** Assignee options built from the colors actually present on the board. */
-  private readonly COLOR_TO_NAME: Record<string, string> = {
-    '#F2693C': 'Sarah Diallo', '#6C70F0': 'Moussa Bâ', '#2BB673': 'Aïda Ndiaye',
-    '#E0497B': 'Yacine Sow', '#3AA9E0': 'Omar Cissé', '#F5A623': 'Akim Koné',
-  };
-  assigneOpts = computed<FilterOption[]>(() =>
-    Object.entries(this.COLOR_TO_NAME).map(([c, n]) => ({ value: c, label: n, dot: c })),
-  );
+  /**
+   * Options du filtre « Assigné à » : uniquement les **membres réels** du projet
+   * qui portent au moins une tâche sur le board (les assignés présents, résolus
+   * via l'annuaire). Un membre sans tâche assignée n'y figure pas.
+   */
+  assigneOpts = computed<FilterOption[]>(() => {
+    const byId = new Map(this.directory().filter(m => m.userId).map(m => [m.userId!, m] as const));
+    return this.store.assignedUserIds()
+      .flatMap<FilterOption>(id => {
+        const m = byId.get(id);
+        return m ? [{ value: id, label: m.name, dot: avatarColorFor(id) }] : [];
+      })
+      .sort((a, b) => a.label.localeCompare(b.label));
+  });
   readonly PRIO_OPTS: FilterOption[] = [
     { value: 'Haute', label: 'Haute', dot: '#F5564E' },
     { value: 'Moyenne', label: 'Moyenne', dot: '#E89A2C' },

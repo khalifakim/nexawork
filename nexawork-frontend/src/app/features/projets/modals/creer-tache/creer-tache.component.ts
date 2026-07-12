@@ -1,6 +1,6 @@
 import {
-  ChangeDetectionStrategy, Component, EventEmitter, Input, OnInit,
-  Output, computed, inject, signal,
+  AfterViewInit, ChangeDetectionStrategy, Component, ElementRef, EventEmitter, Input, OnInit,
+  Output, ViewChild, computed, inject, signal,
 } from '@angular/core';
 import { forkJoin } from 'rxjs';
 import { IconComponent } from '@shared/ui/icon/icon.component';
@@ -76,7 +76,7 @@ const IC_USER   = '<circle cx="12" cy="8" r="3.4"/><path d="M5.5 20c0-3.6 2.9-6.
         <div class="lsc">
 
           <!-- Title -->
-          <input class="ttl" autofocus placeholder="Nom de la tâche"
+          <input #titleInput class="ttl" placeholder="Nom de la tâche"
                  [value]="title()" (input)="title.set($any($event.target).value)" />
 
           <!-- ── Fields ─────────────────────────────────────────────────── -->
@@ -686,7 +686,10 @@ const IC_USER   = '<circle cx="12" cy="8" r="3.4"/><path d="M5.5 20c0-3.6 2.9-6.
     .ft-primary:disabled { background: #C9C5BD; cursor: not-allowed; box-shadow: none; }
   `],
 })
-export class CreerTacheComponent implements OnInit {
+export class CreerTacheComponent implements OnInit, AfterViewInit {
+  /** Champ « Nom de la tâche » — reçoit le focus à l'ouverture du modal. */
+  @ViewChild('titleInput') titleInput?: ElementRef<HTMLInputElement>;
+
   /** Colonnes réelles du projet (statuts) — alimentent le sélecteur de statut. */
   @Input() columns: KanbanColumn[] = [];
   /** Colonne pré-sélectionnée (là où l'utilisateur a cliqué « + »). */
@@ -748,6 +751,12 @@ export class CreerTacheComponent implements OnInit {
       ?? this.columns[0]?.id
       ?? null;
     this.statusId.set(initial);
+  }
+
+  ngAfterViewInit(): void {
+    // Place le curseur dans le champ du nom dès l'ouverture (l'attribut HTML
+    // `autofocus` n'agit pas sur un élément inséré dynamiquement par Angular).
+    setTimeout(() => this.titleInput?.nativeElement.focus(), 0);
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────
