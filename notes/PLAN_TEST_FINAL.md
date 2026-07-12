@@ -67,32 +67,83 @@ docker compose build frontend
 > *Corrections déjà appliquées pendant les builds : import manquant dans `MeetingChatServiceImpl` (M2)
 > et mauvais package `SecurityRule` dans `SearchRule` (I9). Les 6 images compilent désormais.*
 
-### Étape C — Démarrer les services
+### Étape C — Démarrer l'app COMPLÈTE (démarrage séquentiel)
 
-**Base minimale (toujours) :**
+> ### 🔑 La règle d'or : **un service à la fois, en attendant `Started` avant le suivant.**
+>
+> **Pourquoi** — cette machine a **4 CPU logiques** et Docker 4,8 Go. La RAM suffit largement
+> (les 13 conteneurs ne consomment que ~2,6 Go **une fois démarrés**). Le goulot est le **CPU** :
+> une JVM Spring Boot **au démarrage** sature un cœur à elle seule. Lancer 6 services d'un coup =
+> 6 JVM qui se volent 4 cœurs → chacune met 8 min au lieu de 40 s → le healthcheck expire →
+> **tout ressort `unhealthy`**, alors que rien n'est cassé.
+>
+> ✅ **Les services démarrés cohabitent très bien.** C'est uniquement le *boot simultané* qui casse.
+> Donc : **on peut faire tourner l'app entière** — il faut juste échelonner l'allumage.
+
+**1) Socle (déjà en place normalement)** — infra + auth + gateway + frontend.
+
+**2) Puis les services métier, UN PAR UN.** Après chaque `up`, attendre de voir `Started` :
+
 ```cmd
-docker compose up -d --no-deps --force-recreate auth-service
-docker compose up -d --no-deps --force-recreate api-gateway
-docker compose up -d --no-deps --force-recreate frontend
+docker compose up -d --no-deps project-service
+docker compose logs project-service | findstr /I "Started"
+```
+👉 Attendre la ligne `Started ProjectServiceApplication in XX seconds`.
+*(Si rien ne s'affiche : le service boote encore. Relancer la commande `logs` après ~30 s.)*
+
+Puis **répéter exactement le même schéma** pour chacun :
+```cmd
+docker compose up -d --no-deps file-service
+docker compose logs file-service | findstr /I "Started"
+
+docker compose up -d --no-deps ged-service
+docker compose logs ged-service | findstr /I "Started"
+
+docker compose up -d --no-deps messaging-service
+docker compose logs messaging-service | findstr /I "Started"
+
+docker compose up -d --no-deps notification-service
+docker compose logs notification-service | findstr /I "Started"
+
+docker compose up -d --no-deps meeting-service
+docker compose logs meeting-service | findstr /I "Started"
 ```
 
-**⚠️ Puis démarrer les services des domaines à tester** (sinon leurs pages ne renverront rien) :
+**3) Libérer un cœur une fois tout démarré** — `config-server` brûle ~120 % de CPU en continu
+alors qu'il n'est lu **qu'au démarrage** des services :
 ```cmd
-docker compose up -d --no-deps --force-recreate project-service
-docker compose up -d --no-deps --force-recreate file-service
-docker compose up -d --no-deps --force-recreate ged-service
-docker compose up -d --no-deps --force-recreate messaging-service
-docker compose up -d --no-deps --force-recreate notification-service
-docker compose up -d --no-deps --force-recreate meeting-service
+docker compose stop config-server
 ```
-> Sur 8 Go, tout démarrer d'un coup est possible mais lourd. Si ça rame, ne garde que les services
-> du domaine testé (voir la colonne « requiert » de la checklist §2) et **coupe `config-server`**
-> une fois tout `healthy` : `docker compose stop config-server` (à rallumer avant tout `--force-recreate`).
+> ⚠️ Le **rallumer** avant tout futur `up` / `--force-recreate` d'un service backend.
 
-**Vérifier ce qui tourne :**
+**4) Vérifier que tout est vert :**
 ```cmd
 docker compose ps
+docker stats --no-stream
 ```
+👉 Objectif : **tous les services `healthy`** → l'app complète tourne, tu peux dérouler toute la
+checklist §2 sans rien sacrifier.
+
+---
+
+#### 🆘 Si un service reste `unhealthy`
+
+1. **Vérifier qu'il n'est pas juste lent** (le plus fréquent) :
+   ```cmd
+   docker compose logs <service> | findstr /I "Started ERROR Exception"
+   ```
+   - `Started …` présent → il tourne, le healthcheck était juste en retard. Attendre / re-vérifier `docker compose ps`.
+   - Ni `Started` ni `ERROR` → il **boote encore** (CPU saturé). Patienter, ou arrêter un service inutilisé.
+   - `ERROR` / `Exception` → **vrai problème** : copier les lignes.
+
+2. **Repartir proprement** (si plusieurs services se marchent dessus) :
+   ```cmd
+   docker compose stop project-service ged-service messaging-service meeting-service notification-service file-service
+   ```
+   puis les relancer **un par un** comme ci-dessus.
+
+3. **Dernier recours — donner plus de CPU à Docker** : Docker Desktop ▸ Settings ▸ Resources ▸
+   monter les **CPUs** au maximum. (Ne pas monter la RAM au-delà de ~5 Go : Windows a besoin du reste.)
 
 ### Étape D — Vérifier les migrations neuves (le point le plus à risque)
 
@@ -114,8 +165,12 @@ docker exec nexawork-postgres psql -U postgres -d nexawork_project_db -c "SELECT
 
 ## 2 · Checklist de validation — phase par phase
 
-> Se connecter avec le compte **OWNER** (admin). Tester chaque case ; noter ce qui casse.
-> Services requis indiqués par phase. Tout se teste sur **http://localhost:4200**.
+> ✅ **Prérequis : l'app complète tourne** (étape C — tous les services `healthy`).
+> Se connecter avec le compte **OWNER** (admin) sur **http://localhost:4200**.
+> Cocher au fur et à mesure ; **noter tout ce qui casse** (phase + symptôme) → on corrigera par lots.
+>
+> *(Les services indiqués entre parenthèses rappellent simplement quel microservice est sollicité —
+> utile pour savoir où regarder les logs si une case échoue.)*
 
 ### ✅ I1 · Auth & Workspace  *(auth, gateway, frontend)*  — déjà validé, contrôle de non-régression
 - [ ] Login → entrée dans le workspace ; header affiche nom + couleur.
