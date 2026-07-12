@@ -22,7 +22,6 @@ public class CallResponse {
     private UUID organisationId;
     private UUID hostUserId;
     private CallStatus status;
-    private LocalDateTime scheduledAt;
     private LocalDateTime startedAt;
     private LocalDateTime endedAt;
     private LocalDateTime createdAt;

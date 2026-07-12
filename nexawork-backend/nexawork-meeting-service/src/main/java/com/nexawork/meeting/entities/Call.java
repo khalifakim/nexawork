@@ -53,9 +53,6 @@ public class Call {
     @Column(name = "status", nullable = false, length = 50)
     private CallStatus status;
 
-    @Column(name = "scheduled_at")
-    private LocalDateTime scheduledAt;
-
     @Column(name = "started_at")
     private LocalDateTime startedAt;
 

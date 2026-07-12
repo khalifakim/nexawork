@@ -277,7 +277,7 @@ public class CallServiceImpl implements CallService {
         return CallResponse.builder()
                 .id(c.getId()).topic(c.getTopic()).roomName(c.getRoomName())
                 .organisationId(c.getOrganisationId()).hostUserId(c.getHostUserId())
-                .status(c.getStatus()).scheduledAt(c.getScheduledAt())
+                .status(c.getStatus())
                 .startedAt(c.getStartedAt()).endedAt(c.getEndedAt()).createdAt(c.getCreatedAt())
                 .participants(participants)
                 .jitsiUrl(jitsiUrl).jwt(token)

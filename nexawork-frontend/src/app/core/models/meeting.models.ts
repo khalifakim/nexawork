@@ -27,8 +27,7 @@ export interface CallResponse {
   roomName: string;
   organisationId: string;
   hostUserId: string;
-  status: 'SCHEDULED' | 'ACTIVE' | 'ENDED' | 'CANCELLED';
-  scheduledAt?: string;
+  status: 'ACTIVE' | 'ENDED';
   startedAt?: string;
   endedAt?: string;
   createdAt: string;
