@@ -45,6 +45,15 @@ export interface MentionResponse {
   createdAt: string;
 }
 
+/** Pièce jointe portée par un message (Messaging, V2). */
+export interface MessageAttachmentResponse {
+  id?: string;
+  fileName?: string;
+  fileUrl: string;
+  uploaderUserId?: string;
+  uploadedAt?: string;
+}
+
 /** Payload brut d'un message (canal ou conversation). */
 export interface MessageResponse {
   id: string;
@@ -52,7 +61,11 @@ export interface MessageResponse {
   conversationId?: string;
   senderUserId: string;
   content: string;
+  /** Pièces jointes du message (0..N) — V2. */
+  attachments?: MessageAttachmentResponse[];
+  /** @deprecated forme mono-pièce héritée (anciens messages). */
   attachmentUrl?: string;
+  /** @deprecated cf. attachmentUrl. */
   attachmentName?: string;
   messageType: 'USER' | 'SYSTEM';
   edited: boolean;

@@ -92,17 +92,19 @@ public class ConversationServiceImpl implements ConversationService {
     @Override
     public MessageResponse sendMessage(UUID conversationId, SendMessageRequest request) {
         requireParticipant(conversationId);
-        Message message = messageRepository.save(Message.builder()
+        assembler.requireSendable(request); // texte OU pièce(s) jointe(s)
+
+        Message message = Message.builder()
                 .channel(null)
                 .conversationId(conversationId)
                 .senderUserId(caller.userId())
-                .content(request.getContent())
-                .attachmentUrl(request.getAttachmentUrl())
-                .attachmentName(request.getAttachmentName())
+                .content(request.getContent() != null ? request.getContent() : "")
                 .messageType(MessageType.USER)
                 .isDeleted(false)
                 .edited(false)
-                .build());
+                .build();
+        assembler.applyAttachments(message, request, caller.userId());
+        message = messageRepository.save(message);
         assembler.persistMentions(message);
         MessageResponse dto = assembler.toDto(message);
         broadcaster.broadcastConversationMessage(conversationId, dto); // temps réel (§7.5)

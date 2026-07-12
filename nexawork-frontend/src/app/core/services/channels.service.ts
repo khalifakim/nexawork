@@ -1,12 +1,12 @@
 import { Injectable, Signal, computed, inject, signal } from '@angular/core';
-import { EMPTY, Observable, concat, forkJoin, map, of, switchMap } from 'rxjs';
-import { delay, toArray } from 'rxjs/operators';
+import { EMPTY, Observable, forkJoin, map, of, switchMap } from 'rxjs';
+import { delay } from 'rxjs/operators';
 import { toObservable } from '@angular/core/rxjs-interop';
 import { BaseHttpService } from '@core/http/base-http.service';
 import { FilesHttpService, StoredFile } from '@core/http/files.http.service';
 import { StompClientService } from '@core/ws/stomp-client.service';
 import {
-  Channel, ChannelMessage, ChannelResponse, ChannelRestriction, CreateChannelPayload,
+  Channel, ChannelFile, ChannelMessage, ChannelResponse, ChannelRestriction, CreateChannelPayload,
   MessagePageResponse, MessageResponse, UpdateChannelPayload,
 } from '@core/models/channel.models';
 import { CHANNELS_BY_WORKSPACE, CHANNEL_THREADS, DEFAULT_CHANNEL_THREAD } from '@core/mock/channels';
@@ -201,21 +201,12 @@ export class ChannelsHttpService extends BaseHttpService implements ChannelsServ
           ? this.post$<MessageResponse>('messaging', endpoint, { content: text }).pipe(map(() => void 0))
           : of(void 0);
       }
+      // Téléverse tous les fichiers puis envoie UN SEUL message qui les porte tous.
       const workspaceId = this.session.activeWorkspaceId();
       return forkJoin(files.map(f => this.filesSvc.upload('channel-msg', f, { workspaceId, channelId: uuid })))
-        .pipe(switchMap(stored => this.postMessages('messaging', endpoint, text, stored)));
+        .pipe(switchMap(stored =>
+          this.post$<MessageResponse>('messaging', endpoint, messageBody(text, stored)).pipe(map(() => void 0))));
     }));
-  }
-
-  /**
-   * Envoie une suite de messages porteurs de pièces jointes (une par message,
-   * limite du backend). Le texte est joint au premier fichier ; les suivants
-   * portent leur nom de fichier comme contenu (le champ `content` est requis).
-   */
-  private postMessages(service: 'messaging', endpoint: string, text: string, stored: StoredFile[]): Observable<void> {
-    const sends = buildMessagePayloads(text, stored)
-      .map(body => this.post$<MessageResponse>(service, endpoint, body));
-    return concat(...sends).pipe(toArray(), map(() => void 0));
   }
 
   rename(id: string, patch: UpdateChannelPayload): void {
@@ -273,21 +264,30 @@ export class ChannelsHttpService extends BaseHttpService implements ChannelsServ
   }
 }
 
-/** Corps d'un message envoyé (contenu + éventuelle pièce jointe). */
-export interface OutgoingMessageBody { content: string; attachmentUrl?: string; attachmentName?: string; }
+/** Corps d'un message envoyé (contenu + pièces jointes multiples). */
+export interface OutgoingMessageBody { content: string; attachments: { url: string; name: string }[]; }
 
 /**
- * Construit les corps de messages à envoyer pour un texte + N fichiers déjà
- * téléversés. Le backend n'accepte qu'une pièce jointe par message et exige un
- * `content` non vide : le texte est rattaché au premier fichier, les fichiers
- * suivants portent leur nom comme contenu. Réutilisé par canaux et conversations.
+ * Corps d'un message portant N fichiers déjà téléversés : un seul message avec
+ * la liste de ses pièces jointes (le backend accepte 0..N par message depuis V2).
+ * Réutilisé par canaux et conversations.
  */
-export function buildMessagePayloads(text: string, stored: StoredFile[]): OutgoingMessageBody[] {
-  return stored.map((s, i) => ({
-    content: i === 0 && text ? text : s.fileName,
-    attachmentUrl: s.downloadUrl,
-    attachmentName: s.fileName,
-  }));
+export function messageBody(text: string, stored: StoredFile[]): OutgoingMessageBody {
+  return { content: text, attachments: stored.map(s => ({ url: s.downloadUrl, name: s.fileName })) };
+}
+
+/**
+ * Pièces jointes d'un message → vue d'affichage (liste V2, repli sur la forme
+ * mono-pièce héritée). L'URL permet le téléchargement réel. Partagé canaux/convos.
+ */
+export function messageFiles(msg: MessageResponse): ChannelFile[] | undefined {
+  if (msg.attachments?.length) {
+    return msg.attachments.map((a, i) => ({ id: i + 1, name: a.fileName ?? 'fichier', size: 0, url: a.fileUrl }));
+  }
+  if (msg.attachmentUrl) {
+    return [{ id: 1, name: msg.attachmentName ?? 'fichier', size: 0, url: msg.attachmentUrl }];
+  }
+  return undefined;
 }
 
 /** `ChannelResponse` (backend) → `Channel` (view-model, id = slug). */
@@ -308,9 +308,7 @@ function toChannel(r: ChannelResponse): Channel {
 /** `MessageResponse` → `ChannelMessage` (author résolu depuis l'annuaire). */
 function toChannelMessage(msg: MessageResponse, meId: string | undefined, byId: Map<string | undefined, { name: string }>): ChannelMessage {
   const author = byId.get(msg.senderUserId)?.name ?? 'Membre';
-  const files = msg.attachmentUrl
-    ? [{ id: 1, name: msg.attachmentName ?? 'fichier', size: 0, url: msg.attachmentUrl }]
-    : undefined;
+  const files = messageFiles(msg);
   return {
     author,
     color: avatarColorFor(msg.senderUserId),

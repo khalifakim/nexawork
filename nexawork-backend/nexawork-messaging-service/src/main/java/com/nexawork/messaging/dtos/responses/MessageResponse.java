@@ -22,7 +22,13 @@ public class MessageResponse {
     private UUID conversationId;
     private UUID senderUserId;
     private String content;
+    /** Pièces jointes du message (0..N) — V2. */
+    private List<MessageAttachmentResponse> attachments;
+    /** @deprecated forme mono-pièce héritée (anciens messages). */
+    @Deprecated
     private String attachmentUrl;
+    /** @deprecated cf. {@link #attachmentUrl}. */
+    @Deprecated
     private String attachmentName;
     private MessageType messageType;
     private Boolean edited;

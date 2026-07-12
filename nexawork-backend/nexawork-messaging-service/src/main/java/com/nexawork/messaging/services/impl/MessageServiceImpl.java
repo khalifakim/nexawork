@@ -9,6 +9,7 @@ import com.nexawork.messaging.dtos.responses.ThreadAttachmentResponse;
 import com.nexawork.messaging.dtos.responses.ThreadMentionsResponse;
 import com.nexawork.messaging.entities.Channel;
 import com.nexawork.messaging.entities.Message;
+import com.nexawork.messaging.entities.MessageAttachment;
 import com.nexawork.messaging.entities.MessageMention;
 import com.nexawork.messaging.entities.enums.MentionType;
 import com.nexawork.messaging.entities.enums.MessageType;
@@ -65,18 +66,19 @@ public class MessageServiceImpl implements MessageService {
     public MessageResponse sendChannelMessage(UUID channelId, SendMessageRequest request) {
         Channel channel = channelGuard.requireViewable(channelId); // REF F
         channelGuard.requireWritable(channel);                     // REF D
+        assembler.requireSendable(request);                        // texte OU pièce(s) jointe(s)
 
-        Message message = messageRepository.save(Message.builder()
+        Message message = Message.builder()
                 .channel(channel)
                 .conversationId(null)
                 .senderUserId(caller.userId())
-                .content(request.getContent())
-                .attachmentUrl(request.getAttachmentUrl())
-                .attachmentName(request.getAttachmentName())
+                .content(request.getContent() != null ? request.getContent() : "")
                 .messageType(MessageType.USER)
                 .isDeleted(false)
                 .edited(false)
-                .build());
+                .build();
+        assembler.applyAttachments(message, request, caller.userId());
+        message = messageRepository.save(message);
         assembler.persistMentions(message);
         MessageResponse dto = assembler.toDto(message);
         broadcaster.broadcastChannelMessage(channelId, dto); // temps réel (§7.5)
@@ -98,20 +100,34 @@ public class MessageServiceImpl implements MessageService {
     @Override
     @Transactional(readOnly = true)
     public List<ThreadAttachmentResponse> threadAttachments(UUID threadId) {
-        // {threadId} = canalId ou conversationId. On tente les deux (accès vérifié).
-        List<Message> withAttachments = new ArrayList<>(
-                messageRepository.findByChannelIdAndAttachmentUrlIsNotNullAndIsDeletedFalseOrderBySentAtDesc(threadId));
-        withAttachments.addAll(
-                messageRepository.findByConversationIdAndAttachmentUrlIsNotNullAndIsDeletedFalseOrderBySentAtDesc(threadId));
-        return withAttachments.stream()
-                .map(m -> ThreadAttachmentResponse.builder()
+        // {threadId} = canalId ou conversationId. On agrège les messages des deux
+        // fils possibles, puis leurs pièces jointes (V2) + l'éventuelle PJ héritée.
+        List<Message> messages = new ArrayList<>();
+        messages.addAll(messageRepository.findChannelFirstPage(threadId, PageRequest.of(0, 500)));
+        messages.addAll(messageRepository.findConversationFirstPage(threadId, PageRequest.of(0, 500)));
+
+        List<ThreadAttachmentResponse> out = new ArrayList<>();
+        for (Message m : messages) {
+            for (MessageAttachment a : m.getAttachments()) {
+                out.add(ThreadAttachmentResponse.builder()
+                        .messageId(m.getId())
+                        .fileName(a.getFileName())
+                        .fileUrl(a.getFileUrl())
+                        .uploaderId(a.getUploaderUserId() != null ? a.getUploaderUserId() : m.getSenderUserId())
+                        .uploadedAt(a.getUploadedAt() != null ? a.getUploadedAt() : m.getSentAt())
+                        .build());
+            }
+            if (m.getAttachmentUrl() != null && !m.getAttachmentUrl().isBlank()) { // héritée
+                out.add(ThreadAttachmentResponse.builder()
                         .messageId(m.getId())
                         .fileName(m.getAttachmentName())
                         .fileUrl(m.getAttachmentUrl())
                         .uploaderId(m.getSenderUserId())
                         .uploadedAt(m.getSentAt())
-                        .build())
-                .toList();
+                        .build());
+            }
+        }
+        return out;
     }
 
     @Override

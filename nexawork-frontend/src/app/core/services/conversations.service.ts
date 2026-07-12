@@ -1,12 +1,12 @@
 import { Injectable, Signal, inject, signal } from '@angular/core';
-import { EMPTY, Observable, concat, forkJoin, map, of, switchMap } from 'rxjs';
-import { delay, toArray } from 'rxjs/operators';
+import { EMPTY, Observable, forkJoin, map, of, switchMap } from 'rxjs';
+import { delay } from 'rxjs/operators';
 import { BaseHttpService } from '@core/http/base-http.service';
 import { FilesHttpService } from '@core/http/files.http.service';
 import { StompClientService } from '@core/ws/stomp-client.service';
 import { Conversation, ConversationMessage, ConversationResponse } from '@core/models/conversation.models';
 import { MessageResponse } from '@core/models/channel.models';
-import { buildMessagePayloads } from './channels.service';
+import { messageBody, messageFiles } from './channels.service';
 import { CONVERSATIONS_BY_WORKSPACE, CONVERSATION_THREADS, DEFAULT_CONVERSATION_THREAD } from '@core/mock/conversations';
 import { parseRichText } from '@core/util/mention.util';
 import { avatarColorFor, initials, slugName } from '@core/util/ui.util';
@@ -127,13 +127,11 @@ export class ConversationsHttpService extends BaseHttpService implements Convers
       if (files.length === 0) {
         return this.post$<MessageResponse>('messaging', endpoint, { content: text }).pipe(map(() => void 0));
       }
+      // Téléverse tous les fichiers puis envoie UN SEUL message qui les porte tous.
       const workspaceId = this.session.activeWorkspaceId();
       return forkJoin(files.map(f => this.filesSvc.upload('conversation-msg', f, { workspaceId, conversationId: conv.uuid })))
-        .pipe(switchMap(stored => {
-          const sends = buildMessagePayloads(text, stored)
-            .map(body => this.post$<MessageResponse>('messaging', endpoint, body));
-          return concat(...sends).pipe(toArray(), map(() => void 0));
-        }));
+        .pipe(switchMap(stored =>
+          this.post$<MessageResponse>('messaging', endpoint, messageBody(text, stored)).pipe(map(() => void 0))));
     }));
   }
 
@@ -204,7 +202,7 @@ function toConversation(c: ConversationResponse, meId: string | undefined, byId:
 /** `MessageResponse` → `ConversationMessage`. */
 function toConversationMessage(msg: MessageResponse, meId: string | undefined, _byId: Map<string | undefined, unknown>): ConversationMessage {
   const mine = msg.senderUserId === meId;
-  const files = msg.attachmentUrl ? [{ id: 1, name: msg.attachmentName ?? 'fichier', size: 0, url: msg.attachmentUrl }] : undefined;
+  const files = messageFiles(msg);
   return {
     me: mine,
     parts: parseRichText(msg.content),
