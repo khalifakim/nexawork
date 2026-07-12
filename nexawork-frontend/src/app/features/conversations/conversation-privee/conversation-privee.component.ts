@@ -14,11 +14,12 @@ import { Member } from '@core/models/member.models';
 import { ConversationFile, ConversationMessage } from '@core/models/conversation.models';
 import { ShellBus } from '@layouts/app-shell/shell.bus';
 import { chipTabFor, RichPart } from '@core/util/mention.util';
-import { downloadAttachedFile } from '@core/util/download.util';
+import { downloadAttachedFile, saveBlob } from '@core/util/download.util';
+import { FilesHttpService } from '@core/http/files.http.service';
 
 const EMPTY_MEMBER: Member = { name: '', color: '#86828E', role: '', email: '', online: false, projects: [] };
 
-interface AttachedFile { id: number; name: string; size: number; }
+interface AttachedFile { id: number; name: string; size: number; file?: File; }
 type Msg = ConversationMessage;
 
 @Component({
@@ -95,7 +96,7 @@ type Msg = ConversationMessage;
                 @if (m.files?.length) {
                   <div class="cm__files">
                     @for (f of m.files!; track f.id) {
-                      <button class="cm__file" title="Télécharger" (click)="downloadFile(f.name, f.size)">
+                      <button class="cm__file" title="Télécharger" (click)="downloadFile(f)">
                         <app-icon name="file" [size]="13" />
                         <span class="cm__fn"><app-highlight [text]="f.name" [query]="searchQ()" /></span>
                         <span class="cm__fs">{{ sizeOf(f.size) }}</span>
@@ -143,6 +144,7 @@ export class ConversationPriveeComponent {
   bus = inject(ShellBus);
   private members = inject(MembersService);
   private conversationsSvc = inject(ConversationsService);
+  private filesSvc = inject(FilesHttpService);
   private slug = toSignal(this.route.paramMap.pipe(map(p => p.get('id') ?? 'sarah-diallo')), { initialValue: 'sarah-diallo' });
   peer = toSignal(toObservable(this.slug).pipe(switchMap(s => this.members.bySlug(s))), { initialValue: EMPTY_MEMBER });
 
@@ -242,8 +244,15 @@ export class ConversationPriveeComponent {
     return (bytes / (1024 * 1024)).toFixed(1) + ' Mo';
   }
 
-  /** Attached files trigger a direct download (not the GED preview overlay). */
-  downloadFile(name: string, size: number): void { downloadAttachedFile(name, size); }
+  /**
+   * Téléchargement direct d'une pièce jointe. Utilise l'URL réelle du File
+   * Service dès que le message est persisté ; repli sur le placeholder pour un
+   * message à peine envoyé (pas encore d'URL).
+   */
+  downloadFile(f: ConversationFile): void {
+    if (f.url) this.filesSvc.download(f.url).subscribe(blob => saveBlob(blob, f.name));
+    else downloadAttachedFile(f.name, f.size);
+  }
 
   toggleSearch(): void {
     this.searchOpen.update(v => !v);
@@ -267,10 +276,11 @@ export class ConversationPriveeComponent {
     const files: ConversationFile[] | undefined = payload.files.length
       ? payload.files.map(f => ({ id: f.id, name: f.name, size: f.size }))
       : undefined;
-    // Affichage optimiste immédiat, puis persistance réelle (texte).
+    // Affichage optimiste immédiat, puis persistance réelle (texte + fichiers).
     this.msgs.update(list => [...list, { me: true, parts: payload.parts, time, read: false, files }]);
     const text = payload.text ?? payload.parts.map(p => p.val).join('');
-    if (text.trim()) this.conversationsSvc.sendMessage(this.slug(), text).subscribe();
+    const rawFiles = payload.files.map(f => f.file).filter((f): f is File => !!f);
+    this.conversationsSvc.sendMessage(this.slug(), text, rawFiles).subscribe();
   }
 
   onChipOpen(ev: MentionChipEvent): void {

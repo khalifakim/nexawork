@@ -46,16 +46,20 @@ public class BucketRouter {
             case CHANNEL_MSG -> {
                 UUID ws = require(p.getWorkspaceId(), "workspaceId", context);
                 UUID channelId = require(p.getChannelId(), "channelId", context);
-                UUID msgId = require(p.getMessageId(), "messageId", context);
-                yield new Route(properties.getBuckets().getMessaging(),
-                        "workspaces/" + ws + "/channels/" + channelId + "/messages/" + msgId + "/" + fileId);
+                // messageId optionnel : la pièce jointe est téléversée AVANT la
+                // création du message (son URL est fournie dans SendMessageRequest).
+                // Le fileId suffit à l'unicité de la clé.
+                String base = "workspaces/" + ws + "/channels/" + channelId + "/messages"
+                        + (p.getMessageId() != null ? "/" + p.getMessageId() : "");
+                yield new Route(properties.getBuckets().getMessaging(), base + "/" + fileId);
             }
             case CONVERSATION_MSG -> {
                 UUID ws = require(p.getWorkspaceId(), "workspaceId", context);
                 UUID convId = require(p.getConversationId(), "conversationId", context);
-                UUID msgId = require(p.getMessageId(), "messageId", context);
-                yield new Route(properties.getBuckets().getMessaging(),
-                        "workspaces/" + ws + "/conversations/" + convId + "/messages/" + msgId + "/" + fileId);
+                // messageId optionnel (cf. CHANNEL_MSG) : upload avant l'envoi.
+                String base = "workspaces/" + ws + "/conversations/" + convId + "/messages"
+                        + (p.getMessageId() != null ? "/" + p.getMessageId() : "");
+                yield new Route(properties.getBuckets().getMessaging(), base + "/" + fileId);
             }
             case GED -> {
                 UUID ws = require(p.getWorkspaceId(), "workspaceId", context);

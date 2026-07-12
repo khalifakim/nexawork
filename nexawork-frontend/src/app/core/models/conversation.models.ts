@@ -27,7 +27,7 @@ export interface ConversationResponse {
 }
 
 /** Attached file on a conversation message (matches ChannelFile). */
-export interface ConversationFile { id: number; name: string; size: number; }
+export interface ConversationFile { id: number; name: string; size: number; /** Chemin de téléchargement File Service (absent tant que le message n'est pas persisté). */ url?: string; }
 
 /** A single message inside a private conversation. */
 export interface ConversationMessage {

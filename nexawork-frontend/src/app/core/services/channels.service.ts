@@ -1,8 +1,9 @@
 import { Injectable, Signal, computed, inject, signal } from '@angular/core';
-import { EMPTY, Observable, forkJoin, map, of, switchMap } from 'rxjs';
-import { delay } from 'rxjs/operators';
+import { EMPTY, Observable, concat, forkJoin, map, of, switchMap } from 'rxjs';
+import { delay, toArray } from 'rxjs/operators';
 import { toObservable } from '@angular/core/rxjs-interop';
 import { BaseHttpService } from '@core/http/base-http.service';
+import { FilesHttpService, StoredFile } from '@core/http/files.http.service';
 import { StompClientService } from '@core/ws/stomp-client.service';
 import {
   Channel, ChannelMessage, ChannelResponse, ChannelRestriction, CreateChannelPayload,
@@ -29,8 +30,12 @@ export abstract class ChannelsService {
   abstract thread(id: string): Observable<ChannelMessage[]>;
   /** Live stream of new messages of one channel (STOMP). */
   abstract live(id: string): Observable<ChannelMessage>;
-  /** Send a text message to a channel. */
-  abstract sendMessage(id: string, content: string): Observable<void>;
+  /**
+   * Send a message to a channel, with optional file attachments. Chaque fichier
+   * est d'abord téléversé au File Service, puis rattaché à un message (le
+   * backend porte une pièce jointe par message).
+   */
+  abstract sendMessage(id: string, content: string, files?: File[]): Observable<void>;
 
   abstract rename(id: string, patch: UpdateChannelPayload): void;
   abstract remove(id: string): void;
@@ -80,7 +85,7 @@ export class ChannelsMockService extends ChannelsService {
   list(): Observable<Channel[]> { return this.channels$; }
   thread(id: string): Observable<ChannelMessage[]> { return of(CHANNEL_THREADS[id] ?? DEFAULT_CHANNEL_THREAD).pipe(delay(80)); }
   live(_id: string): Observable<ChannelMessage> { return EMPTY; }
-  sendMessage(_id: string, _content: string): Observable<void> { return of(void 0); }
+  sendMessage(_id: string, _content: string, _files?: File[]): Observable<void> { return of(void 0); }
 
   rename(id: string, patch: UpdateChannelPayload): void {
     const wsId = this.session.activeWorkspaceId();
@@ -145,6 +150,7 @@ export class ChannelsHttpService extends BaseHttpService implements ChannelsServ
   private readonly session = inject(SessionService);
   private readonly members = inject(MembersService);
   private readonly stomp = inject(StompClientService);
+  private readonly filesSvc = inject(FilesHttpService);
 
   /** Snapshot des canaux visibles (par slug) — alimente les méthodes synchrones. */
   private readonly cache = signal<Map<string, Channel>>(new Map());
@@ -185,10 +191,31 @@ export class ChannelsHttpService extends BaseHttpService implements ChannelsServ
     }));
   }
 
-  sendMessage(id: string, content: string): Observable<void> {
-    const uuid = this.uuidOf(id);
-    if (!uuid || !content.trim()) return of(void 0);
-    return this.post$<MessageResponse>('messaging', `/channels/${uuid}/messages`, { content }).pipe(map(() => void 0));
+  sendMessage(id: string, content: string, files: File[] = []): Observable<void> {
+    const text = content.trim();
+    return this.ensureUuid(id).pipe(switchMap(uuid => {
+      if (!uuid) return of(void 0);
+      const endpoint = `/channels/${uuid}/messages`;
+      if (files.length === 0) {
+        return text
+          ? this.post$<MessageResponse>('messaging', endpoint, { content: text }).pipe(map(() => void 0))
+          : of(void 0);
+      }
+      const workspaceId = this.session.activeWorkspaceId();
+      return forkJoin(files.map(f => this.filesSvc.upload('channel-msg', f, { workspaceId, channelId: uuid })))
+        .pipe(switchMap(stored => this.postMessages('messaging', endpoint, text, stored)));
+    }));
+  }
+
+  /**
+   * Envoie une suite de messages porteurs de pièces jointes (une par message,
+   * limite du backend). Le texte est joint au premier fichier ; les suivants
+   * portent leur nom de fichier comme contenu (le champ `content` est requis).
+   */
+  private postMessages(service: 'messaging', endpoint: string, text: string, stored: StoredFile[]): Observable<void> {
+    const sends = buildMessagePayloads(text, stored)
+      .map(body => this.post$<MessageResponse>(service, endpoint, body));
+    return concat(...sends).pipe(toArray(), map(() => void 0));
   }
 
   rename(id: string, patch: UpdateChannelPayload): void {
@@ -246,6 +273,23 @@ export class ChannelsHttpService extends BaseHttpService implements ChannelsServ
   }
 }
 
+/** Corps d'un message envoyé (contenu + éventuelle pièce jointe). */
+export interface OutgoingMessageBody { content: string; attachmentUrl?: string; attachmentName?: string; }
+
+/**
+ * Construit les corps de messages à envoyer pour un texte + N fichiers déjà
+ * téléversés. Le backend n'accepte qu'une pièce jointe par message et exige un
+ * `content` non vide : le texte est rattaché au premier fichier, les fichiers
+ * suivants portent leur nom comme contenu. Réutilisé par canaux et conversations.
+ */
+export function buildMessagePayloads(text: string, stored: StoredFile[]): OutgoingMessageBody[] {
+  return stored.map((s, i) => ({
+    content: i === 0 && text ? text : s.fileName,
+    attachmentUrl: s.downloadUrl,
+    attachmentName: s.fileName,
+  }));
+}
+
 /** `ChannelResponse` (backend) → `Channel` (view-model, id = slug). */
 function toChannel(r: ChannelResponse): Channel {
   return {
@@ -265,7 +309,7 @@ function toChannel(r: ChannelResponse): Channel {
 function toChannelMessage(msg: MessageResponse, meId: string | undefined, byId: Map<string | undefined, { name: string }>): ChannelMessage {
   const author = byId.get(msg.senderUserId)?.name ?? 'Membre';
   const files = msg.attachmentUrl
-    ? [{ id: 1, name: msg.attachmentName ?? 'fichier', size: 0 }]
+    ? [{ id: 1, name: msg.attachmentName ?? 'fichier', size: 0, url: msg.attachmentUrl }]
     : undefined;
   return {
     author,

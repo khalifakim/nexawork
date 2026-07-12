@@ -13,6 +13,11 @@
 export function downloadAttachedFile(name: string, size?: number): void {
   const label = size != null ? `${name} (${size} octets)` : name;
   const blob = new Blob([`Contenu simulé du fichier joint « ${label} ».`], { type: 'application/octet-stream' });
+  saveBlob(blob, name);
+}
+
+/** Déclenche l'enregistrement d'un blob réel sous le nom donné. */
+export function saveBlob(blob: Blob, name: string): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;

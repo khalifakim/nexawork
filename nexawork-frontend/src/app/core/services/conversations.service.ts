@@ -1,10 +1,12 @@
 import { Injectable, Signal, inject, signal } from '@angular/core';
-import { EMPTY, Observable, forkJoin, map, of, switchMap } from 'rxjs';
-import { delay } from 'rxjs/operators';
+import { EMPTY, Observable, concat, forkJoin, map, of, switchMap } from 'rxjs';
+import { delay, toArray } from 'rxjs/operators';
 import { BaseHttpService } from '@core/http/base-http.service';
+import { FilesHttpService } from '@core/http/files.http.service';
 import { StompClientService } from '@core/ws/stomp-client.service';
 import { Conversation, ConversationMessage, ConversationResponse } from '@core/models/conversation.models';
 import { MessageResponse } from '@core/models/channel.models';
+import { buildMessagePayloads } from './channels.service';
 import { CONVERSATIONS_BY_WORKSPACE, CONVERSATION_THREADS, DEFAULT_CONVERSATION_THREAD } from '@core/mock/conversations';
 import { parseRichText } from '@core/util/mention.util';
 import { avatarColorFor, initials, slugName } from '@core/util/ui.util';
@@ -23,8 +25,11 @@ export abstract class ConversationsService {
   abstract thread(id: string): Observable<ConversationMessage[]>;
   /** Live stream of new messages of one conversation (STOMP). */
   abstract live(id: string): Observable<ConversationMessage>;
-  /** Send a text message to the peer identified by the route slug. */
-  abstract sendMessage(id: string, content: string): Observable<void>;
+  /**
+   * Send a message to the peer identified by the route slug, with optional file
+   * attachments (téléversées au File Service puis rattachées, une par message).
+   */
+  abstract sendMessage(id: string, content: string, files?: File[]): Observable<void>;
   /** Marque comme lus les messages reçus de la conversation. */
   abstract markRead(id: string): void;
   /**
@@ -52,7 +57,7 @@ export class ConversationsMockService extends ConversationsService {
     return of(CONVERSATION_THREADS[id] ?? DEFAULT_CONVERSATION_THREAD).pipe(delay(80));
   }
   live(_id: string): Observable<ConversationMessage> { return EMPTY; }
-  sendMessage(_id: string, _content: string): Observable<void> { return of(void 0); }
+  sendMessage(_id: string, _content: string, _files?: File[]): Observable<void> { return of(void 0); }
   markRead(_id: string): void { /* no-op en mock */ }
   deleteForMe(id: string): void {
     const next = new Set(this._deletedByMe());
@@ -66,6 +71,7 @@ export class ConversationsHttpService extends BaseHttpService implements Convers
   private readonly session = inject(SessionService);
   private readonly members = inject(MembersService);
   private readonly stomp = inject(StompClientService);
+  private readonly filesSvc = inject(FilesHttpService);
 
   /** Conversations courantes indexées par slug du pair. */
   private readonly cache = signal<Map<string, Conversation>>(new Map());
@@ -112,11 +118,22 @@ export class ConversationsHttpService extends BaseHttpService implements Convers
     }));
   }
 
-  sendMessage(id: string, content: string): Observable<void> {
-    if (!content.trim()) return of(void 0);
+  sendMessage(id: string, content: string, files: File[] = []): Observable<void> {
+    const text = content.trim();
+    if (!text && files.length === 0) return of(void 0);
     return this.ensureConversation(id).pipe(switchMap(conv => {
       if (!conv?.uuid) return of(void 0);
-      return this.post$<MessageResponse>('messaging', `/conversations/${conv.uuid}/messages`, { content }).pipe(map(() => void 0));
+      const endpoint = `/conversations/${conv.uuid}/messages`;
+      if (files.length === 0) {
+        return this.post$<MessageResponse>('messaging', endpoint, { content: text }).pipe(map(() => void 0));
+      }
+      const workspaceId = this.session.activeWorkspaceId();
+      return forkJoin(files.map(f => this.filesSvc.upload('conversation-msg', f, { workspaceId, conversationId: conv.uuid })))
+        .pipe(switchMap(stored => {
+          const sends = buildMessagePayloads(text, stored)
+            .map(body => this.post$<MessageResponse>('messaging', endpoint, body));
+          return concat(...sends).pipe(toArray(), map(() => void 0));
+        }));
     }));
   }
 
@@ -187,7 +204,7 @@ function toConversation(c: ConversationResponse, meId: string | undefined, byId:
 /** `MessageResponse` → `ConversationMessage`. */
 function toConversationMessage(msg: MessageResponse, meId: string | undefined, _byId: Map<string | undefined, unknown>): ConversationMessage {
   const mine = msg.senderUserId === meId;
-  const files = msg.attachmentUrl ? [{ id: 1, name: msg.attachmentName ?? 'fichier', size: 0 }] : undefined;
+  const files = msg.attachmentUrl ? [{ id: 1, name: msg.attachmentName ?? 'fichier', size: 0, url: msg.attachmentUrl }] : undefined;
   return {
     me: mine,
     parts: parseRichText(msg.content),

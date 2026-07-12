@@ -69,7 +69,7 @@ export interface MessagePageResponse {
 }
 
 /** Attached file on a message (canal / conversation / comment). */
-export interface ChannelFile { id: number; name: string; size: number; }
+export interface ChannelFile { id: number; name: string; size: number; /** Chemin de téléchargement File Service (absent tant que le message n'est pas persisté). */ url?: string; }
 
 /** A single message inside a channel. */
 export interface ChannelMessage {
