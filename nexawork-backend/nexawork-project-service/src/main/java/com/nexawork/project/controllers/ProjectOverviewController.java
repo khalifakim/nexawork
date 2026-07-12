@@ -13,6 +13,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
@@ -40,8 +41,9 @@ public class ProjectOverviewController {
 
     /** Rapport PDF du projet (§17.2) — téléchargement direct (pas d'enveloppe). */
     @GetMapping("/report")
-    public ResponseEntity<byte[]> report(@PathVariable UUID projectId) {
-        byte[] pdf = reportService.projectReport(projectId);
+    public ResponseEntity<byte[]> report(@PathVariable UUID projectId,
+                                         @RequestParam(name = "ws", required = false) String workspaceName) {
+        byte[] pdf = reportService.projectReport(projectId, workspaceName);
         return pdfResponse(pdf, "Rapport_projet");
     }
 

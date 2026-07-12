@@ -42,7 +42,7 @@ export const routes: Routes = [
       { path: 'accueil/tableau-de-bord', canActivate: [adminGuard], loadComponent: () => import('@features/accueil/tableau-de-bord/tableau-de-bord.component').then(m => m.TableauDeBordComponent) },
 
       // --- Projets ---
-      { path: 'projets', pathMatch: 'full', redirectTo: 'projets/refonte-app-mobile/kanban' },
+      { path: 'projets', pathMatch: 'full', loadComponent: () => import('@features/projets/projets-index/projets-index.component').then(m => m.ProjetsIndexComponent) },
       { path: 'projets/archives', canActivate: [adminGuard], loadComponent: () => import('@features/projets/projets-archives/projets-archives.component').then(m => m.ProjetsArchivesComponent) },
       { path: 'projets/:id', pathMatch: 'full', redirectTo: 'projets/:id/kanban' },
       { path: 'projets/:id/:tab', loadComponent: () => import('@features/projets/projet-shell/projet-shell.component').then(m => m.ProjetShellComponent) },

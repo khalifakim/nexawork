@@ -59,7 +59,7 @@ public class ReportServiceImpl implements ReportService {
 
     @Override
     @Transactional(readOnly = true)
-    public byte[] projectReport(UUID projectId) {
+    public byte[] projectReport(UUID projectId, String workspaceName) {
         Project project = guard.loadInOrg(projectId);
         guard.requireProjectManager(project, "générer le rapport du projet"); // §17.2
 
@@ -67,7 +67,7 @@ public class ReportServiceImpl implements ReportService {
         List<TaskResponse> tasks = taskService.listTasks(projectId);
 
         return render(doc -> {
-            header(doc, "Rapport de projet", ov.getName());
+            header(doc, "Rapport de projet", ov.getName(), workspaceName);
 
             section(doc, "Indicateurs clés");
             PdfPTable kpi = table(new float[]{1, 1, 1, 1});
@@ -107,13 +107,19 @@ public class ReportServiceImpl implements ReportService {
 
     @Override
     @Transactional(readOnly = true)
-    public byte[] workspaceReport(UUID workspaceId) {
+    public byte[] workspaceReport(UUID workspaceId, String workspaceName) {
         caller.requireWorkspaceAdmin("générer le rapport du workspace"); // R1
         DashboardResponse dash = dashboardService.getWorkspaceDashboard(workspaceId);
         DashboardResponse.Kpis k = dash.getKpis();
 
+        String subtitle = (workspaceName != null && !workspaceName.isBlank())
+                ? workspaceName
+                : "Vue d'ensemble de l'activité";
+
         return render(doc -> {
-            header(doc, "Rapport global du workspace", "Vue d'ensemble de l'activité");
+            // Le nom du workspace est déjà porté par le sous-titre → pas de
+            // répétition dans la ligne « Généré le… » (workspaceName = null).
+            header(doc, "Rapport global du workspace", subtitle, null);
 
             section(doc, "Indicateurs clés");
             PdfPTable kpi = table(new float[]{1, 1, 1, 1});
@@ -140,12 +146,17 @@ public class ReportServiceImpl implements ReportService {
             doc.add(pt);
 
             if (!dash.getWorkload().isEmpty()) {
-                section(doc, "Charge par projet");
-                PdfPTable wt = table(new float[]{3f, 1.2f});
-                th(wt, "Projet"); th(wt, "Tâches actives");
+                section(doc, "Charge de travail par projet");
+                int max = dash.getWorkload().stream()
+                        .mapToInt(w -> nz(w.getActiveTaskCount()))
+                        .max().orElse(0);
+                PdfPTable wt = table(new float[]{2.2f, 3f, 0.9f});
+                th(wt, "Projet"); th(wt, "Charge"); th(wt, "Tâches actives");
                 alt = false;
                 for (DashboardResponse.WorkloadEntry w : dash.getWorkload()) {
-                    row(wt, alt, safe(w.getProjectName()), String.valueOf(nz(w.getActiveTaskCount())));
+                    cellText(wt, safe(w.getProjectName()), alt);
+                    wt.addCell(barCell(nz(w.getActiveTaskCount()), max, color(w.getColor()), alt));
+                    cellText(wt, String.valueOf(nz(w.getActiveTaskCount())), alt);
                     alt = !alt;
                 }
                 doc.add(wt);
@@ -185,12 +196,19 @@ public class ReportServiceImpl implements ReportService {
         }
     }
 
-    private void header(Document doc, String title, String subtitle) {
+    private void header(Document doc, String title, String subtitle, String workspaceName) {
         Paragraph t = new Paragraph(title, TITLE);
         t.setSpacingAfter(2f);
         doc.add(t);
-        doc.add(new Paragraph(subtitle, SUBTITLE));
-        Paragraph gen = new Paragraph("Généré le " + LocalDateTime.now().format(DATE) + " — NexaWork", SUBTITLE);
+        if (subtitle != null && !subtitle.isBlank()) {
+            doc.add(new Paragraph(subtitle, SUBTITLE));
+        }
+        StringBuilder meta = new StringBuilder();
+        if (workspaceName != null && !workspaceName.isBlank()) {
+            meta.append("Espace de travail : ").append(workspaceName).append("  ·  ");
+        }
+        meta.append("Généré le ").append(LocalDateTime.now().format(DATE)).append(" — NexaWork");
+        Paragraph gen = new Paragraph(meta.toString(), SUBTITLE);
         gen.setSpacingAfter(14f);
         doc.add(gen);
     }
@@ -230,6 +248,72 @@ public class ReportServiceImpl implements ReportService {
                 cell.setBackgroundColor(ROW_ALT);
             }
             table.addCell(cell);
+        }
+    }
+
+    /** Une cellule de texte isolée (pour composer des lignes hétérogènes). */
+    private void cellText(PdfPTable table, String text, boolean alt) {
+        PdfPCell cell = new PdfPCell(new Phrase(text, TD));
+        cell.setPadding(5f);
+        cell.setBorderColor(new Color(0xE2, 0xDF, 0xD8));
+        cell.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        if (alt) {
+            cell.setBackgroundColor(ROW_ALT);
+        }
+        table.addCell(cell);
+    }
+
+    /**
+     * Barre de charge proportionnelle (comme le tableau de bord) : un rectangle
+     * coloré dont la largeur reflète le nombre de tâches actives, normalisé sur
+     * le projet le plus chargé.
+     */
+    private PdfPCell barCell(int count, int max, Color barColor, boolean alt) {
+        float ratio = max <= 0 ? 0f : Math.min(1f, (float) count / (float) max);
+        int filled = Math.max(2, Math.round(ratio * 100)); // largeur minimale visible
+        int empty = Math.max(0, 100 - filled);
+
+        PdfPTable bar = new PdfPTable(empty > 0 ? 2 : 1);
+        bar.setWidthPercentage(100);
+        try {
+            bar.setWidths(empty > 0 ? new float[]{filled, empty} : new float[]{filled});
+        } catch (Exception ignored) {
+            // largeurs invalides : OpenPDF répartit uniformément.
+        }
+        PdfPCell fill = new PdfPCell();
+        fill.setBackgroundColor(barColor);
+        fill.setFixedHeight(11f);
+        fill.setBorder(0);
+        bar.addCell(fill);
+        if (empty > 0) {
+            PdfPCell rest = new PdfPCell();
+            rest.setBorder(0);
+            bar.addCell(rest);
+        }
+
+        PdfPCell wrapper = new PdfPCell(bar);
+        wrapper.setPadding(5f);
+        wrapper.setBorderColor(new Color(0xE2, 0xDF, 0xD8));
+        wrapper.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        if (alt) {
+            wrapper.setBackgroundColor(ROW_ALT);
+        }
+        return wrapper;
+    }
+
+    /** Parse une couleur hexadécimale (#RRGGBB) ; repli sur l'indigo de marque. */
+    private Color color(String hex) {
+        if (hex == null) {
+            return HEADER_BG;
+        }
+        try {
+            String h = hex.startsWith("#") ? hex.substring(1) : hex;
+            return new Color(
+                    Integer.parseInt(h.substring(0, 2), 16),
+                    Integer.parseInt(h.substring(2, 4), 16),
+                    Integer.parseInt(h.substring(4, 6), 16));
+        } catch (Exception e) {
+            return HEADER_BG;
         }
     }
 

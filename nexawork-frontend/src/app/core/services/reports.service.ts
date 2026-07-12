@@ -1,5 +1,5 @@
 import { Injectable, inject, signal } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import { api } from '@core/http/api.config';
 import { ToastService } from './toast.service';
 
@@ -16,20 +16,24 @@ export class ReportsService {
   /** Vrai pendant la génération — les vues désactivent le bouton. */
   readonly busy = signal(false);
 
-  /** Rapport d'un projet (§17.2). */
-  projectReport(projectId: string): void {
-    this.download(api('project', `/projects/${projectId}/report`), 'Rapport_projet');
+  /**
+   * Rapport d'un projet (§17.2). `workspaceName` est affiché en en-tête du PDF
+   * (les workspaces sont gérés par l'Auth Service, inconnus du Project Service).
+   */
+  projectReport(projectId: string, workspaceName?: string): void {
+    this.download(api('project', `/projects/${projectId}/report`), 'Rapport_projet', workspaceName);
   }
 
-  /** Rapport global du workspace (§17.1). */
-  workspaceReport(workspaceId: string): void {
-    this.download(api('project', `/workspaces/${workspaceId}/report`), 'Rapport_global');
+  /** Rapport global du workspace (§17.1). `workspaceName` affiché en en-tête. */
+  workspaceReport(workspaceId: string, workspaceName?: string): void {
+    this.download(api('project', `/workspaces/${workspaceId}/report`), 'Rapport_global', workspaceName);
   }
 
-  private download(url: string, prefix: string): void {
+  private download(url: string, prefix: string, workspaceName?: string): void {
     if (this.busy()) return;
     this.busy.set(true);
-    this.http.get(url, { responseType: 'blob' }).subscribe({
+    const params = workspaceName ? new HttpParams().set('ws', workspaceName) : undefined;
+    this.http.get(url, { responseType: 'blob', params }).subscribe({
       next: blob => {
         this.save(blob, prefix);
         this.busy.set(false);

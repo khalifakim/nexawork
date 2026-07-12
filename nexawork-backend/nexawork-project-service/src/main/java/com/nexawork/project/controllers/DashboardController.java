@@ -11,6 +11,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.UUID;
@@ -35,8 +36,9 @@ public class DashboardController {
 
     /** Rapport PDF global du workspace (§17.1) — téléchargement direct. */
     @GetMapping("/report")
-    public ResponseEntity<byte[]> report(@PathVariable UUID workspaceId) {
-        byte[] pdf = reportService.workspaceReport(workspaceId);
+    public ResponseEntity<byte[]> report(@PathVariable UUID workspaceId,
+                                         @RequestParam(name = "ws", required = false) String workspaceName) {
+        byte[] pdf = reportService.workspaceReport(workspaceId, workspaceName);
         return ProjectOverviewController.pdfResponse(pdf, "Rapport_global");
     }
 }

@@ -5,6 +5,7 @@ import { switchMap } from 'rxjs/operators';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 import { TasksService } from '@core/services/tasks.service';
 import { ReportsService } from '@core/services/reports.service';
+import { SessionService } from '@core/services/session.service';
 import { ProjectOverviewResponse } from '@core/models/task.models';
 
 interface Seg { l: string; v: number; c: string; }
@@ -121,11 +122,12 @@ export class VueDEnsembleComponent {
   private router = inject(Router);
   private route = inject(ActivatedRoute);
   private tasksSvc = inject(TasksService);
+  private session = inject(SessionService);
   protected reports = inject(ReportsService);
 
   generateReport(): void {
     const id = this.projectId();
-    if (id) this.reports.projectReport(id);
+    if (id) this.reports.projectReport(id, this.session.activeWorkspace().name);
   }
 
   private projectId(): string {

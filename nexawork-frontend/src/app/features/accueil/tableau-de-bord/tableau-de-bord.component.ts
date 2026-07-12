@@ -136,7 +136,7 @@ export class TableauDeBordComponent {
 
   generateReport(): void {
     const id = this.session.activeWorkspaceId();
-    if (id) this.reports.workspaceReport(id);
+    if (id) this.reports.workspaceReport(id, this.session.activeWorkspace().name);
   }
 
   /** Dashboard of the active workspace (reload on workspace switch). */
