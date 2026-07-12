@@ -1,6 +1,6 @@
 package com.nexawork.auth.security.rules;
 
-import com.nexawork.commons.security.SecurityRule;
+import com.nexawork.commons.security.rules.SecurityRule;
 import org.springframework.context.annotation.Bean;
 import org.springframework.http.HttpMethod;
 import org.springframework.stereotype.Component;

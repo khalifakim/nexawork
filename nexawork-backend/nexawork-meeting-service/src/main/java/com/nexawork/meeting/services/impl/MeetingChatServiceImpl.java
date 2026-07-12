@@ -10,6 +10,7 @@ import com.nexawork.meeting.repositories.CallParticipantRepository;
 import com.nexawork.meeting.repositories.CallRepository;
 import com.nexawork.meeting.repositories.MeetingMessageRepository;
 import com.nexawork.meeting.security.CallerContext;
+import com.nexawork.meeting.services.MeetingChatService;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
