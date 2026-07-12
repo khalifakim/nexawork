@@ -73,13 +73,20 @@ Puis ajoute au fur et à mesure : `project-service`, `file-service`, `ged-servic
 `messaging-service`, `notification-service`, `meeting-service`.
 
 ### Étape D — Vérifier les migrations neuves (le point le plus à risque)
-```bash
-docker compose logs project-service | grep -iE "V3|V4|comment_attachments|project_role|Flyway|Migrating|Started"
+
+> ⚠️ **Les migrations Flyway s'exécutent au DÉMARRAGE du service, pas au build.**
+> Il faut donc que `project-service` / `meeting-service` **tournent** (étape C) avant de vérifier.
+> ⚠️ **Commandes cmd.exe** (`findstr`, pas `grep` — qui n'existe pas sous Windows).
+
+```cmd
+docker compose logs project-service | findstr /I "V3 V4 comment_attachments project_role Flyway Migrating Started ERROR"
+docker compose logs meeting-service | findstr /I "meeting_messages Started ERROR"
+
 docker exec nexawork-postgres psql -U postgres -d nexawork_project_db -c "\d comment_attachments"
 docker exec nexawork-postgres psql -U postgres -d nexawork_project_db -c "SELECT DISTINCT project_role FROM project_members;"
-docker compose logs meeting-service | grep -iE "meeting_messages|Started|ERROR"
 ```
-- `comment_attachments` doit exister (V3) ; `project_role` doit être `PROJECT_LEAD`/`PROJECT_MEMBER` (V4).
+- `comment_attachments` doit exister (V3) ; `project_role` doit valoir `PROJECT_LEAD` / `PROJECT_MEMBER` (V4).
+- Chercher `Started ProjectServiceApplication` = le service a démarré sans erreur.
 
 ---
 
