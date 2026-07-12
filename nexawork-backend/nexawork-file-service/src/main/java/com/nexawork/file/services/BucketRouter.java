@@ -76,12 +76,7 @@ public class BucketRouter {
                 yield new Route(properties.getBuckets().getDocuments(),
                         "workspaces/" + ws + "/projects/" + projId + "/tasks/" + taskId + "/" + fileId);
             }
-            case MEETING_FILE -> {
-                UUID ws = require(p.getWorkspaceId(), "workspaceId", context);
-                UUID meetingId = require(p.getMeetingId(), "meetingId", context);
-                yield new Route(properties.getBuckets().getDocuments(),
-                        "workspaces/" + ws + "/meetings/" + meetingId + "/" + fileId);
-            }
+            // MEETING_FILE retiré : partage de fichiers en réunion (M5) en perspective.
         };
     }
 

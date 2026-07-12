@@ -7,7 +7,7 @@ import { ApiResponse } from './response.model';
 
 /** Contexte d'upload accepté par le File Service (V5.1 §5.3). */
 export type UploadContext =
-  | 'avatar' | 'channel-msg' | 'conversation-msg' | 'ged' | 'task-attachment' | 'meeting-file';
+  | 'avatar' | 'channel-msg' | 'conversation-msg' | 'ged' | 'task-attachment';
 
 /** Identifiants de contexte requis selon le bucket cible (cf. BucketRouter). */
 export interface UploadParams {
