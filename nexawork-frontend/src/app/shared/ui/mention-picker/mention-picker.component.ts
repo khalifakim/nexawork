@@ -171,7 +171,7 @@ export class MentionPickerComponent {
   protected readonly emptyLabel = computed<string>(() => {
     if (this.allItems().length > 0) return 'Aucun résultat';
     switch (this.active()) {
-      case 'personnes': return "Aucun membre dans ce projet.";
+      case 'personnes': return "Aucun membre à mentionner.";
       case 'taches':    return "Aucune tâche n'a encore été créée.";
       case 'documents': return "Aucun document n'a encore été créé.";
       case 'canaux':    return "Aucun canal n'a encore été créé.";
@@ -180,9 +180,9 @@ export class MentionPickerComponent {
 
   protected readonly sectionLabel = computed(() => {
     switch (this.active()) {
-      case 'personnes': return 'Membres du projet';
-      case 'taches':    return 'Tâches du projet';
-      case 'documents': return 'Documents du projet';
+      case 'personnes': return 'Personnes';
+      case 'taches':    return 'Tâches';
+      case 'documents': return 'Documents';
       case 'canaux':    return 'Canaux';
     }
   });
