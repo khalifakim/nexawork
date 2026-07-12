@@ -167,12 +167,13 @@ export class ProjectCatalogService {
   }
 
   private docsForScope(projectId: string | null): Observable<GedItem[]> {
+    // Récursion complète : tous les fichiers de l'espace (racine + sous-dossiers).
     if (projectId) {
-      return this.gedSvc.folderContent([], projectId);
+      return this.gedSvc.allFiles(projectId);
     }
-    // Workspace : documents de l'organisation + racine de chaque projet.
+    // Workspace : tous les fichiers de l'organisation + de chaque projet.
     return this.projectsSvc.list().pipe(switchMap(projects => {
-      const calls = [this.gedSvc.folderContent([], null), ...projects.map(p => this.gedSvc.folderContent([], p.id))];
+      const calls = [this.gedSvc.allFiles(null), ...projects.map(p => this.gedSvc.allFiles(p.id))];
       return forkJoin(calls).pipe(map(arrs => arrs.flat()));
     }));
   }

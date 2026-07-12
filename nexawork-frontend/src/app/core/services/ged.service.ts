@@ -33,6 +33,8 @@ export abstract class GedService {
   abstract deleteItem(item: GedItem): Observable<void>;
 
   // ── Bibliothèque (I5c) ──────────────────────────────────────────────────────
+  /** Tous les fichiers d'un espace, à plat (racine + sous-dossiers). `null` = organisation. */
+  abstract allFiles(projectId: string | null): Observable<GedItem[]>;
   /** Documents dont l'appelant est l'auteur. */
   abstract myDocuments(): Observable<GedItem[]>;
   /** Documents partagés avec l'appelant (grants). */
@@ -106,6 +108,7 @@ export class GedMockService extends GedService {
   renameItem(): Observable<void> { return of(void 0).pipe(delay(60)); }
   deleteItem(): Observable<void> { return of(void 0).pipe(delay(60)); }
 
+  allFiles(_projectId: string | null): Observable<GedItem[]> { return of([]).pipe(delay(60)); }
   myDocuments(): Observable<GedItem[]> { return of([]).pipe(delay(60)); }
   sharedWithMe(): Observable<GedItem[]> { return of([]).pipe(delay(60)); }
   trash(): Observable<GedItem[]> { return of([]).pipe(delay(60)); }
@@ -169,6 +172,17 @@ export class GedHttpService extends BaseHttpService implements GedService {
   private parentFolderId(path: string[], projectId: string | null): Observable<string | undefined> {
     if (path.length === 0) return of(undefined);
     return this.roots(projectId).pipe(switchMap(roots => this.resolveFolder(roots, path)));
+  }
+
+  /** Tous les fichiers d'un espace, à plat (racine + sous-dossiers, récursion complète). */
+  allFiles(projectId: string | null): Observable<GedItem[]> {
+    return forkJoin({
+      files: this.get$<FileResponse[]>('ged', '/ged/files/all', projectId ? { projectId } : undefined),
+      dir: this.members.directory(),
+    }).pipe(map(({ files, dir }) => {
+      const byId = new Map<string, Member>(dir.map(m => [m.userId ?? '', m]));
+      return files.map(f => toFileItem(f, byId));
+    }));
   }
 
   // ── Bibliothèque ────────────────────────────────────────────────────────────

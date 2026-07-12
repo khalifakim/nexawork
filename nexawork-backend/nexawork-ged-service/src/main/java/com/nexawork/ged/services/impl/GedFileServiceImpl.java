@@ -94,6 +94,18 @@ public class GedFileServiceImpl implements GedFileService {
 
     @Override
     @Transactional(readOnly = true)
+    public List<FileResponse> listAllFiles(UUID projectId) {
+        UUID org = caller.organisationId();
+        // Tous les fichiers de l'espace portent project_id (hérité du dossier) → une
+        // requête à plat suffit, inutile de parcourir l'arborescence des dossiers.
+        List<GedFile> files = projectId != null
+                ? fileRepository.findByOrganisationIdAndProjectIdAndIsDeletedFalse(org, projectId)
+                : fileRepository.findByOrganisationIdAndProjectIdIsNullAndIsDeletedFalse(org);
+        return files.stream().filter(access::canView).map(fileMapper::asDto).toList(); // REF G
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public FileResponse getFile(UUID fileId) {
         GedFile file = guard.loadFileInOrg(fileId);
         access.requireViewable(file);

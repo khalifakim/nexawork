@@ -21,6 +21,12 @@ public interface GedFileRepository extends JpaRepository<GedFile, UUID> {
     /** Fichiers racine (sans dossier) de l'espace Organisation (projet null, V2). */
     List<GedFile> findByOrganisationIdAndProjectIdIsNullAndFolderIsNullAndIsDeletedFalse(UUID organisationId);
 
+    /** TOUS les fichiers d'un espace projet (racine + sous-dossiers, à plat). */
+    List<GedFile> findByOrganisationIdAndProjectIdAndIsDeletedFalse(UUID organisationId, UUID projectId);
+
+    /** TOUS les fichiers de l'espace Organisation (racine + sous-dossiers, à plat). */
+    List<GedFile> findByOrganisationIdAndProjectIdIsNullAndIsDeletedFalse(UUID organisationId);
+
     List<GedFile> findByAddedByUserIdAndIsDeletedFalse(UUID userId);
 
     List<GedFile> findByAddedByUserIdAndIsDeletedTrue(UUID userId);

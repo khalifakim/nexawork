@@ -54,6 +54,15 @@ public class GedFileController {
         return Response.<List<FileResponse>>ok().setPayload(fileService.listRootFiles(projectId));
     }
 
+    /**
+     * Liste TOUS les fichiers d'un espace à plat (racine + sous-dossiers).
+     * {@code ?projectId=} absent = espace Organisation, sinon espace du projet.
+     */
+    @GetMapping("/all")
+    public Response<List<FileResponse>> listAll(@RequestParam(required = false) UUID projectId) {
+        return Response.<List<FileResponse>>ok().setPayload(fileService.listAllFiles(projectId));
+    }
+
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public Response<FileResponse> add(@Valid @RequestBody CreateFileRequest request) {
