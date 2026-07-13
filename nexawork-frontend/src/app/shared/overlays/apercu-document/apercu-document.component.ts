@@ -1,5 +1,5 @@
 import {
-  ChangeDetectionStrategy, Component, EventEmitter, Input, OnDestroy, OnInit,
+  ChangeDetectionStrategy, Component, EventEmitter, Input, OnChanges, OnDestroy,
   Output, inject, signal,
 } from '@angular/core';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
@@ -46,6 +46,10 @@ import { saveBlob } from '@core/util/download.util';
           } @else {
             <div class="pv pv--img"><img [src]="src" [alt]="name" /></div>
           }
+        } @else if (previewable && !url) {
+          <!-- Fichier prévisualisable dont l'URL est encore en cours de résolution
+               (mention @@@document : le nom est résolu en fichier réel). -->
+          <app-loader label="Résolution du document…" [minHeight]="280" />
         } @else {
           <div class="np">
             <div class="np__t">Format non pris en charge pour l'aperçu</div>
@@ -80,7 +84,7 @@ import { saveBlob } from '@core/util/download.util';
     .np__s { font-size: 13px; }
   `],
 })
-export class ApercuDocumentComponent implements OnInit, OnDestroy {
+export class ApercuDocumentComponent implements OnChanges, OnDestroy {
   /** Nom affiché du fichier. */
   @Input({ required: true }) name!: string;
   /** Chemin de téléchargement File Service — sans lui, aucun aperçu réel possible. */
@@ -104,8 +108,17 @@ export class ApercuDocumentComponent implements OnInit, OnDestroy {
   get previewable(): boolean { return this.isPdf || this.isImage; }
   get tint(): string { return this.previewable ? '#F5564E' : '#86828E'; }
 
-  ngOnInit(): void {
-    if (!this.url || !this.previewable) return;
+  /** Chemin déjà chargé — évite de re-télécharger sur chaque cycle de détection. */
+  private loadedUrl?: string;
+
+  /**
+   * L'URL peut arriver APRÈS l'ouverture (mention `@@@doc` : le nom est résolu en
+   * fichier de façon asynchrone) — on charge donc dès qu'elle est disponible.
+   */
+  ngOnChanges(): void {
+    if (!this.url || !this.previewable || this.url === this.loadedUrl) return;
+    this.loadedUrl = this.url;
+    this.error.set('');
     this.loading.set(true);
     this.filesSvc.download(this.url).subscribe({
       next: b => {

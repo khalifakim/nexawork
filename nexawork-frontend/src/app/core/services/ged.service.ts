@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable, forkJoin, of, switchMap } from 'rxjs';
-import { map, delay } from 'rxjs/operators';
+import { map, delay, catchError } from 'rxjs/operators';
 import { BaseHttpService } from '@core/http/base-http.service';
 import { FilesHttpService } from '@core/http/files.http.service';
 import {
@@ -35,6 +35,11 @@ export abstract class GedService {
   // ── Bibliothèque (I5c) ──────────────────────────────────────────────────────
   /** Tous les fichiers d'un espace, à plat (racine + sous-dossiers). `null` = organisation. */
   abstract allFiles(projectId: string | null): Observable<GedItem[]>;
+  /**
+   * Résout un document par son NOM (mention `@@@document`) — renvoie l'élément
+   * complet (avec son URL de téléchargement) pour permettre l'aperçu réel.
+   */
+  abstract findByName(name: string): Observable<GedItem | undefined>;
   /** Documents dont l'appelant est l'auteur. */
   abstract myDocuments(): Observable<GedItem[]>;
   /** Documents partagés avec l'appelant (grants). */
@@ -109,6 +114,7 @@ export class GedMockService extends GedService {
   deleteItem(): Observable<void> { return of(void 0).pipe(delay(60)); }
 
   allFiles(_projectId: string | null): Observable<GedItem[]> { return of([]).pipe(delay(60)); }
+  findByName(_name: string): Observable<GedItem | undefined> { return of(undefined).pipe(delay(60)); }
   myDocuments(): Observable<GedItem[]> { return of([]).pipe(delay(60)); }
   sharedWithMe(): Observable<GedItem[]> { return of([]).pipe(delay(60)); }
   trash(): Observable<GedItem[]> { return of([]).pipe(delay(60)); }
@@ -182,6 +188,29 @@ export class GedHttpService extends BaseHttpService implements GedService {
     }).pipe(map(({ files, dir }) => {
       const byId = new Map<string, Member>(dir.map(m => [m.userId ?? '', m]));
       return files.map(f => toFileItem(f, byId));
+    }));
+  }
+
+  /**
+   * Résout un document par son nom (mention `@@@document`) : la recherche GED
+   * donne son id, puis on charge le fichier pour récupérer son `fileUrl` — sans
+   * quoi l'aperçu ne pourrait pas afficher le contenu réel.
+   */
+  findByName(name: string): Observable<GedItem | undefined> {
+    const term = name.trim();
+    if (!term) return of(undefined);
+    return forkJoin({
+      hits: this.get$<{ type: string; id: string; name: string }[]>('ged', '/ged/search', { q: term }),
+      dir: this.members.directory(),
+    }).pipe(switchMap(({ hits, dir }) => {
+      const byId = new Map<string, Member>(dir.map(m => [m.userId ?? '', m]));
+      // Correspondance exacte du nom en priorité, sinon le premier document trouvé.
+      const hit = hits.find(h => h.name.toLowerCase() === term.toLowerCase()) ?? hits[0];
+      if (!hit) return of(undefined);
+      return this.get$<FileResponse>('ged', `/ged/files/${hit.id}`).pipe(
+        map(f => toFileItem(f, byId)),
+        catchError(() => of(undefined)), // l'id peut désigner un dossier → pas d'aperçu
+      );
     }));
   }
 

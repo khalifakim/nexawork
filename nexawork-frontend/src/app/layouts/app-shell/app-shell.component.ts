@@ -23,6 +23,7 @@ import { ConfirmDialogComponent } from '@shared/overlays/confirm-dialog/confirm-
 import { SessionService } from '@core/services/session.service';
 import { UserProfileService } from '@core/services/user-profile.service';
 import { TasksService } from '@core/services/tasks.service';
+import { GedService } from '@core/services/ged.service';
 import { ChannelsService } from '@core/services/channels.service';
 import { ToastService } from '@core/services/toast.service';
 import { GedOverlayBus } from '@core/services/ged-overlay.bus';
@@ -85,7 +86,7 @@ const SECTION_TITLES: Record<string, string> = {
     }
     @if (bus.createProjectOpen()) { <app-creer-projet (closed)="bus.createProjectOpen.set(false)" (created)="onProjectCreated($event)" /> }
     @if (bus.profileName(); as pn) { <app-fiche-profil [name]="pn" (closed)="bus.profileName.set(null)" /> }
-    @if (bus.documentName(); as dn) { <app-apercu-document [name]="dn" (closed)="bus.documentName.set(null)" /> }
+    @if (bus.documentName(); as dn) { <app-apercu-document [name]="dn" [url]="documentUrl()" (closed)="bus.documentName.set(null)" /> }
     @if (taskCard(); as tc) { <app-fiche-tache [task]="tc" [loading]="taskLoading()" (closed)="bus.taskId.set(null)" (openTask)="switchTask($event)" (deleted)="onTaskDeleted($event)" /> }
     @if (ged.accessName(); as an) { <app-ged-access-modal [name]="an" [scope]="gedAccessScope()" (closed)="ged.accessName.set(null)" /> }
     @if (ged.versionsName(); as vn) { <app-ged-versions-modal [name]="vn" (closed)="ged.versionsName.set(null)" /> }
@@ -105,6 +106,7 @@ const SECTION_TITLES: Record<string, string> = {
 export class AppShellComponent {
   private router = inject(Router);
   private tasksSvc = inject(TasksService);
+  private gedSvc = inject(GedService);
   private channelsSvc = inject(ChannelsService);
   private toast = inject(ToastService);
   bus = inject(ShellBus);
@@ -141,6 +143,10 @@ export class AppShellComponent {
     return 'org';
   });
 
+  /** URL du document mentionné (`@@@doc`), résolue pour l'aperçu réel. */
+  private _documentUrl = signal<string | undefined>(undefined);
+  documentUrl = this._documentUrl.asReadonly();
+
   /** Task detail opened from a @@mention outside a project (canal, conversation). */
   private _taskCard = signal<(TaskCard & { proj?: string }) | null>(null);
   taskCard = this._taskCard.asReadonly();
@@ -170,6 +176,15 @@ export class AppShellComponent {
       const id = this.bus.taskId();
       if (!id) { this._taskCard.set(null); return; }
       this.tasksSvc.cardById(id).subscribe(card => this._taskCard.set(card ?? null));
+    });
+
+    // Résout le `@@@document` mentionné (nom → fichier réel) pour un aperçu du
+    // contenu, et non d'un simple libellé.
+    effect(() => {
+      const name = this.bus.documentName();
+      if (!name) { this._documentUrl.set(undefined); return; }
+      this._documentUrl.set(undefined);
+      this.gedSvc.findByName(name).subscribe(item => this._documentUrl.set(item?.url));
     });
 
     this.router.events.pipe(
