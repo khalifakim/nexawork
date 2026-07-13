@@ -51,7 +51,7 @@ const TABS: Array<{ key: MentionTab; label: string }> = [
       <div class="mp__lbl">{{ sectionLabel() }}</div>
       <div class="mp__list">
         @if (visible().length === 0) {
-          <div class="mp__empty">Aucun résultat</div>
+          <div class="mp__empty">{{ emptyLabel() }}</div>
         }
         @for (it of visible(); track it.id; let i = $index) {
           <button class="mp__row" [class.mp__row--on]="i === 0" (click)="pick(it)">
@@ -149,9 +149,12 @@ export class MentionPickerComponent {
   protected readonly query = signal('');
   protected readonly hover = signal(0);
 
+  /** Éléments de l'onglet actif, avant filtrage par la saisie. */
+  protected readonly allItems = computed<MentionPickerItem[]>(() => this.itemsFor(this.active()));
+
   protected readonly visible = computed<MentionPickerItem[]>(() => {
     const q = this.query().trim().toLowerCase();
-    const items = this.itemsFor(this.active());
+    const items = this.allItems();
     if (!q) return items;
     return items.filter(it =>
       it.display.toLowerCase().includes(q) ||
@@ -160,11 +163,26 @@ export class MentionPickerComponent {
     );
   });
 
+  /**
+   * Message d'état vide : si l'onglet ne contient **aucun** élément → message
+   * explicite par catégorie ; s'il en contient mais que le filtre ne matche rien
+   * → « Aucun résultat ».
+   */
+  protected readonly emptyLabel = computed<string>(() => {
+    if (this.allItems().length > 0) return 'Aucun résultat';
+    switch (this.active()) {
+      case 'personnes': return "Aucun membre à mentionner.";
+      case 'taches':    return "Aucune tâche n'a encore été créée.";
+      case 'documents': return "Aucun document n'a encore été créé.";
+      case 'canaux':    return "Aucun canal n'a encore été créé.";
+    }
+  });
+
   protected readonly sectionLabel = computed(() => {
     switch (this.active()) {
-      case 'personnes': return 'Membres du projet';
-      case 'taches':    return 'Tâches du projet';
-      case 'documents': return 'Documents du projet';
+      case 'personnes': return 'Personnes';
+      case 'taches':    return 'Tâches';
+      case 'documents': return 'Documents';
       case 'canaux':    return 'Canaux';
     }
   });

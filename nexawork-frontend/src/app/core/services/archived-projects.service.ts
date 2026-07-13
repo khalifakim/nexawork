@@ -8,13 +8,16 @@ import { Injectable, signal } from '@angular/core';
  * own tabs). We store the archived slugs here so the sidebar-2 can filter them
  * out of the Canaux and Documents sections in real time.
  *
- * The service is intentionally minimalist for the frontend-first phase — the
- * backend will replace `ids` with a persistent list from `GET /projects?archived=true`.
+ * Depuis I2, l'archivage est **persisté** côté backend (`POST /projects/{id}/archive`)
+ * et `ProjectsService.list()` exclut déjà les archivés. Ce service ne sert donc
+ * plus qu'à masquer **instantanément** un projet qu'on vient d'archiver dans les
+ * barres latérales (retour visuel immédiat, sans refetch), et — tant que canaux
+ * et GED restent en mock (I4/I5) — à filtrer leurs entrées côté navigation.
  */
 @Injectable({ providedIn: 'root' })
 export class ArchivedProjectsService {
-  /** Signal of archived project ids (slugified names). */
-  readonly ids = signal<Set<string>>(new Set(['ancienne-landing-2024', 'refonte-newsletter']));
+  /** Ids des projets masqués localement (archivés dans cette session). */
+  readonly ids = signal<Set<string>>(new Set());
 
   /** Convenience: is this project id archived? */
   isArchived(id: string): boolean { return this.ids().has(id); }

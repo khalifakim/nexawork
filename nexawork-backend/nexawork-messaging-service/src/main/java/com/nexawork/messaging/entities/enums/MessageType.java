@@ -1,10 +1,10 @@
 package com.nexawork.messaging.entities.enums;
 
 /**
- * Nature d'un message (V5.1 §4.5) : émis par un utilisateur ou message système
- * (ex. « Réunion terminée », créé par le consumer {@code call.ended}).
+ * Nature d'un message (V5.1 §4.5). Seuls les utilisateurs émettent des messages
+ * (canaux et conversations) — la valeur {@code SYSTEM} (messages générés par la
+ * plateforme) a été retirée : elle n'était jamais produite.
  */
 public enum MessageType {
-    USER,
-    SYSTEM
+    USER
 }

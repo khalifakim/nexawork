@@ -1,14 +1,15 @@
 import { Injectable, inject } from '@angular/core';
-import { Observable, of } from 'rxjs';
+import { Observable, forkJoin, map, of } from 'rxjs';
 import { delay } from 'rxjs/operators';
-import { Member } from '@core/models/member.models';
-import { ME, slugName } from '@core/util/ui.util';
+import { BaseHttpService } from '@core/http/base-http.service';
+import { Member, MemberResponse } from '@core/models/member.models';
+import { ME, slugName, avatarColorFor } from '@core/util/ui.util';
 import { MEMBERS_BY_WORKSPACE } from '@core/mock/members';
 import { SessionService } from './session.service';
 
 /**
- * Members directory access. Swap `MembersMockService` for an HTTP impl when the
- * backend is connected — components depend only on this abstract class.
+ * Members directory access. Swap `MembersMockService` for `MembersHttpService`
+ * via `environment.mock.members` — components depend only on this abstract class.
  */
 export abstract class MembersService {
   abstract directory(): Observable<Member[]>;
@@ -45,4 +46,75 @@ export class MembersMockService extends MembersService {
     return of(found ?? unknown(name));
   }
   bySlug(slug: string): Observable<Member> { return of(this.roster().find(m => slugName(m.name) === slug) ?? unknown(slug)); }
+}
+
+/** Libellé de rôle affiché à défaut de fonction métier renseignée. */
+const ORG_ROLE_LABEL: Record<MemberResponse['orgRole'], string> = {
+  OWNER: 'Propriétaire', ADMIN: 'Administrateur', MEMBER: 'Membre',
+};
+
+@Injectable()
+export class MembersHttpService extends BaseHttpService implements MembersService {
+  private readonly session = inject(SessionService);
+
+  /** Membres actifs du workspace courant (annuaire), triés par nom. */
+  directory(): Observable<Member[]> {
+    const wsId = this.session.activeWorkspaceId();
+    if (!wsId) return of([]);
+    return this.get$<MemberResponse[]>('auth', `/workspaces/${wsId}/members`).pipe(
+      map(rs => rs.filter(r => !r.isDeactivated).map(toMember).sort((a, b) => a.name.localeCompare(b.name))),
+    );
+  }
+
+  /**
+   * Membres en ligne (hors soi). Croise l'annuaire avec la présence Redis, tenue
+   * par le Notification Service (`GET /presence/online`) : la connexion WebSocket
+   * du client vaut « en ligne », réarmée par un heartbeat (V5.1 §3.9).
+   */
+  online(): Observable<Member[]> {
+    return forkJoin({
+      dir: this.directory(),
+      active: this.get$<string[]>('notification', '/presence/online'),
+    }).pipe(
+      map(({ dir, active }) => {
+        const on = new Set(active);
+        const meId = this.session.user()?.id;
+        return dir.filter(m => m.userId && on.has(m.userId) && m.userId !== meId)
+                  .map(m => ({ ...m, online: true }));
+      }),
+    );
+  }
+
+  /** Tout l'annuaire sauf soi-même. */
+  others(): Observable<Member[]> {
+    const meId = this.session.user()?.id;
+    return this.directory().pipe(map(list => list.filter(m => m.userId !== meId)));
+  }
+
+  byName(name: string): Observable<Member> {
+    const key = name.trim().toLowerCase();
+    return this.directory().pipe(map(list =>
+      list.find(m => m.name.toLowerCase() === key)
+      ?? list.find(m => m.name.toLowerCase().split(/\s+/)[0] === key)
+      ?? list.find(m => m.name.toLowerCase().startsWith(key))
+      ?? unknown(name),
+    ));
+  }
+
+  bySlug(slug: string): Observable<Member> {
+    return this.directory().pipe(map(list => list.find(m => slugName(m.name) === slug) ?? unknown(slug)));
+  }
+}
+
+/** `MemberResponse` (Auth) → `Member` (view-model annuaire). */
+function toMember(r: MemberResponse): Member {
+  return {
+    userId: r.userId,
+    name: r.displayName,
+    color: avatarColorFor(r.userId),
+    role: r.jobTitle?.trim() || ORG_ROLE_LABEL[r.orgRole],
+    email: r.email,
+    online: false,       // renseigné par `online()` via la présence
+    projects: [],        // « projets d'un membre » : pas d'endpoint dédié (perspective)
+  };
 }

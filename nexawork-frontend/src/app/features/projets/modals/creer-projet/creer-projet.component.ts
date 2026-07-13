@@ -2,6 +2,8 @@ import { ChangeDetectionStrategy, Component, EventEmitter, Output, computed, inj
 import { ModalShellComponent } from '@shared/ui/modal-shell/modal-shell.component';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 import { ToastService } from '@core/services/toast.service';
+import { ProjectsService } from '@core/services/projects.service';
+import { Project } from '@core/models/project.models';
 
 /**
  * « Créer un nouveau projet » — reprend fidèlement l'ordre du prototype
@@ -67,8 +69,8 @@ import { ToastService } from '@core/services/toast.service';
         <span>Le nom du projet est requis</span>
       </div>
       <button footer type="button" class="ghost" (click)="closed.emit()">Annuler</button>
-      <button footer type="button" class="primary" [disabled]="!canCreate()" (click)="create()">
-        <app-icon name="plus" [size]="16" />Créer le projet
+      <button footer type="button" class="primary" [disabled]="!canCreate() || busy()" (click)="create()">
+        <app-icon name="plus" [size]="16" />{{ busy() ? "Création…" : "Créer le projet" }}
       </button>
     </app-modal-shell>
   `,
@@ -76,9 +78,13 @@ import { ToastService } from '@core/services/toast.service';
 })
 export class CreerProjetComponent {
   @Output() closed = new EventEmitter<void>();
-  @Output() created = new EventEmitter<string>();
+  /** Émis avec le projet créé (backend) — l'app-shell navigue vers son board. */
+  @Output() created = new EventEmitter<Project>();
 
   private toast = inject(ToastService);
+  private projectsSvc = inject(ProjectsService);
+
+  busy = signal(false);
 
   readonly colors = ['#5B5FE9', '#6C70F0', '#3AA9E0', '#2BB673', '#E89A2C', '#F2693C', '#E0497B', '#9B59B6'];
 
@@ -96,9 +102,19 @@ export class CreerProjetComponent {
 
   create(): void {
     const n = this.name().trim();
-    if (!n) return;
-    if (this.dateError()) return;
-    this.toast.show({ message: 'Projet « ' + n + ' » créé' });
-    this.created.emit(n);
+    if (!n || this.dateError() || this.busy()) return;
+    this.busy.set(true);
+    this.projectsSvc.create({
+      name: n,
+      color: this.color(),
+      startDate: this.dateStart() || undefined,
+      endDate: this.dateEnd() || undefined,
+    }).subscribe({
+      next: project => {
+        this.toast.show({ message: 'Projet « ' + project.name + ' » créé' });
+        this.created.emit(project);
+      },
+      error: () => this.busy.set(false),
+    });
   }
 }

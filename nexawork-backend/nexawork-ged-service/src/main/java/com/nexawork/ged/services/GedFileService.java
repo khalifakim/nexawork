@@ -16,6 +16,19 @@ public interface GedFileService {
 
     List<FileResponse> listByFolder(UUID folderId);
 
+    /**
+     * Fichiers à la racine d'un espace (sans dossier, V2). {@code projectId} null =
+     * racine de l'espace Organisation, sinon racine de l'espace du projet.
+     */
+    List<FileResponse> listRootFiles(UUID projectId);
+
+    /**
+     * TOUS les fichiers d'un espace, à plat (racine + tous sous-dossiers).
+     * {@code projectId} null = espace Organisation, sinon espace du projet.
+     * Utilisé pour les suggestions de mention (récursion complète).
+     */
+    List<FileResponse> listAllFiles(UUID projectId);
+
     FileResponse addFile(CreateFileRequest request);
 
     FileResponse getFile(UUID fileId);

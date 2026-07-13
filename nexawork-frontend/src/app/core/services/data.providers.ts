@@ -1,15 +1,15 @@
 import { Provider } from '@angular/core';
 import { environment } from '@environment/environment';
-import { MembersService, MembersMockService } from './members.service';
-import { ProjectsService, ProjectsMockService } from './projects.service';
-import { TasksService, TasksMockService } from './tasks.service';
-import { GedService, GedMockService } from './ged.service';
-import { ConversationsService, ConversationsMockService } from './conversations.service';
-import { ChannelsService, ChannelsMockService } from './channels.service';
-import { MeetingsService, MeetingsMockService } from './meetings.service';
-import { NotificationsService, NotificationsMockService } from './notifications.service';
-import { AccueilService, AccueilMockService } from './accueil.service';
-import { SearchService, SearchMockService } from './search.service';
+import { MembersService, MembersMockService, MembersHttpService } from './members.service';
+import { ProjectsService, ProjectsMockService, ProjectsHttpService } from './projects.service';
+import { TasksService, TasksMockService, TasksHttpService } from './tasks.service';
+import { GedService, GedMockService, GedHttpService } from './ged.service';
+import { ConversationsService, ConversationsMockService, ConversationsHttpService } from './conversations.service';
+import { ChannelsService, ChannelsMockService, ChannelsHttpService } from './channels.service';
+import { MeetingsService, MeetingsMockService, MeetingsHttpService } from './meetings.service';
+import { NotificationsService, NotificationsMockService, NotificationsHttpService } from './notifications.service';
+import { AccueilService, AccueilMockService, AccueilHttpService } from './accueil.service';
+import { SearchService, SearchMockService, SearchHttpService } from './search.service';
 
 /**
  * Single point of truth for domain-data wiring. Every feature reads its data
@@ -24,15 +24,15 @@ import { SearchService, SearchMockService } from './search.service';
 export function provideDataServices(): Provider[] {
   const m = environment.mock;
   return [
-    { provide: MembersService,       useClass: MembersMockService },       // I3 → MembersHttpService
-    { provide: ProjectsService,      useClass: ProjectsMockService },      // I2 → ProjectsHttpService
-    { provide: TasksService,         useClass: TasksMockService },         // I2 → TasksHttpService
-    { provide: GedService,           useClass: GedMockService },           // I5 → GedHttpService
-    { provide: ConversationsService, useClass: ConversationsMockService }, // I4 → ConversationsHttpService
-    { provide: ChannelsService,      useClass: ChannelsMockService },      // I4 → ChannelsHttpService
-    { provide: MeetingsService,      useClass: MeetingsMockService },      // I8 → MeetingsHttpService
-    { provide: NotificationsService, useClass: NotificationsMockService }, // I6 → NotificationsHttpService
-    { provide: AccueilService,       useClass: AccueilMockService },       // I7 → AccueilHttpService
-    { provide: SearchService,        useClass: SearchMockService },        // I9 → SearchHttpService
+    { provide: MembersService,       useClass: m.members ? MembersMockService : MembersHttpService },
+    { provide: ProjectsService,      useClass: m.projects ? ProjectsMockService : ProjectsHttpService },
+    { provide: TasksService,         useClass: m.tasks ? TasksMockService : TasksHttpService },
+    { provide: GedService,           useClass: m.ged ? GedMockService : GedHttpService }, // I5 (flag flippé quand écritures réelles)
+    { provide: ConversationsService, useClass: m.conversations ? ConversationsMockService : ConversationsHttpService },
+    { provide: ChannelsService,      useClass: m.channels ? ChannelsMockService : ChannelsHttpService },
+    { provide: MeetingsService,      useClass: m.meetings ? MeetingsMockService : MeetingsHttpService },
+    { provide: NotificationsService, useClass: m.notifications ? NotificationsMockService : NotificationsHttpService },
+    { provide: AccueilService,       useClass: m.accueil ? AccueilMockService : AccueilHttpService },
+    { provide: SearchService,        useClass: m.search ? SearchMockService : SearchHttpService },
   ];
 }

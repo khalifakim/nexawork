@@ -9,20 +9,22 @@ export const environment = {
   /** true = données mock en mémoire ; false = backend réel (bascule par domaine). */
   mock: {
     auth: false,         // Phase I1 ✅ (auth + workspaces branchés au backend réel)
-    projects: true,      // Phase I2
-    tasks: true,         // Phase I2
-    members: true,       // Phase I3
-    channels: true,      // Phase I4
-    conversations: true, // Phase I4
-    ged: true,           // Phase I5
-    notifications: true, // Phase I6
-    accueil: true,       // Phase I7
-    meetings: true,      // Phase I8
-    search: true,        // Phase I9
+    projects: false,     // Phase I2a ✅ (projets : liste, CRUD, archivage)
+    tasks: false,        // Phase I2a ✅ (board Kanban : lecture, drag-drop FSM, suppression)
+    members: false,      // Phase I3 ✅ (annuaire réel ; présence en attente de l'infra WS)
+    channels: false,     // Phase I4 ✅ (REST + STOMP ; PJ de message différées)
+    conversations: false,// Phase I4 ✅ (REST + STOMP ; accusé de lecture)
+    ged: false,          // Phase I5 ✅ (arborescence, écritures, versions, accès, corbeille)
+    notifications: false,// Phase I6 ✅ (REST + STOMP + Web Push)
+    accueil: false,      // Phase I7 ✅ (dashboard, mentions, mes tâches)
+    meetings: false,     // Phase I8/M2/M3/M4 ✅ (appels réels, IFrame JaaS, chat persistant, lobby)
+    search: false,       // Phase I9 ✅ (recherche fédérée : 4 domaines, REF F/G respectées)
   },
   /** Gateway — toutes les routes API passent par elle (context-paths, cf. core/http/api.config.ts). */
   apiUrl: 'http://localhost:8080',
   /** WebSocket routés par la Gateway (V5.1 §7.5). */
   wsMessagingUrl: 'http://localhost:8080/ws/messaging',
   wsNotificationUrl: 'http://localhost:8080/ws/notifications',
+  /** Clé publique VAPID (Web Push, V5.1 §7.6) — la clé privée reste au backend. */
+  vapidPublicKey: 'BM8AL4x-9O_5wkUspvmULp3mVYZejAsttB-ImNMnFU1RiSW2yEll4T7NbNfZBFQ6ORyBLccERe4MUip-B6OWDJA',
 };

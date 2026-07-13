@@ -10,4 +10,16 @@ export interface SearchResult {
   icon?: string;
   hash?: boolean;   // channel marker
   radio?: string;   // status dot color for a task
+  /** UUID backend de l'élément — cible réelle de la navigation. */
+  id?: string;
+}
+
+/** Résultat brut renvoyé par le volet `/search` de chaque service. */
+export interface SearchHitResponse {
+  type: SearchResult['type'];
+  id: string;
+  name: string;
+  ctx?: string;
+  mono?: string;
+  color?: string;
 }

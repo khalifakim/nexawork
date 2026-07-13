@@ -14,9 +14,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Consomme {@code project.created} (queue {@code nexawork.ged.project-created},
- * V5.1 §7.3) : crée à la racine de l'espace documentaire du projet deux dossiers —
- * un dossier racine au nom du projet ({@code folderType=USER}) et le dossier
- * système « Pièces jointes aux tâches » ({@code folderType=TASK_ATTACHMENTS}).
+ * V5.1 §7.3) : crée le <b>seul</b> dossier système attendu à la création d'un
+ * projet — « Pièces jointes aux tâches » ({@code folderType=TASK_ATTACHMENTS}).
+ *
+ * <p>Aucun dossier « utilisateur » n'est créé automatiquement : l'espace du projet
+ * démarre vide, l'utilisateur y crée ses dossiers et/ou dépose des fichiers à la
+ * racine (V2). (Auparavant un dossier au nom du projet était seedé — retiré.)</p>
  *
  * <p>Idempotent : l'index unique partiel {@code (project_id, folder_type) WHERE
  * parent_id IS NULL} empêche toute duplication si l'événement est rejoué ; le
@@ -35,7 +38,7 @@ public class ProjectCreatedConsumer {
     public void onProjectCreated(ProjectCreatedEvent event) {
         log.info("Réception project.created : projet {} ({})", event.projectId(), event.projectName());
 
-        seedRootFolder(event, FolderType.USER, event.projectName());
+        // Seul le dossier système « Pièces jointes aux tâches » est créé d'office.
         seedRootFolder(event, FolderType.TASK_ATTACHMENTS, "Pièces jointes aux tâches");
     }
 

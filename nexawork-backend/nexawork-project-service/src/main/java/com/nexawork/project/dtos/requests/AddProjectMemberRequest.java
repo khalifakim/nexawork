@@ -7,7 +7,7 @@ import lombok.Data;
 import java.util.UUID;
 
 /**
- * Ajout d'un membre au projet (§13.2). Le rôle par défaut est DEVELOPER ;
+ * Ajout d'un membre au projet (§13.2). Le rôle par défaut est PROJECT_MEMBER ;
  * l'équipe est optionnelle.
  */
 @Data

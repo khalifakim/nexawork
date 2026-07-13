@@ -13,9 +13,10 @@ import { ChannelsService } from '@core/services/channels.service';
 import { ArchivedProjectsService } from '@core/services/archived-projects.service';
 import { ChannelFile, ChannelMessage } from '@core/models/channel.models';
 import { chipTabFor, RichPart } from '@core/util/mention.util';
-import { downloadAttachedFile } from '@core/util/download.util';
+import { downloadAttachedFile, saveBlob } from '@core/util/download.util';
+import { FilesHttpService } from '@core/http/files.http.service';
 
-interface AttachedFile { id: number; name: string; size: number; }
+interface AttachedFile { id: number; name: string; size: number; file?: File; }
 type ChMsg = ChannelMessage;
 
 @Component({
@@ -106,7 +107,7 @@ type ChMsg = ChannelMessage;
                 @if (m.files?.length) {
                   <div class="cm__files">
                     @for (f of m.files!; track f.id) {
-                      <button class="cm__file" title="Télécharger" (click)="downloadFile(f.name, f.size)">
+                      <button class="cm__file" title="Télécharger" (click)="downloadFile(f)">
                         <app-icon name="file" [size]="13" />
                         <span class="cm__fn"><app-highlight [text]="f.name" [query]="searchQ()" /></span>
                         <span class="cm__fs">{{ sizeOf(f.size) }}</span>
@@ -161,6 +162,7 @@ export class CanalComponent {
   name = computed<string>(() => this._embeddedId() ?? this.routeName());
 
   private channelsSvc = inject(ChannelsService);
+  private filesSvc = inject(FilesHttpService);
 
   private channels = toSignal(this.channelsSvc.list(), { initialValue: [] });
   private archivedSvc = inject(ArchivedProjectsService);
@@ -248,6 +250,11 @@ export class CanalComponent {
         this.msgs.set(thread);
         this.searchQ.set('');
       });
+    // Réception temps réel : on n'ajoute que les messages des autres (mon propre
+    // message est déjà affiché de façon optimiste à l'envoi, évitant un doublon).
+    toObservable(this.name)
+      .pipe(switchMap(id => this.channelsSvc.live(id)), takeUntilDestroyed())
+      .subscribe(msg => { if (!msg.mine) this.msgs.update(list => [...list, msg]); });
     // Pin the scroll to the bottom whenever the visible thread changes
     // (open a channel, switch channel, or send a new message).
     effect(() => {
@@ -276,8 +283,15 @@ export class CanalComponent {
     return (bytes / (1024 * 1024)).toFixed(1) + ' Mo';
   }
 
-  /** Attached files trigger a direct download (not the GED preview overlay). */
-  downloadFile(name: string, size: number): void { downloadAttachedFile(name, size); }
+  /**
+   * Téléchargement direct d'une pièce jointe (pas l'aperçu GED). Utilise l'URL
+   * réelle du File Service dès que le message est persisté ; repli sur le
+   * placeholder pour un message à peine envoyé (pas encore d'URL).
+   */
+  downloadFile(f: ChannelFile): void {
+    if (f.url) this.filesSvc.download(f.url).subscribe(blob => saveBlob(blob, f.name));
+    else downloadAttachedFile(f.name, f.size);
+  }
 
   toggleSearch(): void {
     this.searchOpen.update(v => !v);
@@ -294,12 +308,16 @@ export class CanalComponent {
     this.mentionsOpen.update(v => !v);
   }
 
-  onSend(payload: { parts: RichPart[]; files: AttachedFile[] }): void {
+  onSend(payload: { parts: RichPart[]; files: AttachedFile[]; text?: string }): void {
     if (!payload.parts.length && !payload.files.length) return;
     const now = new Date();
     const time = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
     const files: ChannelFile[] | undefined = payload.files.length ? payload.files.map(f => ({ id: f.id, name: f.name, size: f.size })) : undefined;
+    // Affichage optimiste immédiat, puis persistance réelle (texte + fichiers).
     this.msgs.update(list => [...list, { author: 'Akim Koné', color: '#F5A623', time, parts: payload.parts, mine: true, files }]);
+    const text = payload.text ?? payload.parts.map(p => p.val).join('');
+    const rawFiles = payload.files.map(f => f.file).filter((f): f is File => !!f);
+    this.channelsSvc.sendMessage(this.name(), text, rawFiles).subscribe();
   }
 
   onChipOpen(ev: MentionChipEvent): void {

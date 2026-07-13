@@ -14,8 +14,8 @@ public enum UploadContext {
     CHANNEL_MSG("channel-msg"),
     CONVERSATION_MSG("conversation-msg"),
     GED("ged"),
-    TASK_ATTACHMENT("task-attachment"),
-    MEETING_FILE("meeting-file");
+    TASK_ATTACHMENT("task-attachment");
+    // MEETING_FILE retiré : le partage de fichiers en réunion (M5) est en perspective.
 
     private final String wireValue;
 

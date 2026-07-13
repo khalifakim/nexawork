@@ -1,8 +1,9 @@
 import { ChangeDetectionStrategy, Component, ElementRef, ViewChild, computed, effect, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop';
-import { map, switchMap } from 'rxjs/operators';
+import { map, switchMap, tap } from 'rxjs/operators';
 import { IconComponent } from '@shared/ui/icon/icon.component';
+import { LoaderComponent } from '@shared/ui/loader/loader.component';
 import { CommentComposerComponent } from '@shared/ui/comment-composer/comment-composer.component';
 import { MentionChipComponent, MentionChipEvent } from '@shared/ui/mention-chip/mention-chip.component';
 import { HighlightComponent } from '@shared/ui/highlight/highlight.component';
@@ -14,11 +15,12 @@ import { Member } from '@core/models/member.models';
 import { ConversationFile, ConversationMessage } from '@core/models/conversation.models';
 import { ShellBus } from '@layouts/app-shell/shell.bus';
 import { chipTabFor, RichPart } from '@core/util/mention.util';
-import { downloadAttachedFile } from '@core/util/download.util';
+import { downloadAttachedFile, saveBlob } from '@core/util/download.util';
+import { FilesHttpService } from '@core/http/files.http.service';
 
 const EMPTY_MEMBER: Member = { name: '', color: '#86828E', role: '', email: '', online: false, projects: [] };
 
-interface AttachedFile { id: number; name: string; size: number; }
+interface AttachedFile { id: number; name: string; size: number; file?: File; }
 type Msg = ConversationMessage;
 
 @Component({
@@ -27,6 +29,7 @@ type Msg = ConversationMessage;
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     IconComponent,
+    LoaderComponent,
     CommentComposerComponent,
     MentionChipComponent,
     HighlightComponent,
@@ -75,6 +78,9 @@ type Msg = ConversationMessage;
 
       <div class="body">
         <div class="msgs" #msgsEl>
+          @if (loading()) {
+            <app-loader label="Chargement de la conversation…" [minHeight]="160" />
+          } @else {
           @for (m of visible(); track $index) {
             @if (m.day) {
               <div class="day"><div class="day__l"></div><span>{{ m.day }}</span><div class="day__l"></div></div>
@@ -95,7 +101,7 @@ type Msg = ConversationMessage;
                 @if (m.files?.length) {
                   <div class="cm__files">
                     @for (f of m.files!; track f.id) {
-                      <button class="cm__file" title="Télécharger" (click)="downloadFile(f.name, f.size)">
+                      <button class="cm__file" title="Télécharger" (click)="downloadFile(f)">
                         <app-icon name="file" [size]="13" />
                         <span class="cm__fn"><app-highlight [text]="f.name" [query]="searchQ()" /></span>
                         <span class="cm__fs">{{ sizeOf(f.size) }}</span>
@@ -115,6 +121,7 @@ type Msg = ConversationMessage;
               </div>
             </div>
           }
+          }
         </div>
 
         @if (mediaOpen()) {
@@ -128,10 +135,12 @@ type Msg = ConversationMessage;
         }
       </div>
 
-      <div class="typing">{{ peer().name.split(' ')[0] }} est en train d'écrire…</div>
+      @if (peerTyping()) {
+        <div class="typing">{{ peer().name.split(' ')[0] }} est en train d'écrire…</div>
+      }
 
       <div class="composer">
-        <app-comment-composer [placeholder]="'Votre message…'" (submitted)="onSend($event)" />
+        <app-comment-composer [placeholder]="'Votre message…'" (submitted)="onSend($event)" (typing)="onTyping()" />
       </div>
     </div>
   `,
@@ -143,6 +152,7 @@ export class ConversationPriveeComponent {
   bus = inject(ShellBus);
   private members = inject(MembersService);
   private conversationsSvc = inject(ConversationsService);
+  private filesSvc = inject(FilesHttpService);
   private slug = toSignal(this.route.paramMap.pipe(map(p => p.get('id') ?? 'sarah-diallo')), { initialValue: 'sarah-diallo' });
   peer = toSignal(toObservable(this.slug).pipe(switchMap(s => this.members.bySlug(s))), { initialValue: EMPTY_MEMBER });
 
@@ -150,6 +160,32 @@ export class ConversationPriveeComponent {
 
   /** Message thread of the active conversation (reloads when the slug changes). */
   msgs = signal<Msg[]>([]);
+  /** Vrai tant que l'historique de la conversation n'est pas chargé. */
+  loading = signal(true);
+
+  // ── Indicateur « est en train d'écrire » ────────────────────────────────────
+  /** Vrai uniquement quand le pair est EN LIGNE et tape réellement (STOMP). */
+  private typingRaw = signal(false);
+  peerTyping = computed(() => this.typingRaw() && this.peer().online);
+  /** Timer d'expiration : l'indicateur retombe si plus rien n'arrive. */
+  private typingTimer?: ReturnType<typeof setTimeout>;
+  /** Anti-spam : on ne republie « je tape » qu'une fois par fenêtre. */
+  private lastTypingSentAt = 0;
+  private stopTypingTimer?: ReturnType<typeof setTimeout>;
+
+  /** Frappe locale → publie « je tape » (throttlé) puis « j'ai arrêté » après 3 s. */
+  onTyping(): void {
+    const now = Date.now();
+    if (now - this.lastTypingSentAt > 2000) {
+      this.lastTypingSentAt = now;
+      this.conversationsSvc.sendTyping(this.slug(), true);
+    }
+    clearTimeout(this.stopTypingTimer);
+    this.stopTypingTimer = setTimeout(() => {
+      this.lastTypingSentAt = 0;
+      this.conversationsSvc.sendTyping(this.slug(), false);
+    }, 3000);
+  }
 
   /** Header search — open flag and query text. */
   searchOpen = signal(false);
@@ -197,10 +233,43 @@ export class ConversationPriveeComponent {
 
   constructor() {
     toObservable(this.slug)
-      .pipe(switchMap(s => this.conversationsSvc.thread(s)), takeUntilDestroyed())
+      .pipe(
+        tap(() => this.loading.set(true)),
+        switchMap(s => this.conversationsSvc.thread(s)),
+        takeUntilDestroyed(),
+      )
       .subscribe(thread => {
         this.msgs.set(thread);
         this.searchQ.set('');
+        this.loading.set(false);
+        this.typingRaw.set(false); // jamais affiché par défaut à l'ouverture
+        // À l'ouverture, marquer la conversation comme lue (accusé de lecture).
+        this.conversationsSvc.markRead(this.slug());
+      });
+
+    // Indicateur de saisie du pair (STOMP). Retombe seul après 4 s sans signal.
+    toObservable(this.slug)
+      .pipe(
+        tap(() => this.typingRaw.set(false)),
+        switchMap(s => this.conversationsSvc.typing(s)),
+        takeUntilDestroyed(),
+      )
+      .subscribe(isTyping => {
+        this.typingRaw.set(isTyping);
+        clearTimeout(this.typingTimer);
+        if (isTyping) {
+          this.typingTimer = setTimeout(() => this.typingRaw.set(false), 4000);
+        }
+      });
+    // Réception temps réel des messages du pair (mes propres messages sont déjà
+    // affichés de façon optimiste à l'envoi).
+    toObservable(this.slug)
+      .pipe(switchMap(s => this.conversationsSvc.live(s)), takeUntilDestroyed())
+      .subscribe(msg => {
+        if (!msg.me) {
+          this.msgs.update(list => [...list, msg]);
+          this.conversationsSvc.markRead(this.slug());
+        }
       });
     // Pin the scroll to the bottom whenever the thread changes (open a
     // conversation, switch peer, or send a new message).
@@ -230,8 +299,15 @@ export class ConversationPriveeComponent {
     return (bytes / (1024 * 1024)).toFixed(1) + ' Mo';
   }
 
-  /** Attached files trigger a direct download (not the GED preview overlay). */
-  downloadFile(name: string, size: number): void { downloadAttachedFile(name, size); }
+  /**
+   * Téléchargement direct d'une pièce jointe. Utilise l'URL réelle du File
+   * Service dès que le message est persisté ; repli sur le placeholder pour un
+   * message à peine envoyé (pas encore d'URL).
+   */
+  downloadFile(f: ConversationFile): void {
+    if (f.url) this.filesSvc.download(f.url).subscribe(blob => saveBlob(blob, f.name));
+    else downloadAttachedFile(f.name, f.size);
+  }
 
   toggleSearch(): void {
     this.searchOpen.update(v => !v);
@@ -248,14 +324,18 @@ export class ConversationPriveeComponent {
     this.mentionsOpen.update(v => !v);
   }
 
-  onSend(payload: { parts: RichPart[]; files: AttachedFile[] }): void {
+  onSend(payload: { parts: RichPart[]; files: AttachedFile[]; text?: string }): void {
     if (!payload.parts.length && !payload.files.length) return;
     const now = new Date();
     const time = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
     const files: ConversationFile[] | undefined = payload.files.length
       ? payload.files.map(f => ({ id: f.id, name: f.name, size: f.size }))
       : undefined;
+    // Affichage optimiste immédiat, puis persistance réelle (texte + fichiers).
     this.msgs.update(list => [...list, { me: true, parts: payload.parts, time, read: false, files }]);
+    const text = payload.text ?? payload.parts.map(p => p.val).join('');
+    const rawFiles = payload.files.map(f => f.file).filter((f): f is File => !!f);
+    this.conversationsSvc.sendMessage(this.slug(), text, rawFiles).subscribe();
   }
 
   onChipOpen(ev: MentionChipEvent): void {

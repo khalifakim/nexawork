@@ -70,7 +70,7 @@ public class ProjectMemberServiceImpl implements ProjectMemberService {
         ProjectMember member = ProjectMember.builder()
                 .project(project)
                 .userId(request.getUserId())
-                .projectRole(request.getProjectRole() != null ? request.getProjectRole() : ProjectRole.DEVELOPER)
+                .projectRole(request.getProjectRole() != null ? request.getProjectRole() : ProjectRole.PROJECT_MEMBER)
                 .team(resolveTeam(project, request.getTeamId()))
                 .isProjectLead(false)
                 .build();

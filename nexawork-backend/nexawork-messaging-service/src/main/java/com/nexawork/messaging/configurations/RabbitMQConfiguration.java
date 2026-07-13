@@ -9,18 +9,16 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * AMQP du Messaging Service. L'exchange {@code nexawork.events} et les queues
- * {@code nexawork.messaging.project-created} / {@code nexawork.messaging.call-ended}
- * sont déclarés par le sidecar rabbitmq-init (§7.4). Le Messaging **consomme**
- * {@code project.created} (canaux par défaut) et {@code call.ended} (message
- * système) ; il ne publie aucun événement.
+ * AMQP du Messaging Service. L'exchange {@code nexawork.events} et la queue
+ * {@code nexawork.messaging.project-created} sont déclarés par le sidecar
+ * rabbitmq-init (§7.4). Le Messaging **consomme** {@code project.created}
+ * (canaux par défaut) ; il ne publie aucun événement.
  */
 @Configuration
 public class RabbitMQConfiguration {
 
     public static final String EXCHANGE = "nexawork.events";
     public static final String QUEUE_PROJECT_CREATED = "nexawork.messaging.project-created";
-    public static final String QUEUE_CALL_ENDED = "nexawork.messaging.call-ended";
 
     @Bean
     public TopicExchange nexaworkEventsExchange() {

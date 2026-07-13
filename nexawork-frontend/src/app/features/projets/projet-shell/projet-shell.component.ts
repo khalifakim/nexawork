@@ -1,4 +1,4 @@
-﻿import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+﻿import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { map } from 'rxjs/operators';
@@ -21,6 +21,7 @@ import { Project } from '@core/models/project.models';
 import { TaskCard } from '@core/models/task.models';
 import { TasksService } from '@core/services/tasks.service';
 import { workspaceSignal } from '@core/util/workspace-signal';
+import { DataRefreshService } from '@core/services/data-refresh.service';
 import { KanbanStore } from '@features/projets/kanban/kanban.store';
 
 interface Tab { key: string; label: string; icon: string; }
@@ -102,7 +103,7 @@ interface ConfirmCfg { title: string; danger: boolean; btn: string; icon: string
           @case ('vue-d-ensemble') { <app-vue-d-ensemble [readonly]="isRo()" /> }
           @case ('kanban') { <app-kanban [readonly]="isRo()" [canManageBoard]="isAdmin()" (openTask)="openTask($event)" (create)="createCol.set($event)" (openStatuses)="statutsOpen.set(true)" (openWorkflow)="workflowOpen.set(true)" /> }
           @case ('gantt') { <app-gantt /> }
-          @case ('documents') { <app-ged-view [project]="displayName()" [readonly]="isRo()" /> }
+          @case ('documents') { <app-ged-view [projectId]="id()" [readonly]="isRo()" /> }
           @case ('equipes') { <app-equipes [readonly]="isRo()" [canManage]="isAdmin() || isProjectLead()" /> }
           @case ('canaux') { <app-canaux-projet [readonly]="isRo()" [projectName]="displayName()" /> }
           @default {
@@ -116,10 +117,19 @@ interface ConfirmCfg { title: string; danger: boolean; btn: string; icon: string
       </div>
     </div>
 
-    @if (selected(); as t) { <app-fiche-tache [task]="t" [loading]="taskLoading()" (closed)="selected.set(null)" (openTask)="switchTask($event)" /> }
-    @if (createCol(); as col) { <app-creer-tache [column]="col" [projectName]="displayName()" (closed)="createCol.set(null)" (created)="createCol.set(null)" /> }
-    @if (statutsOpen()) { <app-statuts (closed)="statutsOpen.set(false)" /> }
-    @if (workflowOpen()) { <app-workflow (closed)="workflowOpen.set(false)" /> }
+    @if (selected(); as t) { <app-fiche-tache [task]="t" [loading]="taskLoading()" (closed)="selected.set(null)" (openTask)="switchTask($event)" (deleted)="onTaskDeleted($event)" /> }
+    @if (createCol() !== null) {
+      <app-creer-tache
+        [projectId]="id()"
+        [columns]="kanbanColumns()"
+        [initialStatusId]="createCol()"
+        [column]="createColName()"
+        [projectName]="displayName()"
+        (closed)="createCol.set(null)"
+        (created)="onTaskCreated($event)" />
+    }
+    @if (statutsOpen()) { <app-statuts [projectName]="displayName()" (closed)="statutsOpen.set(false)" /> }
+    @if (workflowOpen()) { <app-workflow [projectName]="displayName()" (closed)="workflowOpen.set(false)" /> }
 
     @if (confirmKind(); as kind) {
       @if (confirmCfg(); as cfg) {
@@ -151,8 +161,19 @@ export class ProjetShellComponent {
   private tasksSvc = inject(TasksService);
   private session = inject(SessionService);
   private archivedSvc = inject(ArchivedProjectsService);
-  private allProjects = workspaceSignal<Project[]>(this.session, () => this.projectsSvc.list(), []);
+  private refresh = inject(DataRefreshService);
+  private allProjects = workspaceSignal<Project[]>(this.session, () => this.projectsSvc.list(), [], this.refresh.projects);
+  private store = inject(KanbanStore);
   router = inject(Router);
+
+  constructor() {
+    // Le board Kanban est projeté par projet : on pousse l'UUID de la route dans
+    // le store, qui (re)charge statuts + tâches à chaque changement de projet.
+    effect(() => {
+      const pid = this.id();
+      if (pid) this.store.projectId.set(pid);
+    });
+  }
   /** True when current user is ADMIN or OWNER (règles R7, R8). */
   isAdmin = this.session.isAdmin;
   /**
@@ -173,7 +194,7 @@ export class ProjetShellComponent {
   private _t: any;
   private _taskT: any;
 
-  id      = toSignal(this.route.paramMap.pipe(map(p => p.get('id') ?? 'refonte-app-mobile')), { initialValue: 'refonte-app-mobile' });
+  id      = toSignal(this.route.paramMap.pipe(map(p => p.get('id') ?? '')), { initialValue: '' });
   tab     = toSignal(this.route.paramMap.pipe(map(p => p.get('tab') ?? 'kanban')),             { initialValue: 'kanban' });
   isRo    = toSignal(this.route.queryParamMap.pipe(map(q => q.get('ro') === '1')),             { initialValue: false });
   archName = toSignal(this.route.queryParamMap.pipe(map(q => q.get('name') ?? '')),            { initialValue: '' });
@@ -187,11 +208,27 @@ export class ProjetShellComponent {
     { key: 'canaux',         label: 'Canaux',          icon: 'channels'  },
   ];
 
-  projectName  = computed(() => this.allProjects().find(p => p.id === this.id())?.name ?? 'Refonte App Mobile');
+  projectName  = computed(() => this.allProjects().find(p => p.id === this.id())?.name ?? '');
   displayName  = computed(() => (this.isRo() && this.archName()) ? this.archName() : this.projectName());
   tabLabel     = computed(() => this.tabs.find(t => t.key === this.tab())?.label ?? '');
 
+  /** Colonnes réelles du board (statuts) — passées au modal de création. */
+  kanbanColumns = this.store.columns;
+  createColName = computed(() => this.store.columns().find(c => c.id === this.createCol())?.name ?? '');
+
   openTask(t: TaskCard): void { this.selected.set({ ...t, proj: this.displayName() }); }
+
+  /** Une tâche vient d'être créée → l'insérer dans sa colonne sans recharger. */
+  onTaskCreated(card: TaskCard): void {
+    this.store.addCard(card);
+    this.createCol.set(null);
+  }
+
+  /** Une tâche a été supprimée depuis sa fiche → la retirer du board et fermer. */
+  onTaskDeleted(id: string): void {
+    this.store.deleteTask(id);
+    this.selected.set(null);
+  }
 
   /**
    * Switch the open task modal to another task referenced by a @@mention.
@@ -200,13 +237,13 @@ export class ProjetShellComponent {
    */
   switchTask(id: string): void {
     if (!this.selected() || this.selected()?.id === id) return;
-    const next = this.tasksSvc.cardById(id);
-    if (!next) return;
     this.taskLoading.set(true);
     clearTimeout(this._taskT);
     this._taskT = setTimeout(() => {
-      this.selected.set({ ...next, proj: this.displayName() });
-      this.taskLoading.set(false);
+      this.tasksSvc.cardById(id).subscribe(next => {
+        if (next) this.selected.set({ ...next, proj: this.displayName() });
+        this.taskLoading.set(false);
+      });
     }, 650);
   }
 
@@ -253,29 +290,36 @@ export class ProjetShellComponent {
 
   runConfirm(kind: ConfirmKind): void {
     this.confirmKind.set(null);
+    const id = this.id();
     switch (kind) {
       case 'archive':
-        // REF E: mark project archived → its channels + GED are dropped from
-        // the sidebar and its channels flip to readonly automatically.
-        this.archivedSvc.archive(this.id());
-        this.showToast('Projet archivé');
-        this._t = setTimeout(() => this.router.navigate(['/app/projets/archives']), 900);
+        // REF E : l'archivage est persisté ; on masque aussi le projet dans les
+        // barres latérales tout de suite (ses canaux + GED disparaissent).
+        this.projectsSvc.archive(id).subscribe(() => {
+          this.archivedSvc.archive(id);
+          this.showToast('Projet archivé');
+          this._t = setTimeout(() => this.router.navigate(['/app/projets/archives']), 900);
+        });
         break;
       case 'restore':
-        // REF E: restore = the project becomes navigable normally again.
-        this.archivedSvc.restore(this.id());
-        this.showToast('Projet restauré');
-        this._t = setTimeout(() => this.router.navigate(['/app/projets', this.id(), 'kanban']), 900);
+        this.projectsSvc.restore(id).subscribe(() => {
+          this.archivedSvc.restore(id);
+          this.showToast('Projet restauré');
+          this._t = setTimeout(() => this.router.navigate(['/app/projets', id, 'kanban']), 900);
+        });
         break;
       case 'delete':
-        this.archivedSvc.restore(this.id());
-        this.showToast('Projet supprimé définitivement');
-        this._t = setTimeout(() => this.router.navigate(['/app/projets']), 900);
+        this.projectsSvc.remove(id).subscribe(() => {
+          this.archivedSvc.archive(id);
+          this.showToast('Projet supprimé définitivement');
+          this._t = setTimeout(() => this.router.navigate(['/app/projets']), 900);
+        });
         break;
       case 'deleteArchived':
-        this.archivedSvc.restore(this.id());
-        this.showToast('Projet supprimé définitivement');
-        this._t = setTimeout(() => this.router.navigate(['/app/projets/archives']), 900);
+        this.projectsSvc.remove(id).subscribe(() => {
+          this.showToast('Projet supprimé définitivement');
+          this._t = setTimeout(() => this.router.navigate(['/app/projets/archives']), 900);
+        });
         break;
     }
   }

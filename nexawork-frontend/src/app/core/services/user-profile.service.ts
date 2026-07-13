@@ -1,5 +1,9 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
+import { switchMap } from 'rxjs/operators';
+import { of } from 'rxjs';
 import { AuthService } from './auth.service';
+import { SessionService } from './session.service';
+import { FilesHttpService } from '@core/http/files.http.service';
 import { environment } from '@environment/environment';
 
 /** Profil éditable de l'utilisateur connecté (Paramètres ▸ Profil). */
@@ -24,6 +28,8 @@ const INITIAL: UserProfile = {
 @Injectable({ providedIn: 'root' })
 export class UserProfileService {
   private readonly auth = inject(AuthService);
+  private readonly session = inject(SessionService);
+  private readonly files = inject(FilesHttpService);
 
   private readonly _profile = signal<UserProfile>({ ...INITIAL });
   readonly profile = this._profile.asReadonly();
@@ -59,4 +65,32 @@ export class UserProfileService {
   }
 
   clearPhoto(): void { this._profile.update(p => ({ ...p, photoDataUrl: null })); }
+
+  /**
+   * Persiste la photo de profil : le binaire est poussé au File Service
+   * (contexte `avatar`), puis son URL de téléchargement stable est enregistrée
+   * comme `photoUrl` de l'utilisateur (`PATCH /users/me/profile`).
+   * En mock, l'aperçu local (data URL) suffit.
+   */
+  uploadPhoto(file: File, dataUrl: string): void {
+    // Aperçu immédiat, quel que soit le mode.
+    this._profile.update(p => ({ ...p, photoDataUrl: dataUrl }));
+    if (environment.mock.auth) return;
+
+    const userId = this.session.user()?.id;
+    this.files.upload('avatar', file, { ...(userId ? { userId } : {}) }).pipe(
+      switchMap(stored => {
+        const cur = this._profile();
+        return this.auth.updateProfile({
+          firstName: cur.firstName,
+          lastName: cur.lastName,
+          jobTitle: cur.role,
+          photoUrl: stored.downloadUrl,
+        });
+      }),
+    ).subscribe({
+      next: u => this._profile.update(p => ({ ...p, photoDataUrl: u.photoUrl ?? p.photoDataUrl })),
+      error: () => of(null),
+    });
+  }
 }

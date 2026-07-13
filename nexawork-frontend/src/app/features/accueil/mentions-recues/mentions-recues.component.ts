@@ -147,7 +147,7 @@ export class MentionsRecuesComponent {
       id, title: 'Voir commentaire — ' + id,
       desc: '', proj: 'Tâche',
       prio: ['Haute', '#F5564E', '#FDECEB'],
-      tag: ['Commentaire', '#6C70F0'], prog: [0, ''],
+      tag: ['Commentaire', '#6C70F0'],
       team: [], links: 0, comments: 1,
     });
   }

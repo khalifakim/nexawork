@@ -1,6 +1,8 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { SessionService } from './session.service';
 import { ME } from '@core/util/ui.util';
+import { environment } from '@environment/environment';
+import { GedItem } from '@core/models/ged.models';
 
 export type GedAccessMode = 'open' | 'private' | 'shared';
 export interface GedGrant { type: 'user' | 'team'; name: string; level: 'READER' | 'EDITOR'; }
@@ -23,6 +25,16 @@ export class GedOverlayBus {
   readonly accessName = signal<string | null>(null);
   readonly versionsName = signal<string | null>(null);
 
+  /**
+   * Élément ciblé par le modal ouvert (mode réel) — porte l'UUID nécessaire aux
+   * appels grants/versions. `null` en mock (les modals retombent sur le nom).
+   */
+  readonly targetItem = signal<GedItem | null>(null);
+
+  /** Ouvre « Gérer les accès » / « Versions » sur un élément réel (avec son UUID). */
+  openAccessFor(item: GedItem): void { this.targetItem.set(item); this.accessName.set(item.name); }
+  openVersionsFor(item: GedItem): void { this.targetItem.set(item); this.versionsName.set(item.name); }
+
   /** Restrictions keyed by document/folder name. Seeded like the prototype. */
   readonly restrictions = signal<Record<string, GedRestriction>>({
     // Private document created by another user — invisible to the demo user.
@@ -41,8 +53,17 @@ export class GedOverlayBus {
     return this.restrictions()[name] ?? { mode: 'open', grants: [] };
   }
 
+  /**
+   * Noms des éléments marqués « restreints » par le backend (`GedItem.restricted`).
+   * Alimenté par les vues à chaque chargement — sert d'indicateur cadenas.
+   */
+  private readonly restrictedNames = signal<ReadonlySet<string>>(new Set());
+  /** Déclaré par une vue GED après chargement de son contenu (mode réel). */
+  setRestrictedNames(names: string[]): void { this.restrictedNames.set(new Set(names)); }
+
   /** A name is "restricted" when it's private, or shared with at least one grant. */
   hasRestriction(name: string): boolean {
+    if (!environment.mock.ged) return this.restrictedNames().has(name);
     const r = this.restrictionOf(name);
     return r.mode === 'private' || (r.mode === 'shared' && r.grants.length > 0);
   }
@@ -70,6 +91,10 @@ export class GedOverlayBus {
    * they've been granted.
    */
   hasAccess(name: string, itemOwner?: string): boolean {
+    // Backend réel : le serveur applique déjà REF G et ne renvoie que les
+    // éléments visibles par l'appelant — tout ce qui est affiché est accessible.
+    if (!environment.mock.ged) return true;
+
     const r = this.restrictionOf(name);
     if (r.mode === 'open' && !r.owner && !itemOwner) return true;
     const owner = r.owner ?? itemOwner;
@@ -86,6 +111,12 @@ export class GedOverlayBus {
   /** R12 — only the creator or an ADMIN/OWNER can delete an item. */
   canDelete(name: string, itemOwner?: string): boolean {
     if (this.session.isAdmin()) return true;
+    // Backend réel : `itemOwner` est le nom résolu de l'auteur (GedItem.owner) ;
+    // la règle définitive est de toute façon revalidée côté serveur (403 sinon).
+    if (!environment.mock.ged) {
+      const me = this.session.user()?.displayName;
+      return !itemOwner || !me || itemOwner === me;
+    }
     const owner = this.restrictionOf(name).owner ?? itemOwner;
     return owner === ME;
   }

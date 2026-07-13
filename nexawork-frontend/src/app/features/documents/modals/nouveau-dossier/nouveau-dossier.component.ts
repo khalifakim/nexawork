@@ -38,7 +38,7 @@ export class NouveauDossierComponent {
   /** R16 — scope propagated to the share picker (workspace vs project members). */
   @Input() scope: 'org' | 'project' = 'org';
   @Output() closed = new EventEmitter<void>();
-  @Output() created = new EventEmitter<string>();
+  @Output() created = new EventEmitter<{ name: string; restricted: boolean }>();
 
   private gedOverlay = inject(GedOverlayBus);
 
@@ -59,6 +59,6 @@ export class NouveauDossierComponent {
         owner: ME,
       });
     }
-    this.created.emit(n);
+    this.created.emit({ name: n, restricted: this.restrict() });
   }
 }

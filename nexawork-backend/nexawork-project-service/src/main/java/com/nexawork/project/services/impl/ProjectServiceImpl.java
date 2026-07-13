@@ -76,11 +76,11 @@ public class ProjectServiceImpl implements ProjectService {
                 .enforceWorkflowOrder(false)
                 .build());
 
-        // Le créateur devient chef de projet (MANAGER, isProjectLead) — V5.1 §4.2.
+        // Le créateur devient chef de projet (PROJECT_LEAD, isProjectLead) — V5.1 §4.2.
         projectMemberRepository.save(ProjectMember.builder()
                 .project(project)
                 .userId(userId)
-                .projectRole(ProjectRole.MANAGER)
+                .projectRole(ProjectRole.PROJECT_LEAD)
                 .isProjectLead(true)
                 .build());
 

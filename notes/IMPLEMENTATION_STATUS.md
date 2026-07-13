@@ -20,7 +20,9 @@ restantes exigent du développement backend neuf** : **I9** (endpoints de recher
 **Frontend : ✅ construit sur mocks.**
 **Phase en cours : intégration Frontend ↔ Backend (mock → HTTP)**, phase par phase — voir le plan.
 
-Progression intégration : **2 / 14 phases du périmètre livrable** (✅ I0, I1 · prochaine : **I2 Projects + Tasks/Kanban**).
+Progression intégration : **14 / 14 phases du périmètre livrable** (✅ I0, I1, I2, I3, I4, I5, I6, I7, I9, I10, **I8, M4, M2, M3**). 🎉 **Intégration frontend↔backend code-complète.** Reste : la **session de test finale** (lancer la stack, corriger). M5/M6 = perspectives hors périmètre.
+> 🔓 **Présence « en ligne » débloquée en I6** : elle est tenue par le **Notification Service** (`GET /presence/online` + heartbeat STOMP `/app/presence/heartbeat`), pas par le Messaging (dont `/presence/active` est un stub). `MembersService.online()` a été recâblé — le « En ligne » d'I3 fonctionne désormais.
+> ⚠️ **Sprint sans test intermédiaire (2026-07-11)** : sur décision utilisateur (machine 8 Go), on développe toutes les phases d'affilée et on teste **tout à la fin**. `ng build` (dev+prod) vert après chaque phase ; le **temps réel STOMP (I4/I6)** et le **backend neuf (I9/I10/M2/M3)** ne seront validés qu'à la session finale.
 *(14 = 16 phases initiales − M5/M6 repassées en perspective.)*
 
 ### 📌 État réel du code (vérifié 2026-07-09)
@@ -84,22 +86,22 @@ Colonne **Backend** : ✅ = déjà livré (baseline) · 🔴 = **développement 
 | :-: | :-: | :- | :-: | :-: | :-: | :- |
 | 1 | **I0** | Socle transverse (enveloppe, context-paths, UUID, JWT/refresh) | ✅ | ✅ | ✅ | Livré + validé live (2026-07-06). |
 | 2 | **I1** | Auth & Workspace | ✅ | ✅ | ✅ | I1a-d + **lot de corrections validé live (2026-07-10)** — voir §1bis. |
-| 3 | **I2** | Projects + Tasks/Kanban | ✅ | ⏳ | ⏳ | **Phase la plus lourde** : 2 `*HttpService` + gros recâblage des écritures (Kanban FSM, sous-tâches, commentaires). |
-| 4 | **I3** | Members | ✅ | ⏳ | ⏳ | Annuaire + présence Redis (`/presence/active`). Légère. |
-| 5 | **I4** | Channels + Conversations | ✅ | ⏳ | ⏳ | 2 `*HttpService` + **client STOMP à écrire** (temps réel). Lourde. |
-| 6 | **I5** | GED / Documents | ✅ | ⏳ | ⏳ | 1 `*HttpService` (~13 méthodes) + File Service (MinIO). Lourde. Inclut la **photo de profil** (reste de I1). |
-| 7 | **I6** | Notifications | ✅ | ⏳ | ⏳ | HttpService + STOMP + **Service Worker Web Push**. Table `kind`↔`NotificationType`. |
-| 8 | **I7** | Accueil / Dashboard | ✅ | ⏳ | ⏳ | Agrège I2/I4 ; retirer `membersOnline` ; trancher `myTasks()`. Légère. |
-| 9 | **I9** | Recherche globale | 🔴 | ⏳ | ⏳ | **À développer** : `GET .../search?q=` interne (ILIKE) par service + agrégation Gateway, en respectant REF F/G. |
-| 10 | **I10** | Rapports PDF | 🔴 | ⏳ | ⏳ | **À développer** : OpenPDF + `GET /projects/{id}/report` et `/workspaces/{id}/report` (`application/pdf`). Front : téléchargement blob. |
+| 3 | **I2** | Projects + Tasks/Kanban | ✅ (+`comment_attachments`) | ✅ | ✅ | **Livrée (I2a+b+c)** : projets, board FSM, tâches, fiche complète, commentaires+PJ, **statuts/workflow persistés, vue d'ensemble, gantt réels**. Voir « Détail I2a/b/c ». |
+| 4 | **I3** | Members | ✅ | ✅ | ✅ | **Livrée** : `MembersHttpService` (annuaire Auth réel). ⚠️ présence « en ligne » vide tant que l'infra WebSocket (I4/I6) n'alimente pas Redis — `/presence/active` est un stub côté backend. |
+| 5 | **I4** | Channels + Conversations | ✅ | ✅ | 🚧 | **Code livré** (2 `*HttpService` + client STOMP `core/ws/`). ⚠️ **temps réel non testable avant la session finale**. Routing par slug conservé (résolution slug↔UUID interne). PJ de message différées (dépendance circulaire `messageId`). |
+| 6 | **I5** | GED / Documents | ✅ | ✅ | ✅ | **Livrée** (a+b+c) : arborescence, écritures (import File Service), versions, **accès/grants réels par UUID** (R16 : bénéficiaires = membres+équipes du projet), bibliothèque (mes-docs/partagés/corbeille), **photo de profil** (File Service `avatar`). `ged` → `false`. Builds dev+prod verts. |
+| 7 | **I6** | Notifications | ✅ | ✅ | ✅ | **Livrée** : `NotificationsHttpService` (liste, lu, masquer), **STOMP** `/user/queue/notifications` (temps réel), **Web Push** (`public/sw-push.js` + `WebPushService` + clé VAPID), **présence réelle** (heartbeat STOMP → Redis). Client STOMP refondu en 2 connexions (messaging + notifications). |
+| 8 | **I7** | Accueil / Dashboard | ✅ (+2 ajouts) | ✅ | ✅ | **Livrée** : `AccueilHttpService` (dashboard, mentions, mes tâches). **Backend neuf** : `GET /users/me/tasks` (le gap `myTasks()` tranché — endpoint dédié plutôt que N+1 côté front) et `MentionResponse` enrichi (auteur, extrait, canal/conversation) pour « Mentions reçues ». `membersOnline` retirée (V5.1 §5.2). R1 déjà couverte par `adminGuard`. |
+| 9 | **I9** | Recherche globale | ✅ **développé** | ✅ | ✅ | **Livrée** : `GET /search?q=` dans **4 services** (Project : projets+tâches R15 · GED : dossiers+fichiers **REF G** · Messaging : canaux+messages **REF F** · Auth : personnes). Agrégation **côté frontend** (forkJoin des 4, tolérant aux pannes) plutôt qu'un orchestrateur Gateway — même résultat, aucun service neuf. Overlay : requête serveur debouncée (250 ms), navigation par UUID. |
+| 10 | **I10** | Rapports PDF | ✅ **développé** | ✅ | ✅ | **Livrée** : **OpenPDF** (dép. ajoutée au pom project-service) + `ReportService` réutilisant `DashboardService`/overview (aucune nouvelle donnée). Les 2 stubs 501 remplacés par de vrais PDF `application/pdf` + `Content-Disposition`. Droits : chef+ADMIN (projet), ADMIN R1 (global). Front : `ReportsService` (téléchargement blob) + boutons branchés avec spinner. |
 
 ### Bloc final — Meetings (en dernier)
 | Ordre | Phase | Intitulé | Backend | Frontend | Statut |
 | :-: | :-: | :- | :-: | :-: | :-: |
-| 11 | **I8** | Meetings — intégration socle (+ `jitsiUrl`/`jwt`) | ✅ (M1) | ⏳ | ⏳ |
-| 12 | **M4** | Intégration fine IFrame API JaaS | n/a | ⏳ | ⏳ |
-| 13 | **M2** | Persistance du chat de réunion (**F5**) | 🔴 | ⏳ | ⏳ (périmètre livré) |
-| 14 | **M3** | Approbation des participants (lobby JaaS) | 🔴 | ⏳ | ⏳ |
+| 11 | **I8** | Meetings — intégration socle (+ `jitsiUrl`/`jwt`) | ✅ (M1) | ✅ | ✅ | `MeetingsHttpService` (history/active/create/join/leave/end/hide/remove/inviteParticipants/inviteGuest). `lancer` crée un appel réel → ouvre la salle. |
+| 12 | **M4** | Intégration fine IFrame API JaaS | n/a | ✅ | ✅ | Composant `salle-reunion` : charge `external_api.js`, `JitsiMeetExternalAPI`, events `videoConferenceJoined`/`readyToClose`→`startCall`/`endCall`. Non exerçable sans clé JaaS réelle. |
+| 13 | **M2** | Persistance du chat de réunion (**F5**) | ✅ **développé** | ✅ | ✅ | **Backend neuf** : entité `MeetingMessage` + repo + `MeetingChatService` + `POST/GET /calls/{id}/messages` (réservé participants). Front : `MeetingChatService` capte `incoming/outgoingMessage` → POST. |
+| 14 | **M3** | Approbation des participants (lobby JaaS) | ✅ **développé** | ✅ | ✅ | **Backend** : `JitsiTokenService` émet `lobby_bypass` = `true` pour hôte + membres conviés (`invitedExplicitly`), `false` pour externe et membre non convié. Front lobby (knocking) : activable dans la config salle. |
 | — | **M5** | Partage de fichiers en réunion | — | — | 🔮 Perspective (reporté) |
 | — | **M6** | Enregistrement de la réunion | — | — | 🔮 Perspective (reporté) |
 
@@ -211,6 +213,93 @@ Buildé (`auth-service` + `api-gateway` + `frontend`), testé en navigateur, V5.
 **Aucune migration DB** (`user_action_tokens.type` est un `VARCHAR(50)`) · **aucun changement de config-repo**.
 `docker-compose.yml` : `SPRINGDOC_ENABLED` désactivé par défaut. Swagger (si activé) s'ouvre via
 `http://localhost:4200/nexawork-auth-api-v1/swagger-ui/index.html` — les ports Java hôtes (`:8080`/`:8081`) sont gelés par Docker Desktop.
+
+### Détail des phases livrées (suite)
+
+#### I2a · Projects + board Kanban (lecture + drag-drop) — ✅ Livré (2026-07-10)
+Bascule : `environment.mock.projects = false`, `.tasks = false`. `ng build` vert (mock ET réel).
+
+- **Créés** :
+  - `core/models/project.models.ts` (réécrit) : `Project` en **UUID** (+ `prefix`/`status`/`ownerUserId`/`memberCount`/
+    `startDate`/`endDate`/`enforceWorkflowOrder`/`lastModifiedDate`), `ProjectResponse`, payloads. **`progress` retiré.**
+  - `core/models/task.models.ts` (réécrit) : `TaskCard` (+ `taskKey`/`projectId`/`statusId`/`priority`/dates), `KanbanColumn`
+    (+ `position`/`isInitial`/`isFinal`), `StatusResponse`/`TaskResponse`, payloads. **`prog` retiré.**
+  - `core/util/task-display.util.ts` : mapping payloads→affichage (priorité→tuple, catégorie→`cat`, `dueDate`→bucket,
+    `TaskResponse`→`TaskCard`, `StatusResponse`→`KanbanColumn`).
+  - `core/util/ui.util.ts` : `tintOf()` (fond teinté d'une couleur libre), `avatarColorFor()`/`AVATAR_COLORS` (couleur
+    d'avatar déterministe par UUID — partagée avec les futurs domaines).
+  - `core/services/data-refresh.service.ts` : `DataRefreshService` (compteur `projects` bumpé après mutation → les
+    listes chargées par `workspaceSignal` refetchent sans recharger la page).
+- **Services** :
+  - `projects.service.ts` : contrat étendu (`create`/`update`/`archive`/`restore`/`remove`/`listArchived`) + `ProjectsMockService`
+    + **`ProjectsHttpService`** (`/projects`, `/projects/{id}`, `/archive`, `/restore`, `/archived-projects`).
+  - `tasks.service.ts` : contrat **remanié** — `loadBoard(projectId)` (forkJoin statuts+tâches en 1 appel),
+    `cardById(id)` **async**, `createTask`/`deleteTask`/`changeStatus` + Mock + **`TasksHttpService`**.
+  - `data.providers.ts` : bind conditionnel `Projects`/`Tasks` (mock↔http).
+- **Composants recâblés** : `kanban.store.ts` (reçoit `projectId`, charge via `loadBoard`, **drag-drop optimiste →
+  `changeStatus` avec revert sur 422 + toast « [taskKey] déplacée vers « [Statut] » »** conforme V5.1 §8),
+  `kanban.component.ts` (carte affiche `taskKey`, `tintOf` pour couleurs libres), `projet-shell.component.ts`
+  (pousse `projectId`, archive/restore/delete réels, `switchTask` async), `creer-projet` (→ `projects.create`),
+  `projets-archives` (→ `listArchived` + restore/remove réels), `app-shell` (`cardById` async, navigation post-création,
+  bump refresh), `sidebar-2` (retrait du `%` vestige, refresh), `archived-projects.service.ts` (masquage local instantané,
+  seed mock retiré).
+- **Fixtures mock** réécrites au **format payload backend** (`MOCK_STATUSES`/`MOCK_TASKS`, `PROJECTS_BY_WORKSPACE`/
+  `ARCHIVED_PROJECTS`) → mock et réel produisent exactement les mêmes cartes.
+- **V5.1** : §6 sidebar « Tous les projets » corrigée (**pas de %** ; progression en Vue d'ensemble + Dashboard).
+- **Reste I2 (à faire)** :
+  - **I2b** — `creer-tache` (statuts/priorité réels), `fiche-tache` (sous-tâches, commentaires, pièces jointes) + **File
+    Service** (upload `context=task-attachment`) + **backend neuf** `comment_attachments` (migration `V3`, §5 plan).
+  - **I2c** — modals `Statuts`/`Workflow` (persistance `/statuses`,`/transitions`,`/workflow`), `vue-d-ensemble`
+    (`/overview`), `gantt`.
+- **Limites connues I2a** (levées dans les sous-phases) : board d'un projet neuf = colonnes seedées + 0 tâche
+  (le drag-drop se valide en I2b, avec la création de tâche) ; filtre « Assigné à » (Kanban) et « Chef de projet »
+  (archives) attendent l'annuaire membres (**I3**) ; les modals Statuts/Workflow et le menu ⋯ de colonne mutent encore
+  le store en **local** (persistés en I2c).
+
+#### I2b · Création de tâche + fiche complète + commentaires/PJ — ✅ Livré (2026-07-10)
+Domaine `tasks` (déjà en réel depuis I2a). `ng build` vert (dev + prod). **Nécessite le rebuild `project-service`**
+(migration `V3` + entité `comment_attachments`).
+
+- **Backend (dev neuf)** — pièces jointes de commentaire :
+  - `V3__comment_attachments.sql`, entité `CommentAttachment`, `TaskComment` (`@OneToMany` cascade + `addAttachment`),
+    `CommentAttachmentRequest`/`Response`, `CreateCommentRequest.attachments`, `CommentResponse.attachments`,
+    `CommentMapper` (mapping imbriqué), `TaskCommentServiceImpl` (persistance + **texte optionnel si ≥ 1 fichier**).
+- **Frontend** :
+  - `core/http/files.http.service.ts` : `FilesHttpService` (upload multipart `context=task-attachment` avec
+    `workspaceId`/`projectId`/`taskId`, `download` blob). Réutilisable en I5 (GED, avatar).
+  - `task.models.ts` : `SubTask`, `TaskComment`, `AttachedRef`, `TaskAttachment` (+ types `*Response`), `UpdateTaskPayload` câblé.
+  - `tasks.service.ts` : contrat étendu — `updateTask`, `subtasks`/`addSubtask`/`setSubtaskDone`/`removeSubtask`,
+    `comments`/`addComment`(upload)/`removeComment`, `attachments`/`addAttachment`(upload)/`removeAttachment` (Mock + Http).
+  - `comment-composer` : conserve le **vrai `File`** + émet le **texte brut** (2 champs additifs, non cassants).
+  - `creer-tache` : création réelle (`createTask` sur statut de colonne réel + priorité + dates + estimation),
+    puis création des sous-tâches ; insertion dans le board sans recharger (`store.addCard`).
+  - `fiche-tache` : **recâblée** — chargement du détail, édition titre/description (`updateTask` au blur),
+    sous-tâches (toggle/ajout/retrait optimistes), commentaires (rendu `parseRichText` + ajout avec upload + retrait),
+    pièces jointes de tâche (upload/téléchargement/retrait), suppression de tâche (`(deleted)` → board).
+  - `projet-shell`/`app-shell` : handlers `onTaskCreated`/`onTaskDeleted` ; le Kanban émet désormais l'**id** du statut.
+- **Limites connues I2b** (levées en I3) : **assigné** non transmis (sélecteur présent mais annuaire vide) ;
+  **auteurs de commentaire** affichés « Moi » / « Membre » (résolution des noms = I3) ; suggestions de **mentions** du
+  composeur = catalogue mock (câblé avec canaux/membres, I4/I3). Le **texte** des commentaires, lui, est bien persisté.
+
+#### I2c · Statuts + Workflow persistés, Vue d'ensemble, Gantt — ✅ Livré (2026-07-10)
+Aucun backend neuf (endpoints `/statuses`, `/transitions`, `/workflow`, `/overview` déjà livrés). `ng build` vert (dev + prod).
+
+- **`tasks.service.ts`** étendu : `createStatus`/`updateStatus`/`deleteStatus`, `transitions`, `updateWorkflow`, `overview`
+  (Mock + Http). Modèles `Transition`/`TransitionResponse`, `WorkflowUpdatePayload`, `ProjectOverviewResponse`.
+- **`KanbanStore`** : les mutations de statut **persistent** — `commitRename` (blur → PATCH nom), `setColor` (PATCH couleur),
+  `deleteColumn` (DELETE + revert sur 409), `addColumnAsync` (POST puis insertion), `moveStatus`/`reorderStatus`
+  (réindexation + PATCH positions). Le menu ⋯ de colonne du board persiste donc aussi (achève I2a).
+- **`statuts.component`** : rename (blur), couleur, ajout (async), suppression, drag-drop entre catégories → tous persistés ;
+  titre du modal = nom réel du projet.
+- **`workflow.component`** : étapes = colonnes réelles (monter/descendre → positions), bascule `enforceWorkflowOrder`,
+  responsables de transition **par rôle** (Tous → `ALL`, Chef de projet → `PROJECT_LEAD`) via `PATCH /workflow`.
+  Transitions **réelles** chargées (`GET /transitions`). Responsable « membre spécifique » différé à I3.
+- **`vue-d-ensemble`** : `GET /projects/{id}/overview` → avancement %, terminées/total, en retard, membres, donut
+  « répartition par catégorie de statut », échéances proches (`upcomingDueTasks`). Colonne « Responsable » = « — » (I3).
+- **`gantt`** : planning dérivé du board (`loadBoard`) — colonnes en semaines ISO calculées depuis les dates réelles
+  des tâches, barres `start`/`span`, avancement conventionnel par catégorie. Filtre « Assigné à » vide (I3).
+- **Limites connues I2c** (levées en I3) : filtre Gantt « Assigné à », responsable « membre spécifique » du Workflow,
+  et « Responsable » des échéances attendent l'annuaire des membres.
 
 ## 3 · Décisions/gaps (voir plan §5)
 

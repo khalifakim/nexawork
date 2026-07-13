@@ -11,19 +11,21 @@ export const environment = {
   production: true,
   mock: {
     auth: false,
-    projects: true,
-    tasks: true,
-    members: true,
-    channels: true,
-    conversations: true,
-    ged: true,
-    notifications: true,
-    accueil: true,
-    meetings: true,
-    search: true,
+    projects: false,     // Phase I2a
+    tasks: false,        // Phase I2a
+    members: false,      // Phase I3
+    channels: false,     // Phase I4
+    conversations: false,// Phase I4
+    ged: false,          // Phase I5
+    notifications: false,// Phase I6
+    accueil: false,      // Phase I7
+    meetings: false,     // Phase I8/M2/M3/M4
+    search: false,       // Phase I9
   },
   /** Même origine : nginx proxifie /nexawork-*-api-v1 vers la Gateway. */
   apiUrl: '',
   wsMessagingUrl: '/ws/messaging',
   wsNotificationUrl: '/ws/notifications',
+  /** Clé publique VAPID (Web Push, V5.1 §7.6) — la clé privée reste au backend. */
+  vapidPublicKey: 'BM8AL4x-9O_5wkUspvmULp3mVYZejAsttB-ImNMnFU1RiSW2yEll4T7NbNfZBFQ6ORyBLccERe4MUip-B6OWDJA',
 };

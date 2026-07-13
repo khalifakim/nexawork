@@ -1,33 +1,35 @@
-import { KanbanColumn, TaskCard } from '@core/models/task.models';
+import { StatusResponse, TaskResponse } from '@core/models/task.models';
 
-/** Raw Kanban data (mock fixture). Imported only by TasksMockService. */
-export const KANBAN_COLUMNS: KanbanColumn[] = [
-  { id: 'todo',   name: 'À faire',     color: '#8E8AA0', cat: 'notstarted' },
-  { id: 'doing',  name: 'En cours',    color: '#5B8DEF', cat: 'active' },
-  { id: 'review', name: 'En révision', color: '#E89A2C', cat: 'active' },
-  { id: 'done',   name: 'Validé',      color: '#2BB673', cat: 'done' },
+/**
+ * Raw Kanban fixture — volontairement au **format des payloads backend**
+ * (`StatusResponse` / `TaskResponse`). `TasksMockService` leur applique le même
+ * mapping que `TasksHttpService`, ce qui garantit que mock et réel produisent
+ * exactement les mêmes cartes.
+ */
+export const MOCK_STATUSES: StatusResponse[] = [
+  { id: 'todo',   name: 'À faire',     color: '#8E8AA0', category: 'NOT_STARTED', position: 0, isInitial: true,  isFinal: false },
+  { id: 'doing',  name: 'En cours',    color: '#5B8DEF', category: 'ACTIVE',      position: 1, isInitial: false, isFinal: false },
+  { id: 'review', name: 'En révision', color: '#E89A2C', category: 'ACTIVE',      position: 2, isInitial: false, isFinal: false },
+  { id: 'done',   name: 'Validé',      color: '#2BB673', category: 'DONE',        position: 3, isInitial: false, isFinal: true  },
 ];
 
-export const KANBAN_TASKS: Record<string, TaskCard[]> = {
-  todo: [
-    { id: 'MOB-101', title: 'Wireframes écran onboarding', desc: '3 variantes à présenter à la revue produit.', prio: ['Haute', '#F5564E', 'rgba(245,86,78,.12)'], tag: ['Design', '#6C70F0'], prog: [20, '#F5564E'], team: ['#F2693C', '#6C70F0', '#2BB673'], links: 2, comments: 4, due: 'semaine' },
-    { id: 'MOB-118', title: 'Audit accessibilité WCAG', desc: 'Contrastes et navigation clavier sur tous les écrans.', prio: ['Moyenne', '#E89A2C', 'rgba(232,154,44,.14)'], tag: ['QA', '#3AA9E0'], prog: [0, '#8E8AA0'], team: ['#E0497B', '#3AA9E0'], links: 1, comments: 0, due: 'mois' },
-  ],
-  doing: [
-    { id: 'MOB-094', title: 'Intégration écran profil utilisateur', desc: 'Composants React Native + états de chargement.', prio: ['Haute', '#F5564E', 'rgba(245,86,78,.12)'], tag: ['Dev', '#2BB673'], prog: [55, '#5B8DEF'], team: ['#6C70F0', '#F2693C'], links: 5, comments: 2, due: 'retard' },
-    { id: 'MOB-130', title: 'API auth — refresh token', desc: "Gestion de l'expiration et du renouvellement silencieux.", prio: ['Moyenne', '#E89A2C', 'rgba(232,154,44,.14)'], tag: ['Backend', '#E0497B'], prog: [40, '#5B8DEF'], team: ['#3AA9E0', '#2BB673', '#E0497B'], links: 3, comments: 6, due: 'semaine' },
-  ],
-  review: [
-    { id: 'MOB-077', title: 'Page paramètres — design final', desc: 'En attente de validation du chef de projet.', prio: ['Basse', '#2BB673', 'rgba(43,182,115,.12)'], tag: ['Design', '#6C70F0'], prog: [90, '#E89A2C'], team: ['#F2693C', '#6C70F0'], links: 4, comments: 1, due: 'mois' },
-    { id: 'MOB-088', title: 'Composant Kanban drag-drop', desc: 'Comportement de drop entre colonnes à revoir.', prio: ['Moyenne', '#E89A2C', 'rgba(232,154,44,.14)'], tag: ['Dev', '#2BB673'], prog: [75, '#E89A2C'], team: ['#F2693C', '#2BB673', '#3AA9E0'], links: 3, comments: 5, due: 'semaine' },
-  ],
-  done: [
-    { id: 'MOB-061', title: 'Système de design tokens', desc: 'Couleurs, typo et espacements exportés.', prio: ['Moyenne', '#E89A2C', 'rgba(232,154,44,.14)'], tag: ['Design', '#6C70F0'], prog: [100, '#2BB673'], team: ['#6C70F0', '#2BB673', '#F2693C', '#E0497B'], links: 8, comments: 3, due: 'mois' },
-    { id: 'MOB-055', title: 'Setup CI/CD mobile', desc: 'Pipeline build + tests automatisés.', prio: ['Haute', '#F5564E', 'rgba(245,86,78,.12)'], tag: ['Backend', '#E0497B'], prog: [100, '#2BB673'], team: ['#3AA9E0'], links: 2, comments: 0, due: 'retard' },
-  ],
-};
+/** Date ISO (yyyy-mm-dd) décalée de `days` par rapport à aujourd'hui. */
+function inDays(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
 
-/** Flat index by task id — used to resolve a @@mention to a full card. */
-export const TASK_BY_ID: Record<string, TaskCard> = Object.fromEntries(
-  Object.values(KANBAN_TASKS).flat().map(t => [t.id, t]),
-);
+const PROJECT = 'refonte-app-mobile';
+const CREATED = '2025-09-11T09:00:00';
+
+export const MOCK_TASKS: TaskResponse[] = [
+  { id: 'MOB-101', projectId: PROJECT, taskKey: 'MOB-101', title: 'Wireframes écran onboarding',      description: '3 variantes à présenter à la revue produit.',            statusId: 'todo',   statusName: 'À faire',     priority: 'HIGH',   assigneeType: 'USER', assigneeId: 'u2', dueDate: inDays(4),   subtaskCount: 0, commentCount: 4, attachmentCount: 2, createdDate: CREATED },
+  { id: 'MOB-118', projectId: PROJECT, taskKey: 'MOB-118', title: 'Audit accessibilité WCAG',          description: 'Contrastes et navigation clavier sur tous les écrans.',  statusId: 'todo',   statusName: 'À faire',     priority: 'MEDIUM', assigneeType: 'USER', assigneeId: 'u4', dueDate: inDays(20),  subtaskCount: 0, commentCount: 0, attachmentCount: 1, createdDate: CREATED },
+  { id: 'MOB-094', projectId: PROJECT, taskKey: 'MOB-094', title: 'Intégration écran profil utilisateur', description: 'Composants React Native + états de chargement.',      statusId: 'doing',  statusName: 'En cours',    priority: 'HIGH',   assigneeType: 'USER', assigneeId: 'u3', dueDate: inDays(-3),  subtaskCount: 1, commentCount: 2, attachmentCount: 5, createdDate: CREATED },
+  { id: 'MOB-130', projectId: PROJECT, taskKey: 'MOB-130', title: 'API auth — refresh token',           description: "Gestion de l'expiration et du renouvellement silencieux.", statusId: 'doing', statusName: 'En cours',    priority: 'MEDIUM', assigneeType: 'USER', assigneeId: 'u5', dueDate: inDays(6),   subtaskCount: 0, commentCount: 6, attachmentCount: 3, createdDate: CREATED },
+  { id: 'MOB-077', projectId: PROJECT, taskKey: 'MOB-077', title: 'Page paramètres — design final',     description: 'En attente de validation du chef de projet.',            statusId: 'review', statusName: 'En révision', priority: 'LOW',    assigneeType: 'USER', assigneeId: 'u2', dueDate: inDays(25),  subtaskCount: 0, commentCount: 1, attachmentCount: 4, createdDate: CREATED },
+  { id: 'MOB-088', projectId: PROJECT, taskKey: 'MOB-088', title: 'Composant Kanban drag-drop',         description: 'Comportement de drop entre colonnes à revoir.',          statusId: 'review', statusName: 'En révision', priority: 'MEDIUM', assigneeType: 'USER', assigneeId: 'u3', dueDate: inDays(5),   subtaskCount: 0, commentCount: 5, attachmentCount: 3, createdDate: CREATED },
+  { id: 'MOB-061', projectId: PROJECT, taskKey: 'MOB-061', title: 'Système de design tokens',           description: 'Couleurs, typo et espacements exportés.',                statusId: 'done',   statusName: 'Validé',      priority: 'MEDIUM', assigneeType: 'USER', assigneeId: 'u4', dueDate: inDays(18),  subtaskCount: 0, commentCount: 3, attachmentCount: 8, createdDate: CREATED },
+  { id: 'MOB-055', projectId: PROJECT, taskKey: 'MOB-055', title: 'Setup CI/CD mobile',                 description: 'Pipeline build + tests automatisés.',                    statusId: 'done',   statusName: 'Validé',      priority: 'HIGH',   assigneeType: 'USER', assigneeId: 'u5', dueDate: inDays(-9),  subtaskCount: 0, commentCount: 0, attachmentCount: 2, createdDate: CREATED },
+];

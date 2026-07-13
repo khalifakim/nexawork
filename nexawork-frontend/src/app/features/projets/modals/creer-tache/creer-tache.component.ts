@@ -1,42 +1,36 @@
 import {
-  ChangeDetectionStrategy, Component, EventEmitter, Input, OnInit,
-  Output, computed, signal,
+  AfterViewInit, ChangeDetectionStrategy, Component, ElementRef, EventEmitter, Input, OnInit,
+  Output, ViewChild, computed, inject, signal,
 } from '@angular/core';
+import { forkJoin } from 'rxjs';
 import { IconComponent } from '@shared/ui/icon/icon.component';
+import { TasksService } from '@core/services/tasks.service';
+import { ToastService } from '@core/services/toast.service';
+import { CreateTaskPayload, KanbanColumn, TaskCard, TaskPriority } from '@core/models/task.models';
+import { tintOf } from '@core/util/ui.util';
 
 // ── Data ────────────────────────────────────────────────────────────────────
 
-const STATUSES = [
-  { name: 'À faire',     color: '#8E8AA0', bg: 'rgba(142,138,160,.14)' },
-  { name: 'En cours',    color: '#5B8DEF', bg: 'rgba(91,141,239,.16)'  },
-  { name: 'En révision', color: '#E89A2C', bg: 'rgba(232,154,44,.16)'  },
-  { name: 'Validé',      color: '#2BB673', bg: 'rgba(43,182,115,.16)'  },
-];
-
-const PRIOS = [
-  { name: 'Basse',   color: '#2BB673' },
-  { name: 'Moyenne', color: '#E89A2C' },
-  { name: 'Haute',   color: '#F5564E' },
-  { name: 'Urgente', color: '#E0497B' },
+const PRIOS: { name: string; color: string; value: TaskPriority }[] = [
+  { name: 'Basse',   color: '#2BB673', value: 'LOW' },
+  { name: 'Moyenne', color: '#E89A2C', value: 'MEDIUM' },
+  { name: 'Haute',   color: '#F5564E', value: 'HIGH' },
+  { name: 'Urgente', color: '#E0497B', value: 'URGENT' },
 ];
 
 const EST_OPTIONS = ['0,5 h', '1 h', '2 h', '4 h', '1 j', '2 j', '3 j', '1 sem'];
 
-const ME = { name: 'Akim Koné', c: '#F5A623' };
+const ME = { name: 'Moi', c: '#F5A623' };
 
-const MEMBERS = [
-  ME,
-  { name: 'Moussa Bâ',   c: '#5B5FE9' },
-  { name: 'Aïda Ndiaye', c: '#E0497B' },
-  { name: 'Fatou Sarr',  c: '#3AA9E0' },
-  { name: 'Yacine Sow',  c: '#2BB673' },
-];
+/**
+ * Annuaire des assignés — vide en I2b : l'annuaire des membres (résolution
+ * userId → nom/couleur) est câblé en I3. Le sélecteur reste présent (design
+ * préservé) mais n'affiche pas de personne tant que I3 n'a pas alimenté ces
+ * listes ; l'assigné n'est donc pas encore transmis à la création.
+ */
+const MEMBERS: { name: string; c: string }[] = [];
 
-const TEAMS = [
-  { name: 'Design Produit', c: '#6C70F0' },
-  { name: 'Développement',  c: '#2BB673' },
-  { name: 'Marketing',      c: '#F2693C' },
-];
+const TEAMS: { name: string; c: string }[] = [];
 
 // raw SVG paths used in field labels (not in the icon registry)
 const IC_STATUS = '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.4" fill="currentColor" stroke="none"/>';
@@ -82,7 +76,7 @@ const IC_USER   = '<circle cx="12" cy="8" r="3.4"/><path d="M5.5 20c0-3.6 2.9-6.
         <div class="lsc">
 
           <!-- Title -->
-          <input class="ttl" autofocus placeholder="Nom de la tâche"
+          <input #titleInput class="ttl" placeholder="Nom de la tâche"
                  [value]="title()" (input)="title.set($any($event.target).value)" />
 
           <!-- ── Fields ─────────────────────────────────────────────────── -->
@@ -94,22 +88,22 @@ const IC_USER   = '<circle cx="12" cy="8" r="3.4"/><path d="M5.5 20c0-3.6 2.9-6.
               <div class="fv">
                 <div class="fw">
                   <button class="st-btn"
-                          [style.background]="curStatus().bg"
-                          [style.color]="curStatus().color"
+                          [style.background]="tint(curStatus()?.color)"
+                          [style.color]="curStatus()?.color"
                           [style.border-color]="field()==='status' ? '#5B5FE9' : 'transparent'"
                           (click)="$event.stopPropagation(); openField('status')">
-                    <span class="st-dot" [style.background]="curStatus().color"></span>
-                    {{ curStatus().name }}
+                    <span class="st-dot" [style.background]="curStatus()?.color"></span>
+                    {{ curStatus()?.name }}
                     <app-icon name="chevronDown" [size]="13" [stroke]="2.4" />
                   </button>
                   @if (field() === 'status') {
                     <div class="dd" style="width:196px" (click)="$event.stopPropagation()">
-                      @for (s of STATUSES; track s.name) {
-                        <button class="dd__i" [class.dd__i--sel]="s.name === status()"
-                                (click)="status.set(s.name); field.set(null)">
+                      @for (s of columns; track s.id) {
+                        <button class="dd__i" [class.dd__i--sel]="s.id === statusId()"
+                                (click)="statusId.set(s.id); field.set(null)">
                           <span class="st-dot" [style.background]="s.color" style="flex:none"></span>
                           <span style="flex:1">{{ s.name }}</span>
-                          @if (s.name === status()) {
+                          @if (s.id === statusId()) {
                             <app-icon name="checkBig" [size]="15" style="color:#5B5FE9;display:flex" />
                           }
                         </button>
@@ -369,10 +363,22 @@ const IC_USER   = '<circle cx="12" cy="8" r="3.4"/><path d="M5.5 20c0-3.6 2.9-6.
           <!-- Pièces jointes -->
           <div class="section">
             <div class="sec__h">Pièces jointes</div>
-            <div class="dropzone">
+            @if (attachedFiles().length) {
+              <div class="att-list">
+                @for (f of attachedFiles(); track $index; let i = $index) {
+                  <div class="att-item">
+                    <span class="att-ic">{{ fileExt(f.name) }}</span>
+                    <div class="att-meta"><span class="att-nm">{{ f.name }}</span><span class="att-sz">{{ sizeOf(f.size) }}</span></div>
+                    <button class="att-rm" (click)="removeFile(i)" title="Retirer"><app-icon name="trash" [size]="15" /></button>
+                  </div>
+                }
+              </div>
+            }
+            <label class="dropzone" (dragover)="$event.preventDefault()" (drop)="onDrop($event)">
               <app-icon name="upload" [size]="20" />
               <span>Déposez vos fichiers ici ou <strong style="color:#5B5FE9">parcourir</strong></span>
-            </div>
+              <input type="file" hidden multiple (change)="onFilesPicked($event)" />
+            </label>
           </div>
 
         </div><!-- /lsc -->
@@ -383,8 +389,8 @@ const IC_USER   = '<circle cx="12" cy="8" r="3.4"/><path d="M5.5 20c0-3.6 2.9-6.
     <div class="footer">
       <span style="flex:1"></span>
       <button class="ft-ghost" (click)="closed.emit()">Annuler</button>
-      <button class="ft-primary" [disabled]="!canCreate()" (click)="create()">
-        <app-icon name="plus" [size]="16" />Créer la tâche
+      <button class="ft-primary" [disabled]="!canCreate() || busy()" (click)="create()">
+        <app-icon name="plus" [size]="16" />{{ busy() ? "Création…" : "Créer la tâche" }}
       </button>
     </div>
 
@@ -669,6 +675,29 @@ const IC_USER   = '<circle cx="12" cy="8" r="3.4"/><path d="M5.5 20c0-3.6 2.9-6.
     .dropzone:hover { border-color: #5B5FE9; }
     .dropzone app-icon { color: #b4b0bb; }
 
+    /* Selected files (pre-upload) */
+    .att-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+    .att-item {
+      display: flex; align-items: center; gap: 11px;
+      padding: 9px 11px; border-radius: 10px;
+      border: 1px solid #F0EEE9; background: #FBFAF7;
+    }
+    .att-ic {
+      width: 34px; height: 34px; flex: none; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(91,95,233,.1); color: #5B5FE9;
+      font-size: 9.5px; font-weight: 800; letter-spacing: .02em;
+    }
+    .att-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .att-nm { font-size: 13px; font-weight: 600; color: #1d1b25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .att-sz { font-size: 11.5px; color: #9b97a3; }
+    .att-rm {
+      width: 30px; height: 30px; flex: none; border: none; border-radius: 8px;
+      background: transparent; color: #b4b0bb; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .att-rm:hover { background: #FBE9E7; color: #E0497B; }
+
     /* ── Footer ─────────────────────────────────────────────────────── */
     .footer {
       flex: none; display: flex; align-items: center; gap: 10px;
@@ -692,14 +721,25 @@ const IC_USER   = '<circle cx="12" cy="8" r="3.4"/><path d="M5.5 20c0-3.6 2.9-6.
     .ft-primary:disabled { background: #C9C5BD; cursor: not-allowed; box-shadow: none; }
   `],
 })
-export class CreerTacheComponent implements OnInit {
-  @Input() column      = 'À faire';
-  @Input() projectName = 'Refonte App Mobile';
+export class CreerTacheComponent implements OnInit, AfterViewInit {
+  /** Champ « Nom de la tâche » — reçoit le focus à l'ouverture du modal. */
+  @ViewChild('titleInput') titleInput?: ElementRef<HTMLInputElement>;
+
+  /** Colonnes réelles du projet (statuts) — alimentent le sélecteur de statut. */
+  @Input() columns: KanbanColumn[] = [];
+  /** Colonne pré-sélectionnée (là où l'utilisateur a cliqué « + »). */
+  @Input() initialStatusId: string | null = null;
+  @Input() projectId   = '';
+  @Input() projectName = '';
+  /** Nom de la colonne d'origine — affiché dans le fil d'Ariane. */
+  @Input() column      = '';
   @Output() closed  = new EventEmitter<void>();
-  @Output() created = new EventEmitter<string>();
+  @Output() created = new EventEmitter<TaskCard>();
+
+  private tasksSvc = inject(TasksService);
+  private toast    = inject(ToastService);
 
   // ── Expose constants to template ────────────────────────────────────────
-  readonly STATUSES     = STATUSES;
   readonly PRIOS        = PRIOS;
   readonly EST_OPTIONS  = EST_OPTIONS;
   readonly ME           = ME;
@@ -712,7 +752,7 @@ export class CreerTacheComponent implements OnInit {
   title        = signal('');
   desc         = signal('');
   field        = signal<string | null>(null);
-  status       = signal('À faire');
+  statusId     = signal<string | null>(null);
   assignee     = signal<string | null>(null);
   assigneeType = signal<'user' | 'team' | null>(null);
   assigneeQuery = signal('');
@@ -724,18 +764,37 @@ export class CreerTacheComponent implements OnInit {
   subs         = signal<string[]>([]);
   subAdding    = signal(false);
   subDraft     = signal('');
+  /** Fichiers choisis avant création — téléversés une fois la tâche créée. */
+  attachedFiles = signal<File[]>([]);
+  busy         = signal(false);
 
   // ── Computed ─────────────────────────────────────────────────────────────
-  curStatus = computed(() => STATUSES.find(s => s.name === this.status()) ?? STATUSES[0]);
+  curStatus = computed<KanbanColumn | undefined>(() =>
+    this.columns.find(c => c.id === this.statusId()) ?? this.columns[0]);
   curPrio   = computed(() => PRIOS.find(p => p.name === this.priority()) ?? null);
-  canCreate = computed(() => !!this.title().trim());
+  canCreate = computed(() => !!this.title().trim() && !!this.statusId());
   filteredMembers = computed(() => {
     const q = this.assigneeQuery().toLowerCase().trim();
     return MEMBERS.filter(m => m.name.toLowerCase().includes(q));
   });
 
+  tint(color: string | undefined): string { return tintOf(color ?? '#8E8AA0'); }
+
   // ── Lifecycle ────────────────────────────────────────────────────────────
-  ngOnInit(): void { this.status.set(this.column); }
+  ngOnInit(): void {
+    // Pré-sélectionne la colonne cliquée, sinon le statut initial du workflow.
+    const initial = this.initialStatusId
+      ?? this.columns.find(c => c.isInitial)?.id
+      ?? this.columns[0]?.id
+      ?? null;
+    this.statusId.set(initial);
+  }
+
+  ngAfterViewInit(): void {
+    // Place le curseur dans le champ du nom dès l'ouverture (l'attribut HTML
+    // `autofocus` n'agit pas sur un élément inséré dynamiquement par Angular).
+    setTimeout(() => this.titleInput?.nativeElement.focus(), 0);
+  }
 
   // ── Helpers ──────────────────────────────────────────────────────────────
   openField(k: string): void { this.field.set(this.field() === k ? null : k); }
@@ -775,8 +834,68 @@ export class CreerTacheComponent implements OnInit {
 
   removeSub(i: number): void { this.subs.update(l => l.filter((_, j) => j !== i)); }
 
+  // ── Pièces jointes ─────────────────────────────────────────────────────────
+  onFilesPicked(ev: Event): void {
+    const input = ev.target as HTMLInputElement;
+    this.addFiles(input.files);
+    input.value = ''; // autorise de re-choisir le même fichier
+  }
+  onDrop(ev: DragEvent): void {
+    ev.preventDefault();
+    this.addFiles(ev.dataTransfer?.files ?? null);
+  }
+  private addFiles(list: FileList | null): void {
+    const files = Array.from(list ?? []);
+    if (files.length) this.attachedFiles.update(l => [...l, ...files]);
+  }
+  removeFile(i: number): void { this.attachedFiles.update(l => l.filter((_, j) => j !== i)); }
+
+  /** Extension courte affichée dans la pastille du fichier. */
+  fileExt(name: string): string {
+    const parts = name.split('.');
+    return parts.length > 1 ? parts.pop()!.slice(0, 4).toUpperCase() : 'FIC';
+  }
+  /** Taille lisible d'un fichier. */
+  sizeOf(bytes?: number): string {
+    if (bytes == null) return '';
+    if (bytes < 1024) return bytes + ' o';
+    if (bytes < 1_048_576) return Math.round(bytes / 1024) + ' Ko';
+    return (bytes / 1_048_576).toFixed(1) + ' Mo';
+  }
+
   create(): void {
-    const t = this.title().trim();
-    if (t) this.created.emit(t);
+    const title = this.title().trim();
+    const statusId = this.statusId();
+    if (!title || !statusId || this.busy()) return;
+    this.busy.set(true);
+
+    const payload: CreateTaskPayload = {
+      title,
+      description: this.desc().trim() || undefined,
+      statusId,
+      priority: PRIOS.find(p => p.name === this.priority())?.value,
+      startDate: this.dateDebut() || undefined,
+      dueDate: this.dateFin() || undefined,
+      estimate: this.estimate() || undefined,
+      // Assigné : câblé en I3 (annuaire des membres).
+    };
+
+    this.tasksSvc.createTask(this.projectId, payload).subscribe({
+      next: card => {
+        // Sous-tâches et pièces jointes se créent après la tâche (besoin de son id).
+        const after$ = [
+          ...this.subs().map(s => this.tasksSvc.addSubtask(card.id, s)),
+          ...this.attachedFiles().map(f => this.tasksSvc.addAttachment(card.id, this.projectId, f)),
+        ];
+        if (after$.length === 0) { this.finish(card); return; }
+        forkJoin(after$).subscribe({ next: () => this.finish(card), error: () => this.finish(card) });
+      },
+      error: () => this.busy.set(false),
+    });
+  }
+
+  private finish(card: TaskCard): void {
+    this.toast.show({ message: 'Tâche ' + card.taskKey + ' créée' });
+    this.created.emit(card);
   }
 }

@@ -142,7 +142,7 @@ public class GedAccessServiceImpl implements GedAccessService {
                 .filter(g -> g.getGranteeType() == GranteeType.USER && g.getTargetType() == TargetType.FILE)
                 .map(g -> fileRepository.findById(g.getTargetId()).orElse(null))
                 .filter(f -> f != null && !Boolean.TRUE.equals(f.getIsDeleted()))
-                .filter(f -> f.getFolder().getOrganisationId().equals(caller.organisationId()))
+                .filter(f -> f.getOrganisationId().equals(caller.organisationId())) // V2 : fichier racine possible (folder null)
                 .distinct()
                 .map(fileMapper::asDto)
                 .toList();

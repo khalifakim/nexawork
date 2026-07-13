@@ -1,4 +1,4 @@
-import { HttpClient, HttpParams } from '@angular/common/http';
+import { HttpClient, HttpContext, HttpParams } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 import { api, ApiService } from './api.config';
@@ -24,8 +24,8 @@ export class BaseHttpService {
     return this.http.post<ApiResponse<T>>(api(service, path), body ?? {}).pipe(unwrap<T>());
   }
 
-  protected patch$<T>(service: ApiService, path: string, body?: unknown): Observable<T> {
-    return this.http.patch<ApiResponse<T>>(api(service, path), body ?? {}).pipe(unwrap<T>());
+  protected patch$<T>(service: ApiService, path: string, body?: unknown, context?: HttpContext): Observable<T> {
+    return this.http.patch<ApiResponse<T>>(api(service, path), body ?? {}, { context }).pipe(unwrap<T>());
   }
 
   protected put$<T>(service: ApiService, path: string, body?: unknown): Observable<T> {

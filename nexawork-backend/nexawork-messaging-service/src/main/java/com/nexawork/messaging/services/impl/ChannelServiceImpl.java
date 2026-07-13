@@ -14,6 +14,7 @@ import com.nexawork.messaging.entities.enums.ChannelType;
 import com.nexawork.messaging.mappers.ChannelMapper;
 import com.nexawork.messaging.repositories.ChannelMemberRepository;
 import com.nexawork.messaging.repositories.ChannelRepository;
+import com.nexawork.messaging.repositories.MessageRepository;
 import com.nexawork.messaging.security.CallerContext;
 import com.nexawork.messaging.services.ChannelAccessGuard;
 import com.nexawork.messaging.services.ChannelService;
@@ -40,6 +41,7 @@ public class ChannelServiceImpl implements ChannelService {
 
     ChannelRepository channelRepository;
     ChannelMemberRepository channelMemberRepository;
+    MessageRepository messageRepository;
     ChannelMapper channelMapper;
     ChannelAccessGuard guard;
     CallerContext caller;
@@ -153,6 +155,13 @@ public class ChannelServiceImpl implements ChannelService {
     private ChannelResponse toDto(Channel channel) {
         ChannelResponse dto = channelMapper.asDto(channel);
         dto.setCanWrite(guard.canWrite(channel));
+        // Canal privé : nombre de bénéficiaires explicites. Canal ouvert : null —
+        // l'accès vaut pour tous les membres du workspace (portés par l'Auth Service),
+        // le frontend affiche alors « Tous les membres ».
+        dto.setMemberCount(Boolean.TRUE.equals(channel.getIsPrivate())
+                ? (int) channelMemberRepository.countByChannelId(channel.getId())
+                : null);
+        dto.setLastActivityAt(messageRepository.findLastActivityAt(channel.getId()));
         return dto;
     }
 }

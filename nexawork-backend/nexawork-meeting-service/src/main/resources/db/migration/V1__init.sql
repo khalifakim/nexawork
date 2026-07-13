@@ -1,7 +1,7 @@
 -- ============================================================================
 -- NexaWork Meeting Service — V1__init.sql
 -- Conforme V5.1 §4.6. PK UUID. Références cross-services (organisation_id,
--- project_id, host_user_id, user_id, file_id) sans FK. meeting_messages /
+-- host_user_id, user_id, file_id) sans FK. meeting_messages /
 -- meeting_files : tables créées (modèle §4.6) ; endpoints différés (chat/fichiers
 -- de réunion captés côté client, hors §13.6 Phase 9).
 -- ============================================================================
@@ -12,7 +12,6 @@ CREATE TABLE calls (
     topic                   VARCHAR(255)    NOT NULL,
     room_name               VARCHAR(255)    NOT NULL,
     organisation_id         UUID            NOT NULL,
-    project_id              UUID,
     host_user_id            UUID            NOT NULL,
     status                  VARCHAR(50)     NOT NULL
         CONSTRAINT chk_calls_status CHECK (status IN ('SCHEDULED','ACTIVE','ENDED','CANCELLED')),

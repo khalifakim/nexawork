@@ -1,13 +1,22 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { toSignal, toObservable } from '@angular/core/rxjs-interop';
+import { switchMap } from 'rxjs/operators';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 import { ApercuDocumentComponent } from '@shared/overlays/apercu-document/apercu-document.component';
 import { FilterChipComponent, FilterOption } from '@shared/ui/filter-chip/filter-chip.component';
 import { DocMenuComponent, DocMenuItem } from '@shared/ui/doc-menu/doc-menu.component';
 import { ToastService } from '@core/services/toast.service';
 import { GedOverlayBus } from '@core/services/ged-overlay.bus';
+import { GedService } from '@core/services/ged.service';
+import { ProjectsService } from '@core/services/projects.service';
+import { GedItem } from '@core/models/ged.models';
+import { Project } from '@core/models/project.models';
+import { environment } from '@environment/environment';
 
 interface Doc {
   name: string; space: string; scope: string; date: string; type: string; size: string; it: string;
+  /** Élément GED réel sous-jacent (mode backend) — porte l'UUID. */
+  item?: GedItem;
 }
 
 const ICON: Record<string, string> = {
@@ -81,12 +90,25 @@ const SPACE_COLOR: Record<string, string> = {
 export class MesDocumentsComponent {
   private toast = inject(ToastService);
   protected gedOverlay = inject(GedOverlayBus);
+  private ged = inject(GedService);
+  private projectsSvc = inject(ProjectsService);
+
+  private readonly real = !environment.mock.ged;
 
   preview = signal<string | null>(null);
   q = signal('');
   fSpace = signal<string | null>(null);
   fType = signal<string | null>(null);
   menu = signal<string | null>(null);
+  private refresh = signal(0);
+
+  /** Documents réels dont je suis l'auteur (mode backend). */
+  private realDocs = toSignal(
+    toObservable(this.refresh).pipe(switchMap(() => this.real ? this.ged.myDocuments() : [])),
+    { initialValue: [] as GedItem[] },
+  );
+  /** Projets, pour résoudre l'espace d'appartenance d'un document. */
+  private projects = toSignal(this.projectsSvc.list(), { initialValue: [] as Project[] });
 
   readonly SPACE_OPTS: FilterOption[] = Object.keys(SPACE_COLOR).map(s => ({ value: s, label: s, dot: SPACE_COLOR[s] }));
   readonly TYPE_OPTS: FilterOption[] = [
@@ -94,7 +116,30 @@ export class MesDocumentsComponent {
     { value: 'Image', label: 'Image' }, { value: 'Figma', label: 'Figma' }, { value: 'Dossier', label: 'Dossier' },
   ];
 
-  items: Doc[] = [
+  /** Documents affichés : réels (backend) ou fixtures (mock). */
+  private docs = computed<Doc[]>(() => {
+    if (!this.real) return this.mockItems;
+    const projects = this.projects();
+    return this.realDocs().map(it => {
+      const project = it.projectId ? projects.find(p => p.id === it.projectId) : undefined;
+      return {
+        name: it.name,
+        space: project?.name ?? 'Espace Organisation',
+        scope: project ? 'Projet' : 'Organisation',
+        date: it.mod ?? '',
+        type: this.typeLabel(it.type),
+        size: it.size,
+        it: it.type,
+        item: it,
+      };
+    });
+  });
+
+  private typeLabel(t: string): string {
+    return ({ folder: 'Dossier', pdf: 'PDF', doc: 'Document', img: 'Image', sheet: 'Tableur', fig: 'Figma' } as Record<string, string>)[t] ?? 'Document';
+  }
+
+  private mockItems: Doc[] = [
     { name: 'Plan de release v3.pdf',     space: 'Refonte App Mobile',    scope: 'Projet',       date: "Aujourd'hui, 11:05", type: 'PDF',     size: '1,8 Mo', it: 'pdf' },
     { name: 'Notes atelier produit.docx', space: 'Espace Organisation',   scope: 'Organisation', date: 'Hier, 16:32',        type: 'Document', size: '210 Ko', it: 'doc' },
     { name: 'Wireframes onboarding.fig',  space: 'Refonte App Mobile',    scope: 'Projet',       date: 'Hier, 10:12',        type: 'Figma',   size: '5,6 Mo', it: 'fig' },
@@ -110,7 +155,7 @@ export class MesDocumentsComponent {
     const q = this.q().toLowerCase().trim();
     const sp = this.fSpace();
     const ty = this.fType();
-    return this.items.filter(it =>
+    return this.docs().filter(it =>
       (!q || it.name.toLowerCase().includes(q)) &&
       (!sp || it.space === sp) &&
       (!ty || it.type === ty),
@@ -134,10 +179,23 @@ export class MesDocumentsComponent {
     switch (action) {
       case 'open':     this.open(it); break;
       case 'download': this.toast.show({ message: 'Téléchargement de « ' + it.name + ' »…' }); break;
-      case 'versions': this.gedOverlay.openVersions(it.name); break;
-      case 'access':   this.gedOverlay.openAccess(it.name); break;
+      case 'versions':
+        if (it.item) this.gedOverlay.openVersionsFor(it.item); else this.gedOverlay.openVersions(it.name);
+        break;
+      case 'access':
+        if (it.item) this.gedOverlay.openAccessFor(it.item); else this.gedOverlay.openAccess(it.name);
+        break;
       case 'rename':   this.toast.show({ message: 'Renommer « ' + it.name + ' »' }); break;
-      case 'delete':   this.toast.show({ message: '« ' + it.name + ' » supprimé' }); break;
+      case 'delete':
+        if (it.item) {
+          this.ged.deleteItem(it.item).subscribe(() => {
+            this.refresh.update(v => v + 1);
+            this.toast.show({ message: '« ' + it.name + ' » déplacé vers la corbeille' });
+          });
+        } else {
+          this.toast.show({ message: '« ' + it.name + ' » supprimé' });
+        }
+        break;
     }
   }
 

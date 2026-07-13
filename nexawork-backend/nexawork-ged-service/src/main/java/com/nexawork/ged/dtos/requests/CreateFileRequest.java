@@ -2,7 +2,6 @@ package com.nexawork.ged.dtos.requests;
 
 import com.nexawork.ged.entities.enums.AccessMode;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 import java.util.UUID;
@@ -14,8 +13,15 @@ import java.util.UUID;
 @Data
 public class CreateFileRequest {
 
-    @NotNull(message = "est obligatoire")
+    /** Dossier cible, ou {@code null} pour déposer le fichier à la racine (V2). */
     private UUID folderId;
+
+    /**
+     * Espace racine visé quand {@code folderId} est null : {@code null} = racine
+     * de l'espace Organisation, sinon racine de l'espace du projet. Ignoré si un
+     * dossier est fourni (le scope projet est alors hérité du dossier).
+     */
+    private UUID projectId;
 
     @NotBlank(message = "est obligatoire")
     private String name;

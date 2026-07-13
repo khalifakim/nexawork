@@ -42,7 +42,7 @@ export const routes: Routes = [
       { path: 'accueil/tableau-de-bord', canActivate: [adminGuard], loadComponent: () => import('@features/accueil/tableau-de-bord/tableau-de-bord.component').then(m => m.TableauDeBordComponent) },
 
       // --- Projets ---
-      { path: 'projets', pathMatch: 'full', redirectTo: 'projets/refonte-app-mobile/kanban' },
+      { path: 'projets', pathMatch: 'full', loadComponent: () => import('@features/projets/projets-index/projets-index.component').then(m => m.ProjetsIndexComponent) },
       { path: 'projets/archives', canActivate: [adminGuard], loadComponent: () => import('@features/projets/projets-archives/projets-archives.component').then(m => m.ProjetsArchivesComponent) },
       { path: 'projets/:id', pathMatch: 'full', redirectTo: 'projets/:id/kanban' },
       { path: 'projets/:id/:tab', loadComponent: () => import('@features/projets/projet-shell/projet-shell.component').then(m => m.ProjetShellComponent) },
@@ -61,7 +61,7 @@ export const routes: Routes = [
       { path: 'documents/projets/:id',  loadComponent: () => import('@features/documents/documents-projet/documents-projet.component').then(m => m.DocumentsProjetComponent) },
 
       // --- Canaux ---
-      { path: 'canaux', pathMatch: 'full', redirectTo: 'canaux/annonces' },
+      { path: 'canaux', pathMatch: 'full', loadComponent: () => import('@features/canaux/canaux-index/canaux-index.component').then(m => m.CanauxIndexComponent) },
       { path: 'canaux/:id', canActivate: [channelAccessGuard], loadComponent: () => import('@features/canaux/canal/canal.component').then(m => m.CanalComponent) },
 
       // --- Conversations ---
@@ -72,6 +72,7 @@ export const routes: Routes = [
       // --- Réunions ---
       { path: 'reunions', pathMatch: 'full', redirectTo: 'reunions/lancer' },
       { path: 'reunions/lancer',          loadComponent: () => import('@features/reunions/lancer/lancer.component').then(m => m.LancerReunionComponent) },
+      { path: 'reunions/salle/:id',       loadComponent: () => import('@features/reunions/salle/salle-reunion.component').then(m => m.SalleReunionComponent) },
       { path: 'reunions/historique',      loadComponent: () => import('@features/reunions/historique/historique.component').then(m => m.HistoriqueReunionsComponent) },
       { path: 'reunions/historique/:id',  loadComponent: () => import('@features/reunions/discussion/discussion.component').then(m => m.DiscussionReunionComponent) },
 

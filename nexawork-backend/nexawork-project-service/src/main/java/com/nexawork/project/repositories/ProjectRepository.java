@@ -3,6 +3,7 @@ package com.nexawork.project.repositories;
 import com.nexawork.project.entities.Project;
 import com.nexawork.project.entities.enums.ProjectStatus;
 import jakarta.persistence.LockModeType;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -44,4 +45,26 @@ public interface ProjectRepository extends JpaRepository<Project, UUID> {
                               @Param("status") ProjectStatus status,
                               @Param("userId") UUID userId,
                               @Param("isAdmin") boolean isAdmin);
+
+    /**
+     * Recherche globale (§4.8) : projets actifs dont le nom ou la description
+     * contient le terme, en respectant la visibilité de l'appelant (R15).
+     */
+    @Query("""
+            SELECT p FROM Project p
+            WHERE p.organisationId = :orgId
+              AND p.status = :status
+              AND (:isAdmin = TRUE
+                   OR EXISTS (SELECT 1 FROM ProjectMember m
+                              WHERE m.project = p AND m.userId = :userId))
+              AND (LOWER(p.name) LIKE LOWER(CONCAT('%', :q, '%'))
+                OR LOWER(COALESCE(p.description, '')) LIKE LOWER(CONCAT('%', :q, '%')))
+            ORDER BY p.createdDate DESC
+            """)
+    List<Project> search(@Param("orgId") UUID orgId,
+                         @Param("q") String q,
+                         @Param("status") ProjectStatus status,
+                         @Param("userId") UUID userId,
+                         @Param("isAdmin") boolean isAdmin,
+                         Pageable pageable);
 }

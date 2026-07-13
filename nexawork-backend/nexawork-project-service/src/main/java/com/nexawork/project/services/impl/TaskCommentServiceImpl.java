@@ -1,9 +1,12 @@
 package com.nexawork.project.services.impl;
 
 import com.nexawork.commons.exceptions.ForbiddenException;
+import com.nexawork.commons.exceptions.InvalidRequestException;
 import com.nexawork.commons.exceptions.ResourceNotFoundException;
+import com.nexawork.project.dtos.requests.CommentAttachmentRequest;
 import com.nexawork.project.dtos.requests.CreateCommentRequest;
 import com.nexawork.project.dtos.responses.CommentResponse;
+import com.nexawork.project.entities.CommentAttachment;
 import com.nexawork.project.entities.Task;
 import com.nexawork.project.entities.TaskComment;
 import com.nexawork.project.mappers.CommentMapper;
@@ -49,12 +52,30 @@ public class TaskCommentServiceImpl implements TaskCommentService {
         Task task = loadTaskAsParticipant(taskId);
         guard.assertActive(task.getProject());
 
-        TaskComment comment = taskCommentRepository.saveAndFlush(TaskComment.builder()
+        boolean hasContent = request.getContent() != null && !request.getContent().isBlank();
+        boolean hasAttachments = request.getAttachments() != null && !request.getAttachments().isEmpty();
+        if (!hasContent && !hasAttachments) {
+            throw new InvalidRequestException("Un commentaire doit contenir du texte ou au moins un fichier.");
+        }
+
+        TaskComment comment = TaskComment.builder()
                 .task(task)
                 .authorUserId(caller.userId())
-                .content(request.getContent())
-                .build());
-        return commentMapper.asDto(comment);
+                .content(hasContent ? request.getContent() : "")
+                .build();
+
+        if (request.getAttachments() != null) {
+            for (CommentAttachmentRequest att : request.getAttachments()) {
+                comment.addAttachment(CommentAttachment.builder()
+                        .fileName(att.getFileName())
+                        .fileUrl(att.getFileUrl())
+                        .fileSize(att.getFileSize())
+                        .contentType(att.getContentType())
+                        .build());
+            }
+        }
+
+        return commentMapper.asDto(taskCommentRepository.saveAndFlush(comment));
     }
 
     @Override

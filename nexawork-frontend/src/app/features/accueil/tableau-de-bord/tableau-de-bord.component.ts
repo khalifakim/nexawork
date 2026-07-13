@@ -3,8 +3,10 @@ import { Router } from '@angular/router';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 import { AccueilService } from '@core/services/accueil.service';
 import { SessionService } from '@core/services/session.service';
+import { ReportsService } from '@core/services/reports.service';
 import { Dashboard } from '@core/models/accueil.models';
-import { workspaceSignal } from '@core/util/workspace-signal';
+import { workspaceQuery } from '@core/util/workspace-signal';
+import { LoaderComponent } from '@shared/ui/loader/loader.component';
 
 const EMPTY_DASHBOARD: Dashboard = {
   kpis: { projectsActive: 0, projectsLate: 0, projectsArchived: 0, tasksDone: 0, tasksTotal: 0, tasksOverdue: 0, tasksOverdueProjects: 0, members: 0, membersOnline: 0 },
@@ -15,7 +17,7 @@ const EMPTY_DASHBOARD: Dashboard = {
   selector: 'app-tableau-de-bord',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IconComponent],
+  imports: [IconComponent, LoaderComponent],
   template: `
     <div class="wrap">
       <div class="top">
@@ -23,9 +25,12 @@ const EMPTY_DASHBOARD: Dashboard = {
           <h1>Tableau de bord</h1>
           <p>Vue globale de l'espace de travail : projets, activité et membres.</p>
         </div>
-        <button class="report"><app-icon name="file" [size]="15" [stroke]="2" />Générer un rapport</button>
+        <button class="report" [disabled]="reports.busy()" (click)="generateReport()"><app-icon name="file" [size]="15" [stroke]="2" />{{ reports.busy() ? 'Génération…' : 'Générer un rapport' }}</button>
       </div>
 
+      @if (loading()) {
+        <app-loader label="Chargement du tableau de bord…" [minHeight]="320" />
+      } @else {
       <div class="kpis">
         <div class="card kpi">
           <div class="kpi__l">Projets</div>
@@ -93,6 +98,7 @@ const EMPTY_DASHBOARD: Dashboard = {
           }
         </div>
       </div>
+      }
     </div>
 
     <!-- Modal : projets concernés par les tâches en retard -->
@@ -131,9 +137,17 @@ export class TableauDeBordComponent {
   private router = inject(Router);
   private session = inject(SessionService);
   private accueil = inject(AccueilService);
+  protected reports = inject(ReportsService);
 
-  /** Dashboard of the active workspace (reload on workspace switch). */
-  dash = workspaceSignal<Dashboard>(this.session, () => this.accueil.dashboard(), EMPTY_DASHBOARD);
+  generateReport(): void {
+    const id = this.session.activeWorkspaceId();
+    if (id) this.reports.workspaceReport(id, this.session.activeWorkspace().name);
+  }
+
+  /** Tableau de bord de l'espace actif (rechargé au switch) + état de chargement. */
+  private query = workspaceQuery<Dashboard>(this.session, () => this.accueil.dashboard(), EMPTY_DASHBOARD);
+  dash = this.query.value;
+  loading = this.query.loading;
   k = computed(() => this.dash().kpis);
   donePct = computed(() => { const t = this.k().tasksTotal; return t ? Math.round(this.k().tasksDone / t * 100) : 0; });
 

@@ -9,7 +9,7 @@ import { BrowseMentionsModalComponent } from '@shared/overlays/browse-mentions/b
 import { MentionTab } from '@core/models/mention.models';
 import { RichPart, parseRichText, tokenizeRich } from '@core/util/mention.util';
 
-interface AttachedFile { id: number; name: string; size: number; }
+interface AttachedFile { id: number; name: string; size: number; file?: File; }
 
 /** Inline SVG for the chip icons (matches <app-mention-chip>, fixed at 12px). */
 const CHIP_ICON: Record<'task' | 'doc' | 'channel', string> = {
@@ -164,7 +164,9 @@ function pickPrefixToken(word: string): { tab: MentionTab; query: string } | nul
 })
 export class CommentComposerComponent {
   @Input() placeholder = 'Commentez, mentionnez avec @, @@, @@@ ou #…';
-  @Output() submitted = new EventEmitter<{ parts: RichPart[]; files: AttachedFile[] }>();
+  @Output() submitted = new EventEmitter<{ parts: RichPart[]; files: AttachedFile[]; text: string }>();
+  /** Émis à chaque frappe — alimente l'indicateur « est en train d'écrire ». */
+  @Output() typing = new EventEmitter<void>();
 
   @ViewChild('editable', { static: true }) editable!: ElementRef<HTMLDivElement>;
 
@@ -204,6 +206,7 @@ export class CommentComposerComponent {
   protected onInput(): void {
     this.rerender();
     this.syncMentionPicker();
+    this.typing.emit();
   }
 
   /** Caret moved (click / arrow keys) → re-render so completed mentions become chips. */
@@ -278,7 +281,7 @@ export class CommentComposerComponent {
     const input = ev.target as HTMLInputElement;
     const list = Array.from(input.files ?? []);
     if (list.length === 0) return;
-    this.files.update(prev => [...prev, ...list.map(f => ({ id: this.nextFileId++, name: f.name, size: f.size }))]);
+    this.files.update(prev => [...prev, ...list.map(f => ({ id: this.nextFileId++, name: f.name, size: f.size, file: f }))]);
     input.value = '';
   }
   protected removeFile(id: number): void {
@@ -292,7 +295,7 @@ export class CommentComposerComponent {
     const files = this.files();
     const hasText = parts.some(p => p.type !== 't' || p.val.trim().length > 0);
     if (!hasText && files.length === 0) return;
-    this.submitted.emit({ parts, files });
+    this.submitted.emit({ parts, files, text });
     this.el.textContent = '';
     this.files.set([]);
     this.mentionOpen.set(false);

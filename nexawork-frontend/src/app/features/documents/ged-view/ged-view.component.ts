@@ -1,7 +1,8 @@
 import { ChangeDetectionStrategy, Component, Input, computed, inject, signal } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
-import { switchMap } from 'rxjs/operators';
+import { switchMap, tap } from 'rxjs/operators';
 import { IconComponent } from '@shared/ui/icon/icon.component';
+import { LoaderComponent } from '@shared/ui/loader/loader.component';
 import { ApercuDocumentComponent } from '@shared/overlays/apercu-document/apercu-document.component';
 import { FilterChipComponent, FilterOption } from '@shared/ui/filter-chip/filter-chip.component';
 import { DocMenuComponent, DocMenuItem } from '@shared/ui/doc-menu/doc-menu.component';
@@ -17,7 +18,7 @@ import { GED_COLOR, GED_ICON, TASK_FOLDER } from '@core/util/ui.util';
   selector: 'app-ged-view',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IconComponent, ApercuDocumentComponent, FilterChipComponent, DocMenuComponent, NouveauDossierComponent, ImporterFichierComponent],
+  imports: [IconComponent, ApercuDocumentComponent, FilterChipComponent, DocMenuComponent, NouveauDossierComponent, ImporterFichierComponent, LoaderComponent],
   template: `
     <div class="ged">
       <!-- toolbar -->
@@ -69,6 +70,9 @@ import { GED_COLOR, GED_ICON, TASK_FOLDER } from '@core/util/ui.util';
           <span class="cb">@if (!inSystem() && !readonly) { <button class="box" [class.box--on]="allSel()" (click)="toggleAll()">@if (allSel()) { <app-icon name="check" [size]="12" [stroke]="2.6" /> }</button> }</span>
           @for (c of cols(); track c) { <span class="th">{{ c }}</span> }
         </div>
+        @if (loading()) {
+          <app-loader label="Chargement des documents…" [minHeight]="180" />
+        } @else {
         @for (it of shown(); track it.name) {
           <div class="trow" [style.grid-template-columns]="grid()" [class.trow--sel]="isSel(it.name)" (click)="rowClick(it)">
             <span class="cb">@if (!it.system && !inSystem() && !readonly) { <button class="box" [class.box--on]="isSel(it.name)" (click)="toggleSel(it.name); $event.stopPropagation()">@if (isSel(it.name)) { <app-icon name="check" [size]="12" [stroke]="2.6" /> }</button> }</span>
@@ -81,7 +85,7 @@ import { GED_COLOR, GED_ICON, TASK_FOLDER } from '@core/util/ui.util';
               @if (!it.system && gedOverlay.hasRestriction(it.name)) {
                 <button class="lk" [class.lk--priv]="gedOverlay.restrictionOf(it.name).mode === 'private'"
                         title="Accès restreint — gérer les accès"
-                        (click)="gedOverlay.openAccess(it.name); $event.stopPropagation()">
+                        (click)="gedOverlay.openAccessFor(it); $event.stopPropagation()">
                   <app-icon name="lock" [size]="13" />
                 </button>
               }
@@ -116,25 +120,27 @@ import { GED_COLOR, GED_ICON, TASK_FOLDER } from '@core/util/ui.util';
         } @empty {
           <div class="empty">{{ inSystem() ? "Aucun fichier n'est encore attaché aux tâches de ce projet." : 'Aucun document trouvé' }}</div>
         }
+        }
       </div>
     </div>
 
     @if (preview(); as p) { <app-apercu-document [name]="p" (closed)="preview.set(null)" /> }
-    @if (newFolder()) { <app-nouveau-dossier [scope]="modalScope()" (closed)="newFolder.set(false)" (created)="toast('Dossier « ' + $event + ' » créé'); newFolder.set(false)" /> }
-    @if (upload()) { <app-importer-fichier [scope]="modalScope()" (closed)="upload.set(false)" (imported)="toast('Fichier importé'); upload.set(false)" /> }
+    @if (newFolder()) { <app-nouveau-dossier [scope]="modalScope()" (closed)="newFolder.set(false)" (created)="onCreateFolder($event)" /> }
+    @if (upload()) { <app-importer-fichier [scope]="modalScope()" (closed)="upload.set(false)" (imported)="onImportFile($event)" /> }
 
     @if (toastMsg(); as t) { <div class="gtoast"><span class="gtoast__i"><app-icon name="check" [size]="14" /></span>{{ t }}</div> }
   `,
   styleUrl: './ged-view.component.scss',
 })
 export class GedViewComponent {
-  @Input() project: string | null = null;
+  /** UUID du projet (GED de projet) ou `null` (GED d'organisation). */
+  @Input() projectId: string | null = null;
   @Input() readonly = false;
   /** Hide the system "Pièces jointes aux tâches" folder (used by the org space). */
   @Input() hideTaskFolder = false;
 
   /** R16 — the scope passed to the create/import modals: project vs org. */
-  modalScope = computed<'org' | 'project'>(() => this.project ? 'project' : 'org');
+  modalScope = computed<'org' | 'project'>(() => this.projectId ? 'project' : 'org');
 
   path = signal<string[]>([]);
   q = signal('');
@@ -168,10 +174,37 @@ export class GedViewComponent {
   private bus = inject(ShellBus);
   inSystem = computed(() => this.path()[this.path().length - 1] === TASK_FOLDER);
 
+  /** Bumpé après une écriture pour recharger le dossier courant. */
+  private refresh = signal(0);
+  private trigger = computed(() => ({ p: this.path(), r: this.refresh() }));
+  /** Vrai tant que le contenu du dossier courant n'est pas arrivé (loader). */
+  loading = signal(true);
   private current = toSignal(
-    toObservable(this.path).pipe(switchMap(p => this.ged.folderContent(p, this.project))),
+    toObservable(this.trigger).pipe(
+      tap(() => this.loading.set(true)),
+      switchMap(t => this.ged.folderContent(t.p, this.projectId)),
+      // Le cadenas « accès restreint » suit le `restricted` calculé par le backend.
+      tap(items => {
+        this.gedOverlay.setRestrictedNames(items.filter(i => i.restricted).map(i => i.name));
+        this.loading.set(false);
+      }),
+    ),
     { initialValue: [] as GedItem[] },
   );
+  private reload(): void { this.refresh.update(v => v + 1); }
+
+  onCreateFolder(ev: { name: string; restricted: boolean }): void {
+    this.newFolder.set(false);
+    this.ged.createFolder(this.path(), this.projectId, ev.name, ev.restricted)
+      .subscribe(() => { this.reload(); this.toast('Dossier « ' + ev.name + ' » créé'); });
+  }
+
+  onImportFile(ev: { file: File; name: string; restricted: boolean }): void {
+    this.upload.set(false);
+    this.toast('Import de « ' + ev.name + ' » en cours…');
+    this.ged.importFile(this.path(), this.projectId, ev.file, ev.name, ev.restricted)
+      .subscribe(() => { this.reload(); this.toast('« ' + ev.name + ' » importé'); });
+  }
 
   shown = computed(() => {
     const q = this.q().toLowerCase().trim();
@@ -227,6 +260,11 @@ export class GedViewComponent {
       return;
     }
     this.deleted.update(d => [...d, ...allowed]);
+    // Suppression réelle de chaque élément autorisé (corbeille pour les fichiers).
+    for (const name of allowed) {
+      const it = bag.find(x => x.name === name);
+      if (it) this.ged.deleteItem(it).subscribe({ error: () => this.deleted.update(d => d.filter(n => n !== name)) });
+    }
     this.selected.set([]);
     if (skipped > 0) {
       this.toast(allowed.length + ' déplacé' + (allowed.length > 1 ? 's' : '') + ' vers la corbeille · ' + skipped + ' ignoré' + (skipped > 1 ? 's' : '') + ' (droits insuffisants)');
@@ -271,10 +309,14 @@ export class GedViewComponent {
       case 'preview':  this.preview.set(it.name); break;
       case 'open':     this.path.update(p => [...p, it.name]); break;
       case 'download': this.toast('Téléchargement de « ' + it.name + ' »…'); break;
-      case 'versions': this.gedOverlay.openVersions(it.name); break;
-      case 'access':   this.gedOverlay.openAccess(it.name); break;
+      case 'versions': this.gedOverlay.openVersionsFor(it); break;
+      case 'access':   this.gedOverlay.openAccessFor(it); break;
       case 'rename':   this.toast('Renommer « ' + it.name + ' »'); break;
-      case 'delete':   this.deleted.update(d => [...d, it.name]); this.toast('« ' + it.name + ' » déplacé vers la corbeille'); break;
+      case 'delete':
+        this.deleted.update(d => [...d, it.name]);
+        this.ged.deleteItem(it).subscribe({ error: () => this.deleted.update(d => d.filter(n => n !== it.name)) });
+        this.toast('« ' + it.name + ' » déplacé vers la corbeille');
+        break;
       case 'task':     this.openTaskChip(it.task?.id, null); break;
     }
   }

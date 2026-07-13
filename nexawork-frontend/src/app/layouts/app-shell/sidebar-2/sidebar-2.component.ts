@@ -9,6 +9,7 @@ import { ConversationsService } from '@core/services/conversations.service';
 import { ChannelsService } from '@core/services/channels.service';
 import { SessionService } from '@core/services/session.service';
 import { ArchivedProjectsService } from '@core/services/archived-projects.service';
+import { DataRefreshService } from '@core/services/data-refresh.service';
 import { ToastService } from '@core/services/toast.service';
 import { ShellBus } from '@layouts/app-shell/shell.bus';
 import { Project } from '@core/models/project.models';
@@ -55,7 +56,6 @@ import { workspaceSignal } from '@core/util/workspace-signal';
              [class.row--on]="isCurrent && !openTeam()">
             <span class="dot" [style.background]="p.color"></span>
             <span style="flex:1">{{ p.name }}</span>
-            @if (!isParent) { <span class="row__pct">{{ p.progress }}%</span> }
           </a>
           @if (isParent) {
             <div class="eqsub">
@@ -411,7 +411,8 @@ export class Sidebar2Component {
   openTeam = this.bus.openTeamNav;
   /** Meeting whose discussion is currently open — rendered under « Historique discussion ». */
   openMeeting = this.bus.openMeetingNav;
-  private rawProjects = workspaceSignal<Project[]>(this.session, () => this.projectsSvc.list(), []);
+  private refresh = inject(DataRefreshService);
+  private rawProjects = workspaceSignal<Project[]>(this.session, () => this.projectsSvc.list(), [], this.refresh.projects);
   /** Active projects only — archived ones are hidden from every sidebar list (REF E). */
   projects = computed<Project[]>(() => {
     const archived = this.archivedSvc.ids();

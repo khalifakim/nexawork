@@ -4,6 +4,8 @@ import { IconComponent } from '@shared/ui/icon/icon.component';
 import { CreerReunionComponent } from '@features/reunions/modals/creer-reunion/creer-reunion.component';
 import { ToastService } from '@core/services/toast.service';
 import { SessionService } from '@core/services/session.service';
+import { MeetingsService } from '@core/services/meetings.service';
+import { environment } from '@environment/environment';
 import { slugify } from '@core/util/ui.util';
 
 @Component({
@@ -37,24 +39,38 @@ export class LancerReunionComponent {
   private router = inject(Router);
   private toast = inject(ToastService);
   private session = inject(SessionService);
+  private meetings = inject(MeetingsService);
   open = signal(false);
 
   /**
-   * Créer une réunion = démarrer un appel actif (REF A). Le popover header
-   * d'appel en cours devient alors visible et la contrainte "un seul appel
-   * simultané" est armée.
+   * Créer une réunion = démarrer un appel actif (REF A). En mode réel on crée
+   * l'appel côté backend puis on ouvre la salle vidéo (M4) ; le popover header
+   * « Appel en cours » reflète l'état réel via `GET /calls/active`.
    */
-  onCreated(ev: { title: string; invites: number }): void {
+  onCreated(ev: { title: string; invites: number; memberIds?: string[] }): void {
     this.open.set(false);
     const suffix = ev.invites
       ? ' — ' + ev.invites + ' invitation' + (ev.invites > 1 ? 's' : '') + ' envoyée' + (ev.invites > 1 ? 's' : '')
       : '';
-    this.session.startCall({
-      id: slugify(ev.title) || ('meeting-' + Date.now()),
-      meetingTitle: ev.title,
-      context: 'Réunion en cours',
+
+    if (environment.mock.meetings) {
+      // Mock : simple pastille locale, pas de salle vidéo.
+      this.session.startCall({
+        id: slugify(ev.title) || ('meeting-' + Date.now()),
+        meetingTitle: ev.title,
+        context: 'Réunion en cours',
+      });
+      this.toast.show({ message: 'Réunion « ' + ev.title + ' » créée' + suffix });
+      this.router.navigate(['/app/reunions/historique']);
+      return;
+    }
+
+    this.meetings.create(ev.title, ev.memberIds ?? []).subscribe({
+      next: room => {
+        this.toast.show({ message: 'Réunion « ' + ev.title + ' » créée' + suffix });
+        this.router.navigate(['/app/reunions/salle', room.id]);
+      },
+      error: () => {},
     });
-    this.toast.show({ message: 'Réunion « ' + ev.title + ' » créée' + suffix });
-    this.router.navigate(['/app/reunions/historique']);
   }
 }

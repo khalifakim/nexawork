@@ -60,7 +60,6 @@ public class CallServiceImpl implements CallService {
                 .topic(request.getTopic())
                 .roomName(generateRoomName())
                 .organisationId(caller.organisationId())
-                .projectId(request.getProjectId())
                 .hostUserId(host)
                 .status(CallStatus.ACTIVE)
                 .startedAt(LocalDateTime.now())
@@ -76,8 +75,9 @@ public class CallServiceImpl implements CallService {
             notifyInvited(call, request.getMemberIds());
         }
 
+        // L'hôte est modérateur et contourne la salle d'attente (M3).
         String token = tokenService.generateToken(call.getRoomName(), host,
-                caller.displayName(), null, true);
+                caller.displayName(), null, true, true);
         log.info("Appel {} lancé par {} (salle {})", call.getId(), host, call.getRoomName());
         return toResponse(call, token);
     }
@@ -106,8 +106,11 @@ public class CallServiceImpl implements CallService {
         participantRepository.save(participant);
 
         boolean isHost = call.getHostUserId().equals(me);
+        // M3 : l'hôte et les membres conviés explicitement entrent directement ;
+        // un membre non convié qui atteint la salle passe par la salle d'attente.
+        boolean lobbyBypass = isHost || Boolean.TRUE.equals(participant.getInvitedExplicitly());
         String token = tokenService.generateToken(call.getRoomName(), me,
-                caller.displayName(), null, isHost);
+                caller.displayName(), null, isHost, lobbyBypass);
         return toResponse(call, token);
     }
 
@@ -145,7 +148,7 @@ public class CallServiceImpl implements CallService {
                 ? Duration.between(call.getStartedAt(), now).getSeconds() : 0;
         eventPublisher.publishCallEnded(new CallEndedEvent(
                 call.getId(), call.getTopic(), call.getRoomName(),
-                call.getOrganisationId(), call.getProjectId(), call.getHostUserId(), durationSeconds));
+                call.getOrganisationId(), call.getHostUserId(), durationSeconds));
         log.info("Appel {} terminé (durée {}s)", callId, durationSeconds);
     }
 
@@ -235,7 +238,7 @@ public class CallServiceImpl implements CallService {
                             .call(call).userId(uid).invitedExplicitly(true).build());
                     eventPublisher.publish(MeetingEventPublisher.ROUTING_PARTICIPANT_INVITED,
                             new MeetingParticipantInvitedEvent(call.getId(), call.getTopic(),
-                                    call.getOrganisationId(), call.getProjectId(),
+                                    call.getOrganisationId(),
                                     inviter, inviterName, uid),
                             "membre " + uid);
                 });
@@ -273,8 +276,8 @@ public class CallServiceImpl implements CallService {
                 .toList();
         return CallResponse.builder()
                 .id(c.getId()).topic(c.getTopic()).roomName(c.getRoomName())
-                .organisationId(c.getOrganisationId()).projectId(c.getProjectId()).hostUserId(c.getHostUserId())
-                .status(c.getStatus()).scheduledAt(c.getScheduledAt())
+                .organisationId(c.getOrganisationId()).hostUserId(c.getHostUserId())
+                .status(c.getStatus())
                 .startedAt(c.getStartedAt()).endedAt(c.getEndedAt()).createdAt(c.getCreatedAt())
                 .participants(participants)
                 .jitsiUrl(jitsiUrl).jwt(token)

@@ -1,6 +1,7 @@
 package com.nexawork.messaging.entities;
 
 import com.nexawork.messaging.entities.enums.MessageType;
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -11,6 +12,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -21,6 +23,8 @@ import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -56,11 +60,26 @@ public class Message {
     @Column(name = "content", nullable = false, columnDefinition = "TEXT")
     private String content;
 
+    /** @deprecated remplacé par {@link #attachments} (V2). Conservé pour la lecture des anciens messages. */
+    @Deprecated
     @Column(name = "attachment_url", length = 1024)
     private String attachmentUrl;
 
+    /** @deprecated cf. {@link #attachmentUrl}. */
+    @Deprecated
     @Column(name = "attachment_name")
     private String attachmentName;
+
+    /** Pièces jointes du message (0..N) — V2. */
+    @OneToMany(mappedBy = "message", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @Builder.Default
+    private List<MessageAttachment> attachments = new ArrayList<>();
+
+    /** Ajoute une pièce jointe en maintenant le lien bidirectionnel. */
+    public void addAttachment(MessageAttachment attachment) {
+        attachment.setMessage(this);
+        this.attachments.add(attachment);
+    }
 
     @Enumerated(EnumType.STRING)
     @Column(name = "message_type", nullable = false, length = 20)

@@ -43,7 +43,9 @@ public class GedGuard {
     public GedFile loadFileInOrg(UUID fileId) {
         GedFile file = fileRepository.findById(fileId)
                 .orElseThrow(() -> new ResourceNotFoundException("Fichier introuvable."));
-        if (!file.getFolder().getOrganisationId().equals(caller.organisationId())
+        // Le scope org est porté par le fichier lui-même (V2) — un fichier racine
+        // n'a pas de dossier dont dériver l'organisation.
+        if (!file.getOrganisationId().equals(caller.organisationId())
                 || Boolean.TRUE.equals(file.getIsDeleted())) {
             throw new ResourceNotFoundException("Fichier introuvable.");
         }

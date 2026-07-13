@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, HostListener, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, HostListener, computed, effect, inject, signal } from '@angular/core';
 import { NavigationEnd, Router, RouterOutlet } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { filter } from 'rxjs/operators';
@@ -26,7 +26,10 @@ import { TasksService } from '@core/services/tasks.service';
 import { ChannelsService } from '@core/services/channels.service';
 import { ToastService } from '@core/services/toast.service';
 import { GedOverlayBus } from '@core/services/ged-overlay.bus';
+import { DataRefreshService } from '@core/services/data-refresh.service';
+import { WebPushService } from '@core/services/web-push.service';
 import { TaskCard } from '@core/models/task.models';
+import { Project } from '@core/models/project.models';
 import { ShellBus } from './shell.bus';
 import { environment } from '@environment/environment';
 
@@ -80,10 +83,10 @@ const SECTION_TITLES: Record<string, string> = {
                           (confirmed)="confirmDeleteChannel(dc.id, dc.name)"
                           (closed)="bus.deleteChannel.set(null)" />
     }
-    @if (bus.createProjectOpen()) { <app-creer-projet (closed)="bus.createProjectOpen.set(false)" (created)="onProjectCreated()" /> }
+    @if (bus.createProjectOpen()) { <app-creer-projet (closed)="bus.createProjectOpen.set(false)" (created)="onProjectCreated($event)" /> }
     @if (bus.profileName(); as pn) { <app-fiche-profil [name]="pn" (closed)="bus.profileName.set(null)" /> }
     @if (bus.documentName(); as dn) { <app-apercu-document [name]="dn" (closed)="bus.documentName.set(null)" /> }
-    @if (taskCard(); as tc) { <app-fiche-tache [task]="tc" [loading]="taskLoading()" (closed)="bus.taskId.set(null)" (openTask)="switchTask($event)" /> }
+    @if (taskCard(); as tc) { <app-fiche-tache [task]="tc" [loading]="taskLoading()" (closed)="bus.taskId.set(null)" (openTask)="switchTask($event)" (deleted)="onTaskDeleted($event)" /> }
     @if (ged.accessName(); as an) { <app-ged-access-modal [name]="an" [scope]="gedAccessScope()" (closed)="ged.accessName.set(null)" /> }
     @if (ged.versionsName(); as vn) { <app-ged-versions-modal [name]="vn" (closed)="ged.versionsName.set(null)" /> }
   `,
@@ -108,6 +111,8 @@ export class AppShellComponent {
   ged = inject(GedOverlayBus);
   session = inject(SessionService);
   private profileSvc = inject(UserProfileService);
+  private refresh = inject(DataRefreshService);
+  private webPush = inject(WebPushService);
 
   readonly deleteLines = [
     'Cette suppression est irréversible.',
@@ -137,16 +142,14 @@ export class AppShellComponent {
   });
 
   /** Task detail opened from a @@mention outside a project (canal, conversation). */
-  taskCard = computed<(TaskCard & { proj?: string }) | null>(() => {
-    const id = this.bus.taskId();
-    return id ? this.tasksSvc.cardById(id) ?? null : null;
-  });
+  private _taskCard = signal<(TaskCard & { proj?: string }) | null>(null);
+  taskCard = this._taskCard.asReadonly();
   taskLoading = signal(false);
   private _taskT: any;
 
   /** Switch the global task modal to another mentioned task, with a loading transition. */
   switchTask(id: string): void {
-    if (this.bus.taskId() === id || !this.tasksSvc.cardById(id)) return;
+    if (this.bus.taskId() === id) return;
     this.taskLoading.set(true);
     clearTimeout(this._taskT);
     this._taskT = setTimeout(() => {
@@ -159,6 +162,15 @@ export class AppShellComponent {
     // Charge le catalogue des espaces + le profil réel (header, Paramètres) à l'entrée.
     this.session.loadWorkspaces();
     if (!environment.mock.auth) this.profileSvc.load();
+    // Web Push : enregistre le service worker et l'abonnement (silencieux si refusé).
+    void this.webPush.enable();
+
+    // Résout la carte du `@@mention` ouvert hors d'un projet (canal / conversation).
+    effect(() => {
+      const id = this.bus.taskId();
+      if (!id) { this._taskCard.set(null); return; }
+      this.tasksSvc.cardById(id).subscribe(card => this._taskCard.set(card ?? null));
+    });
 
     this.router.events.pipe(
       filter((e): e is NavigationEnd => e instanceof NavigationEnd),
@@ -187,9 +199,16 @@ export class AppShellComponent {
 
   title(): string { return SECTION_TITLES[this.section()] ?? ''; }
 
-  onProjectCreated(): void {
+  /** Task deleted from the global (mention) detail modal → persist + close. */
+  onTaskDeleted(id: string): void {
+    this.tasksSvc.deleteTask(id).subscribe();
+    this.bus.taskId.set(null);
+  }
+
+  onProjectCreated(project: Project): void {
     this.bus.createProjectOpen.set(false);
-    this.router.navigate(['/app/projets']);
+    this.refresh.bumpProjects();
+    this.router.navigate(['/app/projets', project.id, 'kanban']);
   }
 
   private parse(url: string): string {

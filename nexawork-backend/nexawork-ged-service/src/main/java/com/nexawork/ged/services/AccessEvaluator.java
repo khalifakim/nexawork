@@ -58,7 +58,8 @@ public class AccessEvaluator {
     // ─── Fichiers ─────────────────────────────────────────────────────────────
 
     public boolean canView(GedFile file) {
-        return hasAccess(file.getFolder().getOrganisationId(), file.getAddedByUserId(),
+        // organisation portée par le fichier (V2 : peut ne pas avoir de dossier).
+        return hasAccess(file.getOrganisationId(), file.getAddedByUserId(),
                 file.getAccessMode(), TargetType.FILE, file.getId());
     }
 

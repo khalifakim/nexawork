@@ -52,9 +52,13 @@ delete_queue_if_exists() {
 # - ged.file-attached : l'événement file.attached.to.task a été retiré (V5.1
 #   §4.3/§7.2) — les pièces jointes de tâches sont tirées en HTTP synchrone.
 # - notification.external-guest-invited : renommée en ...external-guest (§7.4).
+# - messaging.call-ended : le message système « réunion terminée » dans le canal
+#   du projet a été retiré (réunion rattachée au workspace, sans projet) — seule
+#   Notification consomme désormais call.ended.
 echo "Nettoyage queues obsolètes :"
 delete_queue_if_exists nexawork.ged.file-attached
 delete_queue_if_exists nexawork.notification.external-guest-invited
+delete_queue_if_exists nexawork.messaging.call-ended
 
 # ── Queues Notification Service (6) — V5.1 §7.4 + Lot M1 ──────────────────────
 echo "Notification queues :"
@@ -69,9 +73,8 @@ declare_queue_binding nexawork.notification.meeting-invite      meeting.particip
 echo "GED queues :"
 declare_queue_binding nexawork.ged.project-created              project.created
 
-# ── Queues Messaging Service (2) — V5.1 §7.4 ──────────────────────────────────
+# ── Queue Messaging Service (1) — V5.1 §7.4 ───────────────────────────────────
 echo "Messaging queues :"
 declare_queue_binding nexawork.messaging.project-created        project.created
-declare_queue_binding nexawork.messaging.call-ended             call.ended
 
 echo "Toutes les queues et bindings RabbitMQ créés."

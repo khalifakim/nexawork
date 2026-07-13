@@ -1,14 +1,22 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { toSignal, toObservable } from '@angular/core/rxjs-interop';
+import { switchMap } from 'rxjs/operators';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 import { ApercuDocumentComponent } from '@shared/overlays/apercu-document/apercu-document.component';
 import { FilterChipComponent, FilterOption } from '@shared/ui/filter-chip/filter-chip.component';
 import { DocMenuComponent, DocMenuItem } from '@shared/ui/doc-menu/doc-menu.component';
 import { ToastService } from '@core/services/toast.service';
 import { GedOverlayBus } from '@core/services/ged-overlay.bus';
-import { GedType } from '@core/models/ged.models';
+import { GedService } from '@core/services/ged.service';
+import { GedItem, GedType } from '@core/models/ged.models';
+import { environment } from '@environment/environment';
 import { GED_COLOR, GED_ICON, ME } from '@core/util/ui.util';
 
-interface Shared { name: string; by: string; bc: string; date: string; size: string; type: GedType; }
+interface Shared {
+  name: string; by: string; bc: string; date: string; size: string; type: GedType;
+  /** Élément GED réel sous-jacent (mode backend) — porte l'UUID. */
+  item?: GedItem;
+}
 
 @Component({
   selector: 'app-documents-partage',
@@ -58,12 +66,22 @@ interface Shared { name: string; by: string; bc: string; date: string; size: str
 export class DocumentsPartageComponent {
   private toast = inject(ToastService);
   protected gedOverlay = inject(GedOverlayBus);
+  private ged = inject(GedService);
+
+  private readonly real = !environment.mock.ged;
 
   preview = signal<string | null>(null);
   q = signal('');
   fType = signal<string | null>(null);
   fDate = signal<string | null>(null);
   menu = signal<string | null>(null);
+  private refresh = signal(0);
+
+  /** Documents réellement partagés avec moi (mode backend). */
+  private realDocs = toSignal(
+    toObservable(this.refresh).pipe(switchMap(() => this.real ? this.ged.sharedWithMe() : [])),
+    { initialValue: [] as GedItem[] },
+  );
 
   readonly TYPE_OPTS: FilterOption[] = [
     { value: 'pdf', label: 'PDF', dot: '#F5564E' },
@@ -78,7 +96,21 @@ export class DocumentsPartageComponent {
     { value: 'month', label: 'Ce mois' },
   ];
 
-  items: Shared[] = [
+  /** Documents affichés : réels (backend) ou fixtures (mock). */
+  private docs = computed<Shared[]>(() => {
+    if (!this.real) return this.mockItems;
+    return this.realDocs().map(it => ({
+      name: it.name,
+      by: it.owner,
+      bc: '#6C70F0',
+      date: it.mod ?? '',
+      size: it.size,
+      type: it.type,
+      item: it,
+    }));
+  });
+
+  private mockItems: Shared[] = [
     { name: 'Maquettes Sprint 12.fig', by: 'Sarah Diallo', bc: '#F2693C', date: "Aujourd'hui, 14:23", size: '4,2 Mo', type: 'fig' },
     { name: 'Specs fonctionnelles v2.pdf', by: 'Yacine Sow', bc: '#3AA9E0', date: 'Hier, 09:41', size: '2,4 Mo', type: 'pdf' },
     { name: 'Budget Q3.xlsx', by: 'Akim Koné', bc: '#F5A623', date: '15 mai 2026', size: '64 Ko', type: 'sheet' },
@@ -90,7 +122,7 @@ export class DocumentsPartageComponent {
     const q = this.q().toLowerCase().trim();
     const t = this.fType();
     const d = this.fDate();
-    return this.items.filter(it => {
+    return this.docs().filter(it => {
       if (q && !it.name.toLowerCase().includes(q)) return false;
       if (t && it.type !== t) return false;
       if (d) {
@@ -124,10 +156,23 @@ export class DocumentsPartageComponent {
     switch (action) {
       case 'open':     this.preview.set(it.name); break;
       case 'download': this.toast.show({ message: 'Téléchargement de « ' + it.name + ' »…' }); break;
-      case 'versions': this.gedOverlay.openVersions(it.name); break;
-      case 'access':   this.gedOverlay.openAccess(it.name); break;
+      case 'versions':
+        if (it.item) this.gedOverlay.openVersionsFor(it.item); else this.gedOverlay.openVersions(it.name);
+        break;
+      case 'access':
+        if (it.item) this.gedOverlay.openAccessFor(it.item); else this.gedOverlay.openAccess(it.name);
+        break;
       case 'rename':   this.toast.show({ message: 'Renommer « ' + it.name + ' »' }); break;
-      case 'delete':   this.toast.show({ message: '« ' + it.name + ' » supprimé' }); break;
+      case 'delete':
+        if (it.item) {
+          this.ged.deleteItem(it.item).subscribe(() => {
+            this.refresh.update(v => v + 1);
+            this.toast.show({ message: '« ' + it.name + ' » déplacé vers la corbeille' });
+          });
+        } else {
+          this.toast.show({ message: '« ' + it.name + ' » supprimé' });
+        }
+        break;
     }
   }
 

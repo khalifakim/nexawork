@@ -7,17 +7,35 @@ import { extractApiError } from '@core/http/response.model';
 import { ToastService } from '@core/services/toast.service';
 import { selectRefreshToken } from '@store/auth/auth.selectors';
 import { AuthActions } from '@store/auth/auth.actions';
+import { SKIP_ERROR_TOAST } from '@core/http/http-context';
 import { environment } from '@environment/environment';
 
 /** Marqueur interne : la requête a déjà été rejouée après un refresh. */
 const RETRIED_HEADER = 'X-Auth-Retried';
 
-/** Délai max avant de considérer que le serveur ne répond pas (ms). */
-const REQUEST_TIMEOUT_MS = 20_000;
+/**
+ * Délai max avant de considérer que le serveur ne répond pas (ms). Calibré pour
+ * une machine modeste où les JVM Spring Boot saturent le CPU au démarrage : 20 s
+ * était trop agressif (les requêtes d'agrégation — tableau de bord, recherche,
+ * catalogue de mentions — et les cold starts le dépassaient légitimement, d'où le
+ * toast « serveur ne répond pas » intempestif). Le timeout reste une garde contre
+ * un serveur réellement gelé, pas contre une requête simplement lente.
+ */
+const REQUEST_TIMEOUT_MS = 60_000;
 
 /** Requêtes du domaine auth : jamais de tentative de refresh dessus. */
 function isAuthEndpoint(req: HttpRequest<unknown>): boolean {
   return req.url.includes('/auth/');
+}
+
+/**
+ * Requêtes légitimement longues (upload multipart, téléchargement/PDF binaire) :
+ * leur durée dépend de la taille du fichier et du débit, pas de la réactivité du
+ * serveur. Elles sont donc EXCLUES du timeout court — un upload de plusieurs Mo ne
+ * doit jamais déclencher « le serveur ne répond pas ».
+ */
+function isLongRunning(req: HttpRequest<unknown>): boolean {
+  return req.body instanceof FormData || req.responseType === 'blob';
 }
 
 /**
@@ -34,18 +52,22 @@ export const errorInterceptor: HttpInterceptorFn = (req, next) => {
   const auth = inject(AuthService);
   const toast = inject(ToastService);
   const isApi = req.url.startsWith(environment.apiUrl);
+  // L'appelant gère l'erreur lui-même (message inline) → pas de toast centralisé.
+  const silent = req.context.get(SKIP_ERROR_TOAST);
 
   return next(req).pipe(
-    // N'applique le timeout qu'aux appels backend (pas aux assets locaux).
-    isApi ? timeout({ each: REQUEST_TIMEOUT_MS }) : (s => s),
+    // Timeout uniquement sur les appels backend « courts » (ni upload, ni download binaire).
+    isApi && !isLongRunning(req) ? timeout({ each: REQUEST_TIMEOUT_MS }) : (s => s),
     catchError((error: unknown) => {
 
       // ─── Serveur ne répond pas (timeout) ───────────────────────────────────
       if (error instanceof TimeoutError) {
-        toast.show({
-          message: 'Le serveur ne répond pas. Vérifiez que le backend est démarré (localhost:8080).',
-          icon: 'warning',
-        });
+        if (!silent) {
+          toast.show({
+            message: 'Le serveur ne répond pas. Vérifiez que le backend est démarré (localhost:8080).',
+            icon: 'warning',
+          });
+        }
         return throwError(() => error);
       }
 
@@ -53,10 +75,12 @@ export const errorInterceptor: HttpInterceptorFn = (req, next) => {
 
       // ─── Connexion impossible (refusée / réseau / CORS) ────────────────────
       if (isApi && httpErr.status === 0) {
-        toast.show({
-          message: 'Impossible de contacter le serveur. Vérifiez que le backend est démarré.',
-          icon: 'warning',
-        });
+        if (!silent) {
+          toast.show({
+            message: 'Impossible de contacter le serveur. Vérifiez que le backend est démarré.',
+            icon: 'warning',
+          });
+        }
         return throwError(() => httpErr);
       }
 
@@ -89,8 +113,8 @@ export const errorInterceptor: HttpInterceptorFn = (req, next) => {
         );
       }
 
-      // ─── Autres erreurs API : toast informatif ─────────────────────────────
-      if (isApi && httpErr.status >= 400 && httpErr.status !== 401) {
+      // ─── Autres erreurs API : toast informatif (sauf si géré localement) ────
+      if (isApi && httpErr.status >= 400 && httpErr.status !== 401 && !silent) {
         toast.show({ message: extractApiError(httpErr), icon: 'warning' });
       }
       return throwError(() => httpErr);

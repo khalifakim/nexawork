@@ -17,6 +17,9 @@ public interface TaskService {
 
     List<TaskResponse> listTasks(UUID projectId);
 
+    /** Vue « Mes tâches » : tâches assignées à l'appelant (projets actifs du workspace). */
+    List<TaskResponse> listMyTasks();
+
     TaskResponse createTask(UUID projectId, CreateTaskRequest request);
 
     TaskResponse getTask(UUID taskId);

@@ -1,9 +1,14 @@
 import {
-  ChangeDetectionStrategy, Component, EventEmitter, Output, computed, signal,
+  ChangeDetectionStrategy, Component, EventEmitter, Input, OnInit, Output, computed, inject, signal,
 } from '@angular/core';
 import { IconComponent } from '@shared/ui/icon/icon.component';
+import { KanbanStore } from '@features/projets/kanban/kanban.store';
+import { TasksService } from '@core/services/tasks.service';
+import { ProjectsService } from '@core/services/projects.service';
+import { ToastService } from '@core/services/toast.service';
 
-interface Step { name: string; color: string; }
+interface Step { id: string; name: string; color: string; }
+interface TransRow { id: string; from: Step; to: Step; }
 
 const ME = { name: 'Akim Koné', c: '#F5A623' };
 const MEMBERS = [
@@ -46,7 +51,7 @@ const IC_FILTER     = '<path d="M3 6h18M6 12h12M10 18h4"/>';
     </div>
     <div class="hd__tx">
       <div class="hd__t">Configurer le workflow</div>
-      <div class="hd__s">Refonte App Mobile · définissez la séquence des colonnes et qui peut effectuer chaque transition.</div>
+      <div class="hd__s">{{ projectName }} · définissez la séquence des colonnes et qui peut effectuer chaque transition.</div>
     </div>
     <button class="x-btn" (click)="closed.emit()" title="Fermer">
       <app-icon name="x" [size]="16" [stroke]="2.2" />
@@ -62,7 +67,7 @@ const IC_FILTER     = '<path d="M3 6h18M6 12h12M10 18h4"/>';
       <div class="sec-h__s">L'ordre des colonnes du Kanban, de la première à la dernière.</div>
     </div>
 
-    @for (s of steps(); track s.name; let i = $index; let last = $last) {
+    @for (s of steps(); track s.id; let i = $index; let last = $last) {
       <!-- Step row -->
       <div class="step">
         <span class="step__num">{{ i + 1 }}</span>
@@ -116,7 +121,7 @@ const IC_FILTER     = '<path d="M3 6h18M6 12h12M10 18h4"/>';
     </div>
 
     <div class="trans-list">
-      @for (t of transitions(); track t.to.name; let first = $first) {
+      @for (t of transitions(); track t.id; let first = $first) {
         <div class="trans" [class.trans--first]="first">
           <!-- Label: from → to -->
           <div class="trans__l">
@@ -134,53 +139,39 @@ const IC_FILTER     = '<path d="M3 6h18M6 12h12M10 18h4"/>';
           <!-- Role selector -->
           <div class="tc" (click)="$event.stopPropagation()">
             <button class="tc__btn"
-                    [style.border-color]="transOpen() === t.to.name ? '#5B5FE9' : '#D9D6CE'"
-                    (click)="$event.stopPropagation(); openTrans(t.to.name)">
-              @if (isRole(roleFor(t.to.name))) {
-                <span class="tc__ic"><app-icon [path]="IC_ROLE[roleFor(t.to.name)] || ''" [size]="15" /></span>
+                    [style.border-color]="transOpen() === t.id ? '#5B5FE9' : '#D9D6CE'"
+                    (click)="$event.stopPropagation(); openTrans(t.id)">
+              @if (isRole(roleFor(t.id))) {
+                <span class="tc__ic"><app-icon [path]="IC_ROLE[roleFor(t.id)] || ''" [size]="15" /></span>
               } @else {
-                <span class="tc__av" [style.background]="memberColor(roleFor(t.to.name))">{{ ini(roleFor(t.to.name)) }}</span>
+                <span class="tc__av" [style.background]="memberColor(roleFor(t.id))">{{ ini(roleFor(t.id)) }}</span>
               }
-              <span class="tc__lbl">{{ roleLabel(t.to.name) }}</span>
+              <span class="tc__lbl">{{ roleLabel(t.id) }}</span>
               <span style="display:flex;color:#9b97a3"><app-icon name="chevronDown" [size]="14" /></span>
             </button>
 
-            @if (transOpen() === t.to.name) {
+            @if (transOpen() === t.id) {
               <!-- Backdrop -->
               <div class="tc-bd" (click)="$event.stopPropagation(); transOpen.set(null)"></div>
               <!-- Popup -->
               <div class="tc-pp" (click)="$event.stopPropagation()">
                 @for (r of ROLE_OPTS; track r[0]) {
-                  <button class="tc-pp__i" [class.tc-pp__i--sel]="roleFor(t.to.name) === r[0]"
-                          (click)="setRole(t.to.name, r[0])">
+                  <button class="tc-pp__i" [class.tc-pp__i--sel]="roleFor(t.id) === r[0]"
+                          (click)="setRole(t.id, r[0])">
                     <span style="display:flex;color:#86828e"><app-icon [path]="IC_ROLE[r[0]]" [size]="16" /></span>
                     <span class="tc-pp__n">{{ r[1] }}</span>
-                    @if (roleFor(t.to.name) === r[0]) {
+                    @if (roleFor(t.id) === r[0]) {
                       <app-icon name="checkBig" [size]="15" style="color:#5B5FE9;display:flex" />
                     }
                   </button>
                 }
                 <div class="tc-pp__sep"></div>
-                <div class="tc-pp__lbl">Membre spécifique</div>
-                <input class="tc-pp__q" autofocus placeholder="Rechercher un membre…"
+                <div class="tc-pp__lbl">Membre spécifique <span class="tc-pp__soon">— bientôt (I3)</span></div>
+                <input class="tc-pp__q" placeholder="Rechercher un membre…" disabled
                        [value]="transQuery()"
-                       (click)="$event.stopPropagation()"
-                       (input)="transQuery.set($any($event.target).value)" />
+                       (click)="$event.stopPropagation()" />
                 <div class="tc-pp__list">
-                  @if (filteredMembers().length) {
-                    @for (m of filteredMembers(); track m.name) {
-                      <button class="tc-pp__i" [class.tc-pp__i--sel]="roleFor(t.to.name) === m.name"
-                              (click)="setRole(t.to.name, m.name); transQuery.set('')">
-                        <span class="tc-pp__av" [style.background]="m.c">{{ ini(m.name) }}</span>
-                        <span class="tc-pp__n">{{ m.name }}{{ m.name === ME.name ? ' (moi)' : '' }}</span>
-                        @if (roleFor(t.to.name) === m.name) {
-                          <app-icon name="checkBig" [size]="15" style="color:#5B5FE9;display:flex" />
-                        }
-                      </button>
-                    }
-                  } @else {
-                    <div class="tc-pp__empty">Aucun membre trouvé</div>
-                  }
+                  <div class="tc-pp__empty">Annuaire des membres bientôt disponible</div>
                 </div>
               </div>
             }
@@ -194,8 +185,8 @@ const IC_FILTER     = '<path d="M3 6h18M6 12h12M10 18h4"/>';
   <!-- Footer -->
   <div class="ft">
     <button class="ft-ghost" (click)="closed.emit()">Annuler</button>
-    <button class="ft-primary" (click)="closed.emit()">
-      <app-icon name="checkBig" [size]="16" [stroke]="2.4" />Enregistrer le workflow
+    <button class="ft-primary" [disabled]="busy()" (click)="save()">
+      <app-icon name="checkBig" [size]="16" [stroke]="2.4" />{{ busy() ? "Enregistrement…" : "Enregistrer le workflow" }}
     </button>
   </div>
 
@@ -384,8 +375,14 @@ const IC_FILTER     = '<path d="M3 6h18M6 12h12M10 18h4"/>';
     .ft-primary:hover { background: #4D51DC; }
   `],
 })
-export class WorkflowComponent {
+export class WorkflowComponent implements OnInit {
+  @Input() projectName = '';
   @Output() closed = new EventEmitter<void>();
+
+  private store = inject(KanbanStore);
+  private tasksSvc = inject(TasksService);
+  private projectsSvc = inject(ProjectsService);
+  private toast = inject(ToastService);
 
   readonly ME         = ME;
   readonly ROLE_OPTS  = ROLE_OPTS;
@@ -395,42 +392,53 @@ export class WorkflowComponent {
   readonly IC_ARROW_DOWN = IC_ARROW_DOWN;
 
   enforce = signal(true);
-  steps   = signal<Step[]>([
-    { name: 'À faire',     color: '#8E8AA0' },
-    { name: 'En cours',    color: '#5B8DEF' },
-    { name: 'En révision', color: '#E89A2C' },
-    { name: 'Validé',      color: '#2BB673' },
-  ]);
 
+  /** Étapes = colonnes réelles du board (ordre = ordre des positions). */
+  steps = computed<Step[]>(() => this.store.columns().map(c => ({ id: c.id, name: c.name, color: c.color })));
+
+  /** Transitions réelles du projet (graphe FSM), chargées du backend. */
+  private transList = signal<TransRow[]>([]);
+  transitions = () => this.transList();
+
+  /** responsibleType par id de transition ('Tous' | 'Chef de projet'). */
   roles      = signal<Record<string, string>>({});
   transOpen  = signal<string | null>(null);
   transQuery = signal('');
+  busy       = signal(false);
 
-  transitions = computed(() => {
-    const s = this.steps();
-    const out: { from: Step; to: Step }[] = [];
-    for (let i = 1; i < s.length; i++) out.push({ from: s[i - 1], to: s[i] });
-    return out;
-  });
+  /**
+   * Annuaire membre du sélecteur « Membre spécifique » — vide en I2c (résolution
+   * des membres = I3). Les responsables par rôle (Tous / Chef de projet) sont, eux,
+   * pleinement fonctionnels.
+   */
+  filteredMembers = computed<{ name: string; c: string }[]>(() => []);
 
-  filteredMembers = computed(() => {
-    const q = this.transQuery().toLowerCase().trim();
-    return MEMBERS.filter(m => m.name.toLowerCase().includes(q));
-  });
-
-  move(i: number, dir: number): void {
-    const j = i + dir;
-    this.steps.update(l => {
-      if (j < 0 || j >= l.length) return l;
-      const n = [...l]; [n[i], n[j]] = [n[j], n[i]]; return n;
+  ngOnInit(): void {
+    const pid = this.store.projectId();
+    if (!pid) return;
+    this.projectsSvc.byId(pid).subscribe(p => { if (p) this.enforce.set(p.enforceWorkflowOrder); });
+    this.tasksSvc.transitions(pid).subscribe(list => {
+      const colorOf = (id: string) => this.store.columns().find(c => c.id === id)?.color ?? '#8E8AA0';
+      this.transList.set(list.map(t => ({
+        id: t.id,
+        from: { id: t.fromStatusId, name: t.fromStatusName, color: colorOf(t.fromStatusId) },
+        to:   { id: t.toStatusId,   name: t.toStatusName,   color: colorOf(t.toStatusId) },
+      })));
+      this.roles.set(Object.fromEntries(list.map(t =>
+        [t.id, t.responsibleType === 'PROJECT_LEAD' ? 'Chef de projet' : 'Tous'])));
     });
   }
 
-  roleFor(toName: string): string  { return this.roles()[toName] ?? 'Tous'; }
-  isRole(r: string): boolean       { return ROLE_OPTS.some(o => o[0] === r); }
+  move(i: number, dir: number): void {
+    const id = this.steps()[i]?.id;
+    if (id) this.store.reorderStatus(id, dir < 0 ? -1 : 1);
+  }
 
-  roleLabel(toName: string): string {
-    const r = this.roleFor(toName);
+  roleFor(key: string): string  { return this.roles()[key] ?? 'Tous'; }
+  isRole(r: string): boolean    { return ROLE_OPTS.some(o => o[0] === r); }
+
+  roleLabel(key: string): string {
+    const r = this.roleFor(key);
     const opt = ROLE_OPTS.find(o => o[0] === r);
     return opt ? opt[1] : r;
   }
@@ -441,13 +449,30 @@ export class WorkflowComponent {
 
   ini(name: string): string { return name.split(' ').map(w => w[0]).join(''); }
 
-  openTrans(toName: string): void {
-    this.transOpen.set(this.transOpen() === toName ? null : toName);
+  openTrans(key: string): void {
+    this.transOpen.set(this.transOpen() === key ? null : key);
     this.transQuery.set('');
   }
 
-  setRole(toName: string, role: string): void {
-    this.roles.update(r => ({ ...r, [toName]: role }));
+  setRole(key: string, role: string): void {
+    this.roles.update(r => ({ ...r, [key]: role }));
     this.transOpen.set(null);
+  }
+
+  save(): void {
+    const pid = this.store.projectId();
+    if (!pid || this.busy()) return;
+    this.busy.set(true);
+    this.tasksSvc.updateWorkflow(pid, {
+      enforceWorkflowOrder: this.enforce(),
+      transitions: this.transList().map(t => ({
+        transitionId: t.id,
+        responsibleType: this.roleFor(t.id) === 'Chef de projet' ? 'PROJECT_LEAD' : 'ALL',
+        allowedRoles: [],
+      })),
+    }).subscribe({
+      next: () => { this.toast.show({ message: 'Workflow enregistré' }); this.closed.emit(); },
+      error: () => this.busy.set(false),
+    });
   }
 }

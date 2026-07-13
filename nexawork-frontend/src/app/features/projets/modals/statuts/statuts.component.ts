@@ -1,5 +1,5 @@
 import {
-  ChangeDetectionStrategy, Component, EventEmitter, Output, inject, signal,
+  ChangeDetectionStrategy, Component, EventEmitter, Input, Output, inject, signal,
 } from '@angular/core';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { IconComponent } from '@shared/ui/icon/icon.component';
@@ -40,7 +40,7 @@ const PALETTE = [
   <!-- Header -->
   <div class="hd">
     <div class="hd__t">
-      Modifier les statuts pour <span class="hd__proj">Refonte App Mobile</span>
+      Modifier les statuts pour <span class="hd__proj">{{ projectName }}</span>
     </div>
     <button class="x-btn" (click)="closed.emit()" title="Fermer">
       <app-icon name="x" [size]="16" />
@@ -104,7 +104,8 @@ const PALETTE = [
               </button>
               <!-- Name input -->
               <input class="sname" [value]="c.name" placeholder="Nom du statut"
-                     (input)="rename(c.id, $any($event.target).value)" />
+                     (input)="rename(c.id, $any($event.target).value)"
+                     (blur)="commitRename(c.id)" />
               <!-- Dots menu -->
               <button class="dots-btn" (click)="$event.stopPropagation(); toggleMenu(c.id)">⋯</button>
 
@@ -314,6 +315,7 @@ const PALETTE = [
   `],
 })
 export class StatutsComponent {
+  @Input() projectName = '';
   @Output() closed = new EventEmitter<void>();
 
   private sanitizer = inject(DomSanitizer);
@@ -336,11 +338,12 @@ export class StatutsComponent {
 
   // ── Mutations ────────────────────────────────────────────────────────────
   rename(id: string, v: string): void { this.store.renameColumn(id, v); }
+  commitRename(id: string): void { this.store.commitRename(id); }
   del(id: string): void {
     this.store.deleteColumn(id);
     this.menuOpenId.set(null);
   }
-  addStatus(cat: string): void { this.store.addColumn(cat as StatusCat); }
+  addStatus(cat: string): void { this.store.addColumnAsync(cat as StatusCat).subscribe(); }
   setColor(id: string, color: string): void {
     this.store.setColor(id, color);
     this.colorOpenId.set(null);

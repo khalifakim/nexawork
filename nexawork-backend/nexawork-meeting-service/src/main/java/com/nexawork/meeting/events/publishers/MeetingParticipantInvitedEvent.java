@@ -11,7 +11,6 @@ public record MeetingParticipantInvitedEvent(
         UUID callId,
         String topic,
         UUID organisationId,
-        UUID projectId,
         UUID inviterUserId,
         String inviterDisplayName,
         UUID recipientUserId) {

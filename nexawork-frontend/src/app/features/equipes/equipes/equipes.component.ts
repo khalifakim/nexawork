@@ -1,27 +1,31 @@
 import { ChangeDetectionStrategy, Component, ElementRef, Input, OnDestroy, OnInit, computed, effect, inject, signal } from '@angular/core';
 import { ActivatedRoute, NavigationEnd, Router } from '@angular/router';
+import { forkJoin } from 'rxjs';
 import { filter, map } from 'rxjs/operators';
 import { toSignal, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { IconComponent } from '@shared/ui/icon/icon.component';
+import { LoaderComponent } from '@shared/ui/loader/loader.component';
 import { ShellBus } from '@layouts/app-shell/shell.bus';
 import { MembersService } from '@core/services/members.service';
 import { ProjectsService } from '@core/services/projects.service';
 import { SessionService } from '@core/services/session.service';
+import { ToastService } from '@core/services/toast.service';
 import { Member } from '@core/models/member.models';
-import { slugify } from '@core/util/ui.util';
+import { ProjectMember } from '@core/models/project.models';
+import { avatarColorFor } from '@core/util/ui.util';
 import { AjouterCollaborateursProjetComponent, AddCollaboratorsPayload } from '@features/equipes/modals/ajouter-collaborateurs-projet/ajouter-collaborateurs-projet.component';
 import { CreerEquipeComponent, CreatedTeam } from '@features/equipes/modals/creer-equipe/creer-equipe.component';
 
-interface TeamMember { name: string; role: string; color: string; }
+interface TeamMember { userId: string; name: string; role: string; color: string; }
 interface Team { id: string; name: string; color: string; members: TeamMember[]; }
-interface Loose { name: string; email: string; role: string; color: string; }
-interface MemberPick { name: string; role?: string; color: string; me?: boolean; }
+interface Loose { userId: string; name: string; email: string; role: string; color: string; }
+interface MemberPick { userId: string; name: string; role?: string; color: string; me?: boolean; }
 
 @Component({
   selector: 'app-equipes',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IconComponent, AjouterCollaborateursProjetComponent, CreerEquipeComponent],
+  imports: [IconComponent, AjouterCollaborateursProjetComponent, CreerEquipeComponent, LoaderComponent],
   template: `
     @if (openTeam(); as t) {
       <!-- ===== Détail d'une équipe (inline — reste sur l'onglet) ===== -->
@@ -31,7 +35,7 @@ interface MemberPick { name: string; role?: string; color: string; me?: boolean;
           <span class="ddot" [style.background]="t.color"><app-icon name="teams" [size]="14" /></span>
           <div class="dtx">
             <div class="dn">{{ t.name }}</div>
-            <div class="dc">{{ t.members.length }} membres · Refonte App Mobile</div>
+            <div class="dc">{{ t.members.length }} membres · {{ projectName() }}</div>
           </div>
           @if (!readonly && canManageEff()) { <button class="dadd" (click)="openAddMember($event)"><app-icon name="plus" [size]="14" [stroke]="2" />Ajouter</button> }
         </div>
@@ -41,7 +45,7 @@ interface MemberPick { name: string; role?: string; color: string; me?: boolean;
               <div class="drow" [class.drow--first]="i===0">
                 <span class="dav" [style.background]="m.color">{{ ini(m.name) }}</span>
                 <div class="db"><div class="dmn">{{ m.name }}</div><div class="dmr">{{ m.role }}</div></div>
-                @if (!readonly && canManageEff()) { <button class="drm" title="Retirer de l'équipe" (click)="removeFromTeam(t.id, m.name)"><app-icon name="x" [size]="15" /></button> }
+                @if (!readonly && canManageEff()) { <button class="drm" title="Retirer de l'équipe" (click)="removeFromTeam(t.id, m)"><app-icon name="x" [size]="15" /></button> }
               </div>
             } @empty {
               <div class="dempty">Cette équipe n'a plus de membre.</div>
@@ -66,9 +70,9 @@ interface MemberPick { name: string; role?: string; color: string; me?: boolean;
               <input [value]="addQ()" (input)="addQ.set($any($event.target).value)" placeholder="Rechercher une personne…" autofocus />
             </div>
             <div class="mlist">
-              @for (m of addCandidates(); track m.name) {
-                @let picked = addPicked().has(m.name);
-                <button class="mrow" [class.mrow--on]="picked" (click)="toggleAddPick(m.name)">
+              @for (m of addCandidates(); track m.userId) {
+                @let picked = addPicked().has(m.userId);
+                <button class="mrow" [class.mrow--on]="picked" (click)="toggleAddPick(m.userId)">
                   <span class="mrow__a" [style.background]="m.color">{{ ini(m.name) }}</span>
                   <span class="mrow__b">
                     <span class="mrow__n">{{ m.name }}</span>
@@ -92,6 +96,16 @@ interface MemberPick { name: string; role?: string; color: string; me?: boolean;
           </div>
         </div>
       }
+    } @else if (projects().length === 0) {
+      <!-- ===== Aucun projet : pas d'équipes possibles ===== -->
+      <div class="wrap">
+        <div class="noproj">
+          <span class="noproj__ic"><app-icon name="teams" [size]="30" /></span>
+          <h2>Aucun projet n'a encore été créé</h2>
+          <p>Créez d'abord un projet afin de pouvoir créer et gérer vos équipes.</p>
+          <button class="noproj__cta" (click)="goToProjects()"><app-icon name="plus" [size]="17" [stroke]="2.2" />Créer un projet</button>
+        </div>
+      </div>
     } @else {
       <!-- ===== Liste des équipes ===== -->
       <div class="wrap" (click)="closePopovers()">
@@ -143,8 +157,8 @@ interface MemberPick { name: string; role?: string; color: string; me?: boolean;
                     @if (filteredMembers().length === 0) {
                       <div class="picker__empty">Aucune personne trouvée</div>
                     }
-                    @for (m of filteredMembers(); track m.name) {
-                      <button class="picker__row" (click)="pickChef(m.name)">
+                    @for (m of filteredMembers(); track m.userId) {
+                      <button class="picker__row" (click)="pickChef(m)">
                         <span class="picker__a" [style.background]="m.color">{{ ini(m.name) }}</span>
                         <span class="picker__b">
                           <span class="picker__n">{{ m.name }}@if (m.me) { <span class="picker__me"> (moi)</span> }</span>
@@ -185,6 +199,9 @@ interface MemberPick { name: string; role?: string; color: string; me?: boolean;
           }
         </div>
 
+        @if (loading()) {
+          <app-loader label="Chargement des équipes…" [minHeight]="260" />
+        } @else {
         <!-- Cards d'équipes — filtrées par la recherche -->
         <div class="cards">
           @for (t of filteredTeams(); track t.id) {
@@ -264,7 +281,7 @@ interface MemberPick { name: string; role?: string; color: string; me?: boolean;
                   }
                 </div>
               }
-              @if (!readonly && canManageEff()) { <button class="rm" title="Retirer du projet" (click)="removeLoose(m.name)"><app-icon name="x" [size]="15" /></button> }
+              @if (!readonly && canManageEff()) { <button class="rm" title="Retirer du projet" (click)="removeLoose(m)"><app-icon name="x" [size]="15" /></button> }
             </div>
           } @empty {
             @if (q().trim() && loose().length > 0) {
@@ -274,6 +291,7 @@ interface MemberPick { name: string; role?: string; color: string; me?: boolean;
             }
           }
         </div>
+        }
       </div>
     }
 
@@ -305,6 +323,7 @@ export class EquipesComponent implements OnInit, OnDestroy {
   private route = inject(ActivatedRoute);
   private projectsSvc = inject(ProjectsService);
   private session = inject(SessionService);
+  private toast = inject(ToastService);
   bus = inject(ShellBus);
 
   /** Effective manage flag — always true for ADMIN/OWNER (a project lead status is passed as input). */
@@ -327,7 +346,7 @@ export class EquipesComponent implements OnInit, OnDestroy {
   /** True only in the standalone Équipes space (/app/equipes), not the project tab. */
   standalone = computed(() => this.currentUrl().split('?')[0] === '/app/equipes');
   /** Projects catalog of the active workspace. */
-  private projects = toSignal(this.projectsSvc.list(), { initialValue: [] });
+  protected projects = toSignal(this.projectsSvc.list(), { initialValue: [] });
   /**
    * Project id resolved from the URL:
    * - `/app/projets/:id/equipes` — take the path segment;
@@ -376,82 +395,54 @@ export class EquipesComponent implements OnInit, OnDestroy {
   /** Directory loaded once on init. */
   private directory = signal<Member[]>([]);
 
-  /** Seed teams for a given project id — only "refonte-app-mobile" ships with a rich preset. */
+  /** Équipes réelles du projet courant (avec leurs membres résolus). */
+  teams = signal<Team[]>([]);
+  /** Membres du projet sans équipe (réels). */
+  loose = signal<Loose[]>([]);
+  /** Vrai pendant le chargement des équipes/membres. */
+  loading = signal(false);
+
   /**
-   * Seed teams per project (mock demo data). Provides varied states so we can
-   * exercise every empty-state message :
-   *
-   * - `refonte-app-mobile`   → cas nominal peuplé (3 équipes + membres sans équipe)
-   * - `site-vitrine-2025`    → 1 équipe, aucun membre sans équipe
-   * - `campagne-q3-marketing`→ aucune équipe créée, mais des membres sans équipe
-   * - `migration-backend`    → aucune équipe et aucun membre (projet totalement vide)
-   * - `design-system-nexa`   → aucune équipe et aucun membre (idem)
+   * Charge les équipes + membres réels du projet et construit `teams`/`loose`.
+   * Les noms/couleurs/emails sont résolus via l'annuaire du workspace.
    */
-  private seedTeamsFor(projectId: string | null): Team[] {
-    if (projectId === 'refonte-app-mobile' || projectId === null) {
-      return [
-        { id: 'design-produit', name: 'Design produit', color: '#6C70F0', members: [
-          { name: 'Sarah Diallo', role: 'Lead Design', color: '#F2693C' },
-          { name: 'Aïda Ndiaye',  role: 'Designer UI', color: '#2BB673' },
-          { name: 'Yacine Sow',   role: 'Designer UX', color: '#3AA9E0' },
-        ] },
-        { id: 'developpement', name: 'Développement', color: '#2BB673', members: [
-          { name: 'Moussa Bâ',    role: 'Dev Frontend',  color: '#6C70F0' },
-          { name: 'Akim Koné',    role: 'Dev Backend',   color: '#F5A623' },
-          { name: 'Fatou Traoré', role: 'Dev Fullstack', color: '#3AA9E0' },
-          { name: 'Yacine Sow',   role: 'Dev Mobile',    color: '#3AA9E0' },
-        ] },
-        { id: 'qa-tests', name: 'QA & Tests', color: '#E89A2C', members: [
-          { name: 'Aïda Ndiaye', role: 'QA Lead',     color: '#2BB673' },
-          { name: 'Moussa Bâ',   role: 'QA Engineer', color: '#6C70F0' },
-        ] },
-      ];
-    }
-    if (projectId === 'site-vitrine-2025') {
-      // 1 équipe avec quelques membres → « aucun membre sans équipe » sera testable
-      return [
-        { id: 'site-team', name: 'Équipe projet', color: '#F2693C', members: [
-          { name: 'Sarah Diallo', role: 'Chef de projet', color: '#F2693C' },
-          { name: 'Akim Koné',    role: 'Administrateur', color: '#F5A623' },
-          { name: 'Aïda Ndiaye',  role: 'Designer',       color: '#2BB673' },
-        ] },
-      ];
-    }
-    // campagne-q3-marketing / migration-backend / design-system-nexa → aucune équipe
-    return [];
+  private reload(pid: string | null): void {
+    if (!pid) { this.teams.set([]); this.loose.set([]); return; }
+    this.loading.set(true);
+    forkJoin({
+      teams: this.projectsSvc.teams(pid),
+      members: this.projectsSvc.members(pid),
+      dir: this.members.directory(),
+    }).subscribe({
+      next: ({ teams, members, dir }) => {
+        const byId = new Map(dir.filter(m => m.userId).map(m => [m.userId!, m] as const));
+        const resolve = (pm: ProjectMember): TeamMember => {
+          const m = byId.get(pm.userId);
+          return {
+            userId: pm.userId,
+            name: m?.name ?? 'Membre',
+            role: m?.role || (pm.isProjectLead ? 'Chef de projet' : 'Membre'),
+            color: m?.color ?? avatarColorFor(pm.userId),
+          };
+        };
+        this.teams.set(teams.map(t => ({
+          id: t.id, name: t.name, color: t.color ?? '#6C70F0',
+          members: members.filter(pm => pm.teamId === t.id).map(resolve),
+        })));
+        this.loose.set(members.filter(pm => !pm.teamId).map(pm => ({
+          ...resolve(pm), email: byId.get(pm.userId)?.email ?? '',
+        })));
+        // Chef de projet réel = ownerUserId du projet, résolu en nom.
+        const proj = this.projects().find(p => p.id === pid);
+        this.chef.set(proj?.ownerUserId ? (byId.get(proj.ownerUserId)?.name ?? null) : null);
+        // Garde le détail d'équipe ouvert synchronisé.
+        const open = this.openTeam();
+        if (open) this.openTeam.set(this.teams().find(t => t.id === open.id) ?? null);
+        this.loading.set(false);
+      },
+      error: () => this.loading.set(false),
+    });
   }
-
-  /** Seed loose members (workspace members added to the project, no team yet). */
-  private seedLooseFor(projectId: string | null): Loose[] {
-    if (projectId === 'refonte-app-mobile' || projectId === null) {
-      return [
-        { name: 'Akim Koné', email: 'akim.kone@nexa.io', role: 'Administrateur', color: '#F5A623' },
-      ];
-    }
-    if (projectId === 'site-vitrine-2025') {
-      // Tous les collaborateurs du projet sont assignés à l'équipe unique →
-      // aucun membre sans équipe. On expose ainsi l'état "loose vide" alors
-      // que le projet a bien du monde.
-      return [];
-    }
-    if (projectId === 'campagne-q3-marketing') {
-      // Aucune équipe créée, mais des collaborateurs déjà ajoutés au projet →
-      // on veut voir le message "aucune équipe créée" tout en gardant du monde
-      // dans la liste "sans équipe".
-      return [
-        { name: 'Akim Koné',    email: 'akim.kone@nexa.io',    role: 'Administrateur', color: '#F5A623' },
-        { name: 'Sarah Diallo', email: 'sarah.diallo@ateliernexa.com', role: 'Chef de projet', color: '#F2693C' },
-        { name: 'Fatou Traoré', email: 'fatou.traore@ateliernexa.com', role: 'Marketing',      color: '#3AA9E0' },
-      ];
-    }
-    // migration-backend & design-system-nexa → projet totalement vide
-    // (aucune équipe, aucun membre — même l'utilisateur courant doit être
-    // ajouté explicitement pour tester le workflow d'ajout de zéro).
-    return [];
-  }
-
-  teams = signal<Team[]>(this.seedTeamsFor(null));
-  loose = signal<Loose[]>(this.seedLooseFor(null));
 
   constructor() {
     // Reset teams + loose whenever the active project changes so that navigating
@@ -461,8 +452,7 @@ export class EquipesComponent implements OnInit, OnDestroy {
       const pid = this.projectId();
       if (pid === lastPid) return;
       lastPid = pid;
-      this.teams.set(this.seedTeamsFor(pid));
-      this.loose.set(this.seedLooseFor(pid));
+      this.reload(pid);
       // Close inline detail when we navigate away.
       this.openTeam.set(null);
       this.addCollabOpen.set(false);
@@ -473,10 +463,12 @@ export class EquipesComponent implements OnInit, OnDestroy {
     });
   }
 
-  /** All members available for chef assignment (me first, then directory). */
+  /** Tous les membres du workspace (annuaire réel) — pour la désignation du chef. */
   private allMembers = computed<MemberPick[]>(() => {
-    const me  = { name: 'Akim Koné', role: 'Dev Backend', color: '#F5A623', me: true };
-    return [me, ...this.directory().map(m => ({ name: m.name, role: m.role, color: m.color }))];
+    const meId = this.session.user()?.id;
+    return this.directory().filter(m => m.userId).map(m => ({
+      userId: m.userId!, name: m.name, role: m.role, color: m.color, me: m.userId === meId,
+    }));
   });
 
   /** Distinct people across all teams + unassigned members (project header count). */
@@ -555,35 +547,31 @@ export class EquipesComponent implements OnInit, OnDestroy {
    * le monde, et les personnes déjà cochées restent cochées (état porté par
    * `addPicked`).
    */
-  toggleAddPick(name: string): void {
+  toggleAddPick(userId: string): void {
     this.addPicked.update(set => {
       const next = new Set(set);
-      if (next.has(name)) next.delete(name); else next.add(name);
+      if (next.has(userId)) next.delete(userId); else next.add(userId);
       return next;
     });
     this.addQ.set('');
   }
 
+  /** Assigne un membre (sans équipe) à une équipe — backend puis rechargement. */
   addToTeam(teamId: string, m: Loose): void {
-    // add to the team, remove from the unassigned list
-    this.teams.update(list => list.map(t =>
-      t.id === teamId
-        ? { ...t, members: [...t.members, { name: m.name, role: m.role, color: m.color }] }
-        : t,
-    ));
-    this.loose.update(list => list.filter(x => x.name !== m.name));
-    const cur = this.openTeam();
-    if (cur && cur.id === teamId) this.openTeam.set(this.teams().find(t => t.id === teamId) ?? null);
+    const pid = this.projectId();
+    if (!pid) return;
+    this.projectsSvc.setMemberTeam(pid, m.userId, teamId).subscribe(() => this.reload(pid));
   }
 
-  /** Finalise the multi-selection: add every picked member in one go. */
+  /** Finalise la multi-sélection : ajoute tous les membres cochés d'un coup. */
   commitAddToTeam(teamId: string): void {
-    const names = [...this.addPicked()];
-    if (!names.length) return;
-    for (const n of names) {
-      const m = this.loose().find(x => x.name === n);
-      if (m) this.addToTeam(teamId, m);
-    }
+    const ids = [...this.addPicked()];
+    const pid = this.projectId();
+    if (!ids.length || !pid) return;
+    forkJoin(ids.map(uid => this.projectsSvc.setMemberTeam(pid, uid, teamId))).subscribe(() => {
+      this.reload(pid);
+      this.toast.show({ message: ids.length + (ids.length > 1 ? ' membres ajoutés' : ' membre ajouté') + ' à l\'équipe' });
+    });
     this.addPicked.set(new Set<string>());
     this.addOpen.set(false);
   }
@@ -598,15 +586,20 @@ export class EquipesComponent implements OnInit, OnDestroy {
     this.assignOpen.set(null);
     this.addToTeam(teamId, m);
   }
-  removeLoose(name: string): void {
+  removeLoose(m: Loose): void {
     this.assignOpen.set(null);
-    this.loose.update(list => list.filter(x => x.name !== name));
+    const pid = this.projectId();
+    if (!pid) return;
+    this.projectsSvc.removeMember(pid, m.userId).subscribe(() => {
+      this.reload(pid);
+      this.toast.show({ message: m.name + ' retiré du projet' });
+    });
   }
 
   // ── Ajouter des collaborateurs au projet (R10) ────────────────────────────
   /** Names of workspace members already in the project (all teams + unassigned). */
   alreadyInProjectNames = computed<string[]>(() => {
-    const names = new Set<string>(['Akim Koné']); // ME is always in the project
+    const names = new Set<string>();
     this.teams().forEach(t => t.members.forEach(m => names.add(m.name)));
     this.loose().forEach(m => names.add(m.name));
     return [...names];
@@ -614,12 +607,19 @@ export class EquipesComponent implements OnInit, OnDestroy {
 
   openAddCollab(): void { this.addCollabOpen.set(true); }
 
-  /** Newly-added collaborators are dropped in the "sans équipe" table. */
+  /** Ajoute les collaborateurs choisis au projet (résolution nom → userId via l'annuaire). */
   onCollabAdded(payload: AddCollaboratorsPayload): void {
-    const additions: Loose[] = payload.members.map(m => ({
-      name: m.name, email: m.email, role: m.role, color: m.color,
-    }));
-    this.loose.update(list => [...list, ...additions]);
+    const pid = this.projectId();
+    if (!pid) return;
+    const dir = this.directory();
+    const ids = payload.members
+      .map(m => dir.find(d => d.name === m.name)?.userId)
+      .filter((id): id is string => !!id);
+    if (!ids.length) return;
+    forkJoin(ids.map(uid => this.projectsSvc.addMember(pid, uid))).subscribe(() => {
+      this.reload(pid);
+      this.toast.show({ message: ids.length + (ids.length > 1 ? ' collaborateurs ajoutés' : ' collaborateur ajouté') + ' au projet' });
+    });
   }
 
   // ── Menu "+"  et création d'équipe ─────────────────────────────────────────
@@ -632,18 +632,13 @@ export class EquipesComponent implements OnInit, OnDestroy {
   }
 
   onTeamCreated(t: CreatedTeam): void {
-    // Nouvelle équipe locale — id slugifié, membres vides. L'utilisateur
-    // pourra ajouter des membres depuis la vue détail (multi-sélection).
-    const baseId = slugify(t.name);
-    let id = baseId;
-    let i = 2;
-    while (this.teams().some(x => x.id === id)) id = `${baseId}-${i++}`;
-    const team: Team = { id, name: t.name, color: t.color, members: [] };
-    this.teams.update(list => [...list, team]);
+    const pid = this.projectId();
     this.createTeamOpen.set(false);
-    // Ouvre directement le détail — l'utilisateur peut y ajouter des membres.
-    this.openTeam.set(team);
-    if (this.standalone()) this.bus.openTeamNav.set({ name: team.name, project: this.projectName() });
+    if (!pid) return;
+    this.projectsSvc.createTeam(pid, t.name, t.color).subscribe(() => {
+      this.reload(pid);
+      this.toast.show({ message: 'Équipe « ' + t.name + ' » créée' });
+    });
   }
 
   // ── Team detail (inline, no navigation) ──────────────────────────────────
@@ -659,13 +654,10 @@ export class EquipesComponent implements OnInit, OnDestroy {
     if (this.standalone()) this.bus.openTeamNav.set(null);
   }
 
-  removeFromTeam(teamId: string, name: string): void {
-    this.teams.update(list => list.map(t =>
-      t.id === teamId ? { ...t, members: t.members.filter(m => m.name !== name) } : t,
-    ));
-    // keep the open detail in sync
-    const cur = this.openTeam();
-    if (cur && cur.id === teamId) this.openTeam.set(this.teams().find(t => t.id === teamId) ?? null);
+  removeFromTeam(teamId: string, m: TeamMember): void {
+    const pid = this.projectId();
+    if (!pid) return;
+    this.projectsSvc.setMemberTeam(pid, m.userId, null).subscribe(() => this.reload(pid));
   }
 
   // ── Card 3-dots menu: rename / delete ────────────────────────────────────
@@ -686,29 +678,24 @@ export class EquipesComponent implements OnInit, OnDestroy {
   saveRename(): void {
     const id = this.editId();
     const val = this.editVal().trim();
-    if (id && val) this.teams.update(list => list.map(t => t.id === id ? { ...t, name: val } : t));
     this.editId.set(null);
+    const pid = this.projectId();
+    if (!id || !val || !pid) return;
+    // Optimiste puis persistance ; on recharge en cas d'échec.
+    this.teams.update(list => list.map(t => t.id === id ? { ...t, name: val } : t));
+    this.projectsSvc.updateTeam(pid, id, { name: val }).subscribe({ error: () => this.reload(pid) });
   }
 
-  /** Delete a team; its members return to the "sans équipe" list. */
+  /** Supprime une équipe ; ses membres repassent « sans équipe » (backend). */
   deleteTeam(id: string): void {
-    const team = this.teams().find(t => t.id === id);
     this.teamMenu.set(null);
-    if (!team) return;
-    // re-add its members to the unassigned list (skip anyone already there)
-    this.loose.update(list => {
-      const existing = new Set(list.map(m => m.name));
-      const added = team.members
-        .filter(m => !existing.has(m.name))
-        .map(m => ({ name: m.name, email: this.emailOf(m.name), role: m.role, color: m.color }));
-      return [...list, ...added];
+    const pid = this.projectId();
+    if (!pid) return;
+    this.projectsSvc.deleteTeam(pid, id).subscribe(() => {
+      if (this.openTeam()?.id === id) this.openTeam.set(null);
+      this.reload(pid);
+      this.toast.show({ message: 'Équipe supprimée' });
     });
-    this.teams.update(list => list.filter(t => t.id !== id));
-    if (this.openTeam()?.id === id) this.openTeam.set(null);
-  }
-
-  private emailOf(name: string): string {
-    return slugify(name).replace(/-/g, '.') + '@nexa.io';
   }
 
   // ── Chef de projet ───────────────────────────────────────────────────────
@@ -718,12 +705,18 @@ export class EquipesComponent implements OnInit, OnDestroy {
     this.chefOpen.set(!wasOpen);
     if (!wasOpen) this.chefQ.set('');
   }
-  pickChef(name: string): void {
-    this.chef.set(name);
+  pickChef(m: MemberPick): void {
+    this.chef.set(m.name);
     this.chefOpen.set(false);
     this.chefQ.set('');
+    const pid = this.projectId();
+    if (pid) this.projectsSvc.setProjectChief(pid, m.userId).subscribe({
+      next: () => this.toast.show({ message: m.name + ' est désormais chef de projet' }),
+    });
   }
   removeChef(): void {
+    // Pas d'endpoint de retrait dédié : on efface l'affichage (le chef reste tant
+    // qu'un autre n'est pas désigné côté serveur).
     this.chef.set(null);
     this.chefOpen.set(false);
     this.chefQ.set('');
@@ -737,4 +730,7 @@ export class EquipesComponent implements OnInit, OnDestroy {
   memberColor(name: string): string {
     return this.allMembers().find(m => m.name === name)?.color ?? '#9b97a3';
   }
+
+  /** Redirige vers la page Projets (pour créer un premier projet). */
+  goToProjects(): void { this.router.navigate(['/app/projets']); }
 }

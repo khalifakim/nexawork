@@ -23,10 +23,12 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 /**
- * Fichier GED (V5.1 §4.4). Composition dans un dossier (cascade). {@code sourceFileId}
- * pointe vers le StoredFile (File Service). {@code accessMode} porte la visibilité
- * REF G (ajout V5.1). Les pièces jointes de tâches ne sont PAS matérialisées ici
- * (dossier virtuel, §10.5bis).
+ * Fichier GED (V5.1 §4.4). Rangé dans un dossier OU à la racine de l'espace
+ * ({@code folder} nullable, V2). {@code organisationId} porte le scope même sans
+ * dossier ; {@code projectId} distingue racine Organisation (null) / racine projet.
+ * {@code sourceFileId} pointe vers le StoredFile (File Service). {@code accessMode}
+ * porte la visibilité REF G. Les pièces jointes de tâches ne sont PAS matérialisées
+ * ici (dossier virtuel, §10.5bis).
  */
 @Entity
 @Table(name = "ged_files")
@@ -41,9 +43,14 @@ public class GedFile {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "folder_id", nullable = false)
+    /** Dossier conteneur, ou {@code null} si le fichier est à la racine de l'espace (V2). */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "folder_id")
     private GedFolder folder;
+
+    /** Organisation propriétaire (porte le scope même sans dossier). */
+    @Column(name = "organisation_id", nullable = false)
+    private UUID organisationId;
 
     @Column(name = "name", nullable = false)
     private String name;

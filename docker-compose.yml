@@ -1,5 +1,13 @@
 name: nexawork
 
+# ─── Options JVM communes (CAUSE RACINE des « serveur ne répond pas ») ─────────
+# Sans limite, chaque JVM Spring Boot en conteneur fixe son heap à ~25 % de la RAM
+# Docker (~1,2 Go/service). Avec 9 services, cela réclame ~10 Go sur ~4,8 Go → swap
+# permanent → lenteur → timeouts, famine Hikari, connexions PostgreSQL perdues.
+# On borne donc le heap (Xmx) et on utilise le GC série (mono-thread : empreinte et
+# CPU réduits — c'est aussi ce qui faisait tourner le config-server à ~120 % CPU).
+x-java-opts: &JAVA_OPTS "-Xms32m -Xmx256m -XX:+UseSerialGC -XX:MaxMetaspaceSize=192m"
+
 services:
 
   # ─── PostgreSQL ─────────────────────────────────────────────────────────────
@@ -136,9 +144,11 @@ services:
       context: ./nexawork-backend
       dockerfile: nexawork-config-server/Dockerfile
     container_name: nexawork-config-server
+    init: true
     ports:
       - "8888:8888"
     environment:
+      JAVA_TOOL_OPTIONS: *JAVA_OPTS
       CONFIG_REPO_PATH: /config-repo
     volumes:
       - ./nexawork-config-repo:/config-repo
@@ -157,11 +167,13 @@ services:
       context: ./nexawork-backend
       dockerfile: nexawork-auth-service/Dockerfile
     container_name: nexawork-auth-service
+    init: true
     depends_on:
       postgres: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
       config-server: { condition: service_healthy }
     environment:
+      JAVA_TOOL_OPTIONS: *JAVA_OPTS
       CONFIG_SERVER_URL: config-server
       DB_HOST: postgres
       DB_NAME: nexawork_auth_db
@@ -198,11 +210,13 @@ services:
       context: ./nexawork-backend
       dockerfile: nexawork-project-service/Dockerfile
     container_name: nexawork-project-service
+    init: true
     depends_on:
       postgres: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
       config-server: { condition: service_healthy }
     environment:
+      JAVA_TOOL_OPTIONS: *JAVA_OPTS
       CONFIG_SERVER_URL: config-server
       DB_HOST: postgres
       DB_NAME: nexawork_project_db
@@ -227,11 +241,13 @@ services:
       context: ./nexawork-backend
       dockerfile: nexawork-messaging-service/Dockerfile
     container_name: nexawork-messaging-service
+    init: true
     depends_on:
       postgres: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
       config-server: { condition: service_healthy }
     environment:
+      JAVA_TOOL_OPTIONS: *JAVA_OPTS
       CONFIG_SERVER_URL: config-server
       DB_HOST: postgres
       DB_NAME: nexawork_messaging_db
@@ -256,11 +272,13 @@ services:
       context: ./nexawork-backend
       dockerfile: nexawork-meeting-service/Dockerfile
     container_name: nexawork-meeting-service
+    init: true
     depends_on:
       postgres: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
       config-server: { condition: service_healthy }
     environment:
+      JAVA_TOOL_OPTIONS: *JAVA_OPTS
       CONFIG_SERVER_URL: config-server
       DB_HOST: postgres
       DB_NAME: nexawork_meeting_db
@@ -288,12 +306,14 @@ services:
       context: ./nexawork-backend
       dockerfile: nexawork-notification-service/Dockerfile
     container_name: nexawork-notification-service
+    init: true
     depends_on:
       postgres: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
       redis: { condition: service_healthy }
       config-server: { condition: service_healthy }
     environment:
+      JAVA_TOOL_OPTIONS: *JAVA_OPTS
       CONFIG_SERVER_URL: config-server
       DB_HOST: postgres
       DB_NAME: nexawork_notification_db
@@ -330,12 +350,14 @@ services:
       context: ./nexawork-backend
       dockerfile: nexawork-file-service/Dockerfile
     container_name: nexawork-file-service
+    init: true
     depends_on:
       postgres: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
       minio: { condition: service_healthy }
       config-server: { condition: service_healthy }
     environment:
+      JAVA_TOOL_OPTIONS: *JAVA_OPTS
       CONFIG_SERVER_URL: config-server
       DB_HOST: postgres
       DB_NAME: nexawork_file_db
@@ -364,11 +386,13 @@ services:
       context: ./nexawork-backend
       dockerfile: nexawork-ged-service/Dockerfile
     container_name: nexawork-ged-service
+    init: true
     depends_on:
       postgres: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
       config-server: { condition: service_healthy }
     environment:
+      JAVA_TOOL_OPTIONS: *JAVA_OPTS
       CONFIG_SERVER_URL: config-server
       DB_HOST: postgres
       DB_NAME: nexawork_ged_db
@@ -395,6 +419,7 @@ services:
       context: ./nexawork-backend
       dockerfile: nexawork-api-gateway/Dockerfile
     container_name: nexawork-api-gateway
+    init: true
     # Les hôtes downstream sont résolus paresseusement (au premier appel routé) ;
     # seuls config-server (config) et auth-service (seul service métier livré à ce
     # stade) sont exigés healthy. Les autres depends_on seront réintroduits au fil
@@ -409,6 +434,7 @@ services:
       notification-service: { condition: service_healthy }
       meeting-service: { condition: service_healthy }
     environment:
+      JAVA_TOOL_OPTIONS: *JAVA_OPTS
       CONFIG_SERVER_URL: config-server
       JWT_SECRET: ${JWT_SECRET}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:4200}
@@ -434,6 +460,7 @@ services:
   frontend:
     build: ./nexawork-frontend
     container_name: nexawork-frontend
+    init: true
     depends_on:
       - api-gateway
     ports:

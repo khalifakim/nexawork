@@ -95,7 +95,7 @@ import { ChannelAccessMode, ChannelGrant } from '@core/models/channel.models';
 })
 export class NouveauCanalComponent {
   @Input() scope: 'org' | 'project' = 'org';
-  @Input() project = 'Refonte App Mobile';
+  @Input() project = '';
   @Output() closed = new EventEmitter<void>();
 
   private router = inject(Router);

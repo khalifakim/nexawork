@@ -30,6 +30,19 @@ public class JitsiTokenService {
 
     public String generateToken(String roomName, UUID userId, String displayName,
                                 String email, boolean isModerator) {
+        // Rétro-compat : sans précision, le contournement de salle d'attente suit
+        // le statut de modérateur (l'hôte entre directement).
+        return generateToken(roomName, userId, displayName, email, isModerator, isModerator);
+    }
+
+    /**
+     * Génère un JWT JaaS (M3, V5.1 §14.5). {@code lobbyBypass} contrôle le claim
+     * {@code context.user.lobby_bypass} : {@code true} pour l'hôte et les membres
+     * conviés explicitement (accès direct à la salle), {@code false} pour l'invité
+     * externe et le membre non convié (passage par la salle d'attente).
+     */
+    public String generateToken(String roomName, UUID userId, String displayName,
+                                String email, boolean isModerator, boolean lobbyBypass) {
         PrivateKey privateKey = loadPrivateKey(jitsiProperties.getPrivateKey());
 
         Map<String, Object> user = new HashMap<>();
@@ -38,6 +51,8 @@ public class JitsiTokenService {
         user.put("email", email != null ? email : "");
         user.put("avatar", "");
         user.put("moderator", String.valueOf(isModerator)); // "true" / "false" — chaîne (JaaS)
+        // §14.5 : les porteurs de ce claim contournent la salle d'attente (lobby).
+        user.put("lobby_bypass", lobbyBypass);
 
         Map<String, Object> features = new HashMap<>();
         features.put("livestreaming", false);

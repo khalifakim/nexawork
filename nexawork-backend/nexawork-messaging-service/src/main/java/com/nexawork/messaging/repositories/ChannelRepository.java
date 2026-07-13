@@ -2,7 +2,10 @@ package com.nexawork.messaging.repositories;
 
 import com.nexawork.messaging.entities.Channel;
 import com.nexawork.messaging.entities.enums.ChannelType;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
@@ -13,6 +16,19 @@ public interface ChannelRepository extends JpaRepository<Channel, UUID> {
     List<Channel> findByOrganisationIdAndChannelType(UUID organisationId, ChannelType channelType);
 
     List<Channel> findByProjectId(UUID projectId);
+
+    /**
+     * Recherche globale (§4.8) : canaux du workspace dont le nom contient le
+     * terme. La visibilité (REF F — canaux privés) est appliquée en aval par le
+     * garde d'accès : un canal privé n'apparaît pas pour un non-membre.
+     */
+    @Query("""
+            SELECT c FROM Channel c
+            WHERE c.organisationId = :orgId
+              AND LOWER(c.name) LIKE LOWER(CONCAT('%', :q, '%'))
+            ORDER BY c.createdAt DESC
+            """)
+    List<Channel> search(@Param("orgId") UUID orgId, @Param("q") String q, Pageable pageable);
 
     /** Idempotence du seeding project.created : canal système par nom dans un projet. */
     Optional<Channel> findByProjectIdAndNameAndIsSystemTrue(UUID projectId, String name);

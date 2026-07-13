@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, EventEmitter, Output, computed, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router, RouterLink } from '@angular/router';
 import { SessionService } from '@core/services/session.service';
 import { WorkspaceLoaderService } from '@core/services/workspace-loader.service';
@@ -28,7 +29,7 @@ type Menu = 'ws' | 'user' | 'notif' | 'call' | null;
         <div class="wswrap">
           <button class="ws" (click)="toggle('ws')">
             <span class="ws__logo" [style.background]="wsColor()">{{ wsMono() }}</span>
-            <span class="ws__t"><span class="ws__name">{{ wsName() }}</span><span class="ws__sub">12 membres</span></span>
+            <span class="ws__t"><span class="ws__name">{{ wsName() }}</span><span class="ws__sub">{{ wsMembersLabel() }}</span></span>
             <app-icon name="chevronDown" [size]="13" [stroke]="2.4" />
           </button>
           @if (menu() === 'ws') { <div class="bd" (click)="close()"></div>
@@ -36,7 +37,7 @@ type Menu = 'ws' | 'user' | 'notif' | 'call' | null;
               <div class="wsm__head">
                 <div style="display:flex;align-items:center;gap:11px;margin-bottom:11px">
                   <span class="wsm__logo" [style.background]="wsColor()">{{ wsMono() }}</span>
-                  <div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:700">{{ wsName() }}</div><div style="font-size:12.5px;color:var(--nx-text-500)">12 membres</div></div>
+                  <div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:700">{{ wsName() }}</div><div style="font-size:12.5px;color:var(--nx-text-500)">{{ wsMembersLabel() }}</div></div>
                   @if (isAdmin()) {
                     <button class="iconbtn" routerLink="/app/parametres/general" (click)="close()" title="Paramètres du workspace"><app-icon name="gear" [size]="17" /></button>
                   }
@@ -191,6 +192,11 @@ export class HeaderComponent {
   wsName = computed(() => this.session.activeWorkspace().name);
   wsColor = computed(() => this.session.activeWorkspace().color);
   wsMono = computed(() => initials(this.session.activeWorkspace().name));
+  /** Nombre réel de membres du workspace actif (memberCount backend), avec pluriel. */
+  wsMembersLabel = computed(() => {
+    const n = this.session.activeWorkspace().members ?? 0;
+    return n + (n > 1 ? ' membres' : ' membre');
+  });
 
   /** Other workspaces the user belongs to — filtered from `session.workspaces()`. */
   others = computed(() => this.session.workspaces().filter(w => w.id !== this.session.activeWorkspaceId()));
@@ -238,7 +244,10 @@ export class HeaderComponent {
   }
   /** Notifications of the active workspace (reload on workspace switch). */
   private notifsSvc = inject(NotificationsService);
-  notifs = workspaceSignal<Notif[]>(this.session, () => this.notifsSvc.list(), []);
+  private fetched = workspaceSignal<Notif[]>(this.session, () => this.notifsSvc.list(), []);
+  /** Notifications reçues en temps réel (STOMP), empilées au-dessus de la liste. */
+  private pushed = signal<Notif[]>([]);
+  notifs = computed<Notif[]>(() => [...this.pushed(), ...this.fetched()]);
 
   visibleNotifs = computed(() => {
     const list = this.visibleNotifsAll();
@@ -250,9 +259,19 @@ export class HeaderComponent {
     return this.notifs().map(n => ({ ...n, read: n.read || read.includes(n.id) }));
   });
 
+  constructor() {
+    // Réception temps réel : la notification s'ajoute en tête de la liste.
+    this.notifsSvc.live().pipe(takeUntilDestroyed()).subscribe(n =>
+      this.pushed.update(l => [n, ...l]));
+  }
+
   toggle(m: Menu): void { this.menu.set(this.menu() === m ? null : m); }
   close(): void { this.menu.set(null); }
-  markRead(id: string): void { this.readIds.update(l => l.includes(id) ? l : [...l, id]); }
+  /** Marque lue localement (retour immédiat) puis persiste côté serveur. */
+  markRead(id: string): void {
+    this.readIds.update(l => l.includes(id) ? l : [...l, id]);
+    this.notifsSvc.markRead(id).subscribe({ error: () => {} });
+  }
   ini(name: string): string { return initials(name); }
   logout(): void { this.close(); this.session.logout(); }
 
@@ -260,6 +279,11 @@ export class HeaderComponent {
   openNotif(n: Notif): void {
     this.markRead(n.id);
     this.close();
+    // Backend réel : `target` est l'URL cible calculée par le serveur.
+    if (n.target.startsWith('/')) {
+      this.router.navigateByUrl(n.target);
+      return;
+    }
     switch (n.kind) {
       case 'tache':
         // Task notifications (assignment, comment mention) open the task detail

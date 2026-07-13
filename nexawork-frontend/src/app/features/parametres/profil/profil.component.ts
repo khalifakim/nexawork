@@ -93,7 +93,10 @@ export class ParamProfilComponent {
     }
     const reader = new FileReader();
     reader.onload = () => {
-      this.photoUrl.set(reader.result as string);
+      const dataUrl = reader.result as string;
+      this.photoUrl.set(dataUrl);
+      // Persistance réelle : upload File Service (avatar) → photoUrl du profil.
+      this.profileSvc.uploadPhoto(file, dataUrl);
     };
     reader.readAsDataURL(file);
     input.value = '';

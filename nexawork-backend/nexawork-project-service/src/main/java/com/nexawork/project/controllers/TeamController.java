@@ -2,6 +2,7 @@ package com.nexawork.project.controllers;
 
 import com.nexawork.commons.models.Response;
 import com.nexawork.project.dtos.requests.CreateTeamRequest;
+import com.nexawork.project.dtos.requests.UpdateTeamRequest;
 import com.nexawork.project.dtos.responses.TeamResponse;
 import com.nexawork.project.services.TeamService;
 import jakarta.validation.Valid;
@@ -9,7 +10,9 @@ import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -42,5 +45,18 @@ public class TeamController {
     public Response<TeamResponse> create(@PathVariable UUID projectId,
                                          @Valid @RequestBody CreateTeamRequest request) {
         return Response.<TeamResponse>created().setPayload(teamService.createTeam(projectId, request));
+    }
+
+    @PatchMapping("/{teamId}")
+    public Response<TeamResponse> update(@PathVariable UUID projectId,
+                                         @PathVariable UUID teamId,
+                                         @Valid @RequestBody UpdateTeamRequest request) {
+        return Response.<TeamResponse>ok().setPayload(teamService.updateTeam(projectId, teamId, request));
+    }
+
+    @DeleteMapping("/{teamId}")
+    public Response<Void> delete(@PathVariable UUID projectId, @PathVariable UUID teamId) {
+        teamService.deleteTeam(projectId, teamId);
+        return Response.deleted();
     }
 }

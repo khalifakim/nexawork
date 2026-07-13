@@ -27,5 +27,12 @@ public class ChannelResponse {
     private Boolean readonly;
     private Boolean isPrivate;
     private Boolean canWrite;
+    /**
+     * Nombre de membres ayant accès au canal : bénéficiaires explicites si le canal
+     * est privé, sinon tous les membres du workspace (canal ouvert).
+     */
+    private Integer memberCount;
+    /** Date du dernier message (dernière activité) — null si le canal est vide. */
+    private LocalDateTime lastActivityAt;
     private LocalDateTime createdAt;
 }
