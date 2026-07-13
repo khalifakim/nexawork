@@ -34,6 +34,12 @@ export abstract class ProjectsService {
   abstract deleteTeam(projectId: string, teamId: string): Observable<void>;
   /** Assigne un membre à une équipe (`teamId = null` → le retire de son équipe). */
   abstract setMemberTeam(projectId: string, userId: string, teamId: string | null): Observable<void>;
+  /** Ajoute un collaborateur au projet (R10). */
+  abstract addMember(projectId: string, userId: string): Observable<void>;
+  /** Retire un collaborateur du projet. */
+  abstract removeMember(projectId: string, userId: string): Observable<void>;
+  /** Désigne le chef de projet (Project.ownerUserId). */
+  abstract setProjectChief(projectId: string, userId: string): Observable<void>;
 }
 
 @Injectable()
@@ -128,6 +134,9 @@ export class ProjectsMockService extends ProjectsService {
   }
   deleteTeam(_projectId: string, _teamId: string): Observable<void> { return of(void 0).pipe(delay(60)); }
   setMemberTeam(_projectId: string, _userId: string, _teamId: string | null): Observable<void> { return of(void 0).pipe(delay(60)); }
+  addMember(_projectId: string, _userId: string): Observable<void> { return of(void 0).pipe(delay(60)); }
+  removeMember(_projectId: string, _userId: string): Observable<void> { return of(void 0).pipe(delay(60)); }
+  setProjectChief(_projectId: string, _userId: string): Observable<void> { return of(void 0).pipe(delay(60)); }
 }
 
 @Injectable()
@@ -175,6 +184,15 @@ export class ProjectsHttpService extends BaseHttpService implements ProjectsServ
   setMemberTeam(projectId: string, userId: string, teamId: string | null): Observable<void> {
     const body = teamId ? { teamId } : { clearTeam: true };
     return this.patch$<unknown>('project', `/projects/${projectId}/members/${userId}`, body).pipe(map(() => void 0));
+  }
+  addMember(projectId: string, userId: string): Observable<void> {
+    return this.post$<unknown>('project', `/projects/${projectId}/members`, { userId }).pipe(map(() => void 0));
+  }
+  removeMember(projectId: string, userId: string): Observable<void> {
+    return this.delete$<void>('project', `/projects/${projectId}/members/${userId}`);
+  }
+  setProjectChief(projectId: string, userId: string): Observable<void> {
+    return this.patch$<unknown>('project', `/projects/${projectId}/members/${userId}`, { setAsProjectChief: true }).pipe(map(() => void 0));
   }
 }
 
