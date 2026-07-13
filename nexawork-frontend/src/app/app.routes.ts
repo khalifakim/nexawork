@@ -61,7 +61,7 @@ export const routes: Routes = [
       { path: 'documents/projets/:id',  loadComponent: () => import('@features/documents/documents-projet/documents-projet.component').then(m => m.DocumentsProjetComponent) },
 
       // --- Canaux ---
-      { path: 'canaux', pathMatch: 'full', redirectTo: 'canaux/annonces' },
+      { path: 'canaux', pathMatch: 'full', loadComponent: () => import('@features/canaux/canaux-index/canaux-index.component').then(m => m.CanauxIndexComponent) },
       { path: 'canaux/:id', canActivate: [channelAccessGuard], loadComponent: () => import('@features/canaux/canal/canal.component').then(m => m.CanalComponent) },
 
       // --- Conversations ---

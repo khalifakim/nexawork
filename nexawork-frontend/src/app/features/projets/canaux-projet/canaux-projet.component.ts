@@ -1,14 +1,16 @@
 import { ChangeDetectionStrategy, Component, Input, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 import { ShellBus } from '@layouts/app-shell/shell.bus';
 import { SessionService } from '@core/services/session.service';
 import { ChannelsService } from '@core/services/channels.service';
 import { ToastService } from '@core/services/toast.service';
 import { ConfirmDialogComponent } from '@shared/overlays/confirm-dialog/confirm-dialog.component';
-import { slugify } from '@core/util/ui.util';
+import { Channel } from '@core/models/channel.models';
 
-interface Chan { n: string; icon: 'bell' | 'hash'; access: string; members: number; last: string; locked: boolean; }
+/** Ligne d'affichage d'un canal de projet (dérivée du Channel réel). */
+interface Chan { id: string; n: string; icon: 'bell' | 'hash'; access: string; locked: boolean; }
 
 @Component({
   selector: 'app-canaux-projet',
@@ -41,8 +43,8 @@ interface Chan { n: string; icon: 'bell' | 'hash'; access: string; members: numb
           <span>Activité</span>
           <span class="acts-head"></span>
         </div>
-        @for (c of filtered(); track c.n) {
-          <div class="row" (click)="open(c.n)">
+        @for (c of filtered(); track c.id) {
+          <div class="row" (click)="open(c)">
             <div class="name">
               <span class="ic" [class.ic--bell]="c.icon==='bell'">
                 @if (c.icon==='bell') { <app-icon name="bell" [size]="17" /> } @else { # }
@@ -51,24 +53,28 @@ interface Chan { n: string; icon: 'bell' | 'hash'; access: string; members: numb
               @if (c.locked) { <app-icon class="lock" name="lock" [size]="14" /> }
             </div>
             <span class="muted">{{ c.access }}</span>
-            <span class="muted">{{ c.members }} membres</span>
-            <span class="muted">{{ c.last }}</span>
+            <span class="muted">—</span>
+            <span class="muted">—</span>
             <div class="acts">
               @if (canManage()) {
-                <button class="act" title="Modifier" (click)="edit(c.n, $event)">
+                <button class="act" title="Modifier" (click)="edit(c, $event)">
                   <app-icon name="edit" [size]="14" />
                 </button>
-                <button class="act" title="Gérer les accès" (click)="access(c.n, $event)">
+                <button class="act" title="Gérer les accès" (click)="access(c, $event)">
                   <app-icon name="lock" [size]="14" />
                 </button>
-                <button class="act act--danger" title="Supprimer" (click)="askDelete(c.n, $event)">
+                <button class="act act--danger" title="Supprimer" (click)="askDelete(c, $event)">
                   <app-icon name="trash" [size]="14" />
                 </button>
               }
             </div>
           </div>
         } @empty {
-          <div class="empty">Aucun canal ne correspond à votre recherche.</div>
+          @if (q().trim()) {
+            <div class="empty">Aucun canal ne correspond à votre recherche.</div>
+          } @else {
+            <div class="empty">Aucun canal dans ce projet pour le moment.@if (!readonly && canManage()) { <span> Utilisez « Créer un canal » pour en ajouter un.</span> }</div>
+          }
         }
       </div>
     </div>
@@ -77,7 +83,7 @@ interface Chan { n: string; icon: 'bell' | 'hash'; access: string; members: numb
       <app-confirm-dialog
         [danger]="true"
         title="Supprimer le canal"
-        [subtitle]="'#' + target"
+        [subtitle]="'#' + target.n"
         icon="trash"
         confirmLabel="Supprimer"
         [lines]="[
@@ -102,7 +108,7 @@ export class CanauxProjetComponent {
   private toast = inject(ToastService);
 
   q = signal('');
-  confirmTarget = signal<string | null>(null);
+  confirmTarget = signal<Chan | null>(null);
 
   /**
    * Visibility of the per-row actions and the "Créer un canal" CTA.
@@ -111,18 +117,39 @@ export class CanauxProjetComponent {
    */
   canManage = computed<boolean>(() => this.session.isAdmin());
 
-  chans: Chan[] = [
-    { n: 'annonces-projet', icon: 'bell', access: 'Annonces · écriture restreinte', members: 8, last: 'il y a 2 h',    locked: true  },
-    { n: 'général-projet',  icon: 'hash', access: 'Ouvert à tous les membres',      members: 8, last: 'il y a 14 min', locked: true  },
-    { n: 'dev-frontend',    icon: 'hash', access: 'Ouvert à tous les membres',      members: 5, last: 'il y a 1 j',    locked: false },
-    { n: 'design-revue',    icon: 'hash', access: 'Écriture restreinte',            members: 4, last: 'il y a 3 j',    locked: false },
-  ];
+  /** Canaux réels du workspace (rechargés au switch de workspace). */
+  private allChannels = toSignal(this.channelsSvc.list(), { initialValue: [] as Channel[] });
+  /** UUID du projet courant (depuis l'URL du shell projet). */
+  private projectId = computed<string | null>(() =>
+    this.route.parent?.snapshot.paramMap.get('id') ?? this.route.snapshot.paramMap.get('id') ?? null);
+
+  /** Canaux réels de CE projet uniquement (aucune donnée mockée). */
+  chans = computed<Chan[]>(() => {
+    const pid = this.projectId();
+    return this.allChannels()
+      .filter(c => c.scope === 'project' && (!pid || c.projectId === pid))
+      .map(c => ({
+        id: c.id,
+        n: c.name,
+        icon: c.kind,
+        access: this.accessLabel(c),
+        locked: !!c.isPrivate,
+      }));
+  });
 
   filtered = computed<Chan[]>(() => {
     const q = this.q().toLowerCase().trim();
-    if (!q) return this.chans;
-    return this.chans.filter(c => c.n.toLowerCase().includes(q));
+    const list = this.chans();
+    if (!q) return list;
+    return list.filter(c => c.n.toLowerCase().includes(q));
   });
+
+  /** Libellé d'accès dérivé des vrais drapeaux du canal. */
+  private accessLabel(c: Channel): string {
+    if (c.kind === 'bell' || c.readonly) return 'Annonces · écriture restreinte';
+    if (c.isPrivate) return 'Accès restreint';
+    return 'Ouvert à tous les membres';
+  }
 
   /**
    * Open the channel. For archived projects (readonly + admin only), we arm
@@ -131,46 +158,36 @@ export class CanauxProjetComponent {
    * to the standalone /app/canaux/:id view. Non-admin viewers of an archived
    * project only reach the read-only chat directly.
    */
-  open(n: string): void {
-    const id = slugify(n);
+  open(c: Chan): void {
     if (this.readonly && this.session.isAdmin()) {
-      const projectId = this.route.parent?.snapshot.paramMap.get('id')
-        ?? this.route.snapshot.paramMap.get('id')
-        ?? 'projet-archive';
+      const projectId = this.projectId() ?? 'projet-archive';
       const projectName = this.projectName ?? this.route.snapshot.queryParamMap.get('name') ?? projectId;
       this.bus.archivedChannelsPreview.set({ projectId, projectName });
     }
-    this.router.navigate(['/app/canaux', id]);
+    this.router.navigate(['/app/canaux', c.id]);
   }
 
-  /** Open the "Modifier le canal" modal (same one used by the sidebar menu). */
-  edit(n: string, ev: Event): void {
+  /** Ouvre le modal « Modifier le canal » (identique au menu de la sidebar). */
+  edit(c: Chan, ev: Event): void {
     ev.stopPropagation();
-    const id = slugify(n);
-    // Kind is 'bell' for #annonces-projet, 'hash' otherwise (mirrors the sidebar).
-    const kind: 'bell' | 'hash' = n === 'annonces-projet' ? 'bell' : 'hash';
-    this.bus.openEditChannel({ id, name: n, kind });
+    this.bus.openEditChannel({ id: c.id, name: c.n, kind: c.icon });
   }
 
-  /** Open the "Gérer les accès" modal (same one used by the sidebar menu). */
-  access(n: string, ev: Event): void {
+  /** Ouvre le modal « Gérer les accès ». */
+  access(c: Chan, ev: Event): void {
     ev.stopPropagation();
-    const id = slugify(n);
-    this.bus.openAccessChannel({ id, name: n, scope: 'project' });
+    this.bus.openAccessChannel({ id: c.id, name: c.n, scope: 'project' });
   }
 
-  askDelete(n: string, ev: Event): void {
+  askDelete(c: Chan, ev: Event): void {
     ev.stopPropagation();
-    this.confirmTarget.set(n);
+    this.confirmTarget.set(c);
   }
 
-  doDelete(n: string): void {
-    const id = slugify(n);
-    // Mock-delete: remove from the local table and forward to the service so
-    // the sidebar reflects the change too. Toast + close confirm.
-    this.chans = this.chans.filter(c => c.n !== n);
-    this.channelsSvc.remove(id);
+  doDelete(c: Chan): void {
+    // Suppression réelle : le service retire le canal (la liste se rafraîchit).
+    this.channelsSvc.remove(c.id);
     this.confirmTarget.set(null);
-    this.toast.show({ message: 'Canal « #' + n + ' » supprimé' });
+    this.toast.show({ message: 'Canal « #' + c.n + ' » supprimé' });
   }
 }
