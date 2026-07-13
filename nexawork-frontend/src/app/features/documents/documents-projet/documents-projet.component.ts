@@ -40,7 +40,7 @@ export class DocumentsProjetComponent {
   private allProjects = toSignal(this.projectsSvc.list(), { initialValue: [] as Project[] });
   protected id = toSignal(this.route.paramMap.pipe(map(p => p.get('id') ?? 'refonte-app-mobile')), { initialValue: 'refonte-app-mobile' });
   private current = computed(() => this.allProjects().find(p => p.id === this.id()));
-  name = computed(() => this.current()?.name ?? 'Refonte App Mobile');
+  name = computed(() => this.current()?.name ?? '');
   color = computed(() => this.current()?.color ?? '#6C70F0');
   back(): void { this.router.navigate(['/app/documents/projets']); }
 }

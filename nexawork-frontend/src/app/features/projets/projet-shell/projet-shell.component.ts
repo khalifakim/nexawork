@@ -208,7 +208,7 @@ export class ProjetShellComponent {
     { key: 'canaux',         label: 'Canaux',          icon: 'channels'  },
   ];
 
-  projectName  = computed(() => this.allProjects().find(p => p.id === this.id())?.name ?? 'Refonte App Mobile');
+  projectName  = computed(() => this.allProjects().find(p => p.id === this.id())?.name ?? '');
   displayName  = computed(() => (this.isRo() && this.archName()) ? this.archName() : this.projectName());
   tabLabel     = computed(() => this.tabs.find(t => t.key === this.tab())?.label ?? '');
 
