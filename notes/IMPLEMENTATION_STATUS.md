@@ -301,6 +301,34 @@ Aucun backend neuf (endpoints `/statuses`, `/transitions`, `/workflow`, `/overvi
 - **Limites connues I2c** (levées en I3) : filtre Gantt « Assigné à », responsable « membre spécifique » du Workflow,
   et « Responsable » des échéances attendent l'annuaire des membres.
 
+---
+
+## 2bis · Corrections post-test (session navigateur)
+
+### Lot du 2026-07-13 — canaux, mentions, « Mes tâches » (frontend uniquement)
+**Rebuild requis : `frontend` seul.** Aucun changement backend, aucune migration.
+
+| # | Symptôme constaté | Cause racine | Correctif |
+| :-: | :- | :- | :- |
+| 1 | Canal créé (lecture seule) → toast « Ce canal est privé, vous n'y avez pas accès » **à son créateur** | `ChannelsService.create()` était **optimiste** : POST en *fire-and-forget* puis navigation immédiate. Le `channelAccessGuard` rechargeait la liste **avant** que le POST ne soit commité → slug absent → « canal privé » (REF F, doctrine 404-not-403) | `create()` renvoie un `Observable<Channel>` résolu sur la réponse serveur ; le modal ne navigue qu'après persistance (bouton « Création… »), et amorce le cache slug→UUID |
+| 2 | *(trouvé en corrigeant #1)* Un canal **de projet** naissait canal **d'organisation** | Le `projectId` n'était **jamais transmis** au POST (le backend `CreateChannelRequest` l'accepte pourtant) | `CreateChannelPayload.projectId` + `ShellBus.openNewChannel(scope, project)` ; le « + » sidebar et le bouton « Créer un canal » de l'onglet Canaux portent le projet |
+| 3 | *(idem)* Le groupe « Canaux Projets » de la sidebar ne s'affichait **jamais** en backend réel | Il se reposait sur `Channel.project` (**nom**), que le payload ne porte pas — seul `projectId` existe | Le nom du projet propriétaire est résolu depuis la liste des projets (déjà chargée par la sidebar). Le filtre « projet archivé » compare désormais des `projectId`, non des slugs de nom |
+| 4 | Mention `@@tâche` non cliquable (500 / rien) | La mention porte la **clé lisible** (`MOB-101`), pas l'UUID — or tous les points d'ouverture appelaient `cardById()` avec cette clé | `TasksService.cardByRef()` : UUID → lecture directe ; clé → résolution via `GET project /search?q=` (qui indexe `task_key` et applique déjà R15), puis lecture. Branché sur `app-shell`, `projet-shell`, `mes-taches`, `mentions-recues`. *(`@personne`, `@@@document` et `#canal` se résolvaient déjà par nom/slug.)* |
+| 5 | « Mes tâches » : section **« Sans échéance »** alors qu'une échéance est saisie | `AccueilHttpService.myTasks()` inventait 4 sections (retard / semaine / mois / sans échéance) via `dueBucket()`, qui **rend `undefined` au-delà de 31 j** → la tâche tombait dans « Sans échéance ». Contraire à **V5.1 §5.1** (« Aujourd'hui et en retard », « pas de ligne Non planifiées ») | Deux sections **Aujourd'hui** + **En retard**. ⚠️ Conséquence assumée (conforme §5.1) : une tâche à échéance plus lointaine **n'apparaît pas** sur cet écran |
+| 6 | Colonne mono = **UUID** de la tâche ; colonne « Projet » = sa clé | `toMyTaskRow()` mettait `taskKey` dans `proj`, et le template affichait `t.id` | `MyTaskRow.key` (clé lisible) affichée en mono ; `proj` = **nom du projet**, résolu depuis la liste des projets (`TaskResponse` ne le porte pas) |
+| 7 | Clic sur une tâche de « Mes tâches » → **500** + `GET /projects/undefined/statuses` | La fiche recevait une carte **fabriquée à la main** (sans `projectId` ni `statusId`) → `loadBoard(undefined)` | La ligne ouvre la **vraie** carte (`cardById`). Même correction dans « Mentions reçues », qui fabriquait aussi la sienne |
+
+**🔴 Trous identifiés pendant ce lot — non corrigés, à traiter :**
+- **`MessageMention.targetId` n'est JAMAIS renseigné.** `MentionParser` extrait le *texte* mentionné, pas l'identifiant
+  (documenté « best-effort »). Or `MentionServiceImpl.listReceived()` filtre sur `targetId = utilisateur courant` →
+  **« Mentions reçues » (§5.3) restera vide en permanence**, et aucune notification de mention ne peut partir.
+  Correctif : le frontend **connaît** l'id à la saisie (le picker vient du catalogue réel) → passer les mentions
+  résolues dans `SendMessageRequest` et les persister. *(Le repli par clé lisible ajouté ici fait fonctionner le clic,
+  mais ne remplace pas la résolution serveur.)*
+- **Les bénéficiaires d'un canal privé sont ignorés.** `create()` **et** `setRestriction()` envoient
+  `memberUserIds: []`, et `ChannelGrant` ne porte qu'un **nom**, pas d'`userId`. Le modal « Gérer les accès » laisse
+  donc croire à un partage qui n'est jamais transmis. Seul le créateur (et les admins) voit le canal.
+
 ## 3 · Décisions/gaps (voir plan §5)
 
 **✅ Tranchés**
