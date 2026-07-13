@@ -89,9 +89,10 @@ services:
     restart: unless-stopped
     mem_limit: 384m
     environment:
-      # Erlang plafonne sa mémoire à 40 % de la RAM VUE — sans cette borne il lit les
-      # 4,9 Go de la VM entière et se croit autorisé à en prendre 2 Go.
-      RABBITMQ_VM_MEMORY_HIGH_WATERMARK: "0.6"
+      # Pas de RABBITMQ_VM_MEMORY_HIGH_WATERMARK ici : la variable est DÉPRÉCIÉE et
+      # l'image refuse de démarrer si elle est présente. Inutile de toute façon —
+      # RabbitMQ lit la limite du cgroup, donc `mem_limit` ci-dessus le borne déjà
+      # (sans elle, Erlang lisait les 4,9 Go de la VM entière).
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS}
       RABBITMQ_ERLANG_COOKIE: "nexawork-cookie"
