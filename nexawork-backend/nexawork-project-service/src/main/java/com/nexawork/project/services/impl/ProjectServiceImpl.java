@@ -82,10 +82,13 @@ public class ProjectServiceImpl implements ProjectService {
         // Workflow Kanban par défaut (4 colonnes + transitions) — V5.1 §8.1.
         workflowSeeder.seedDefault(project);
 
+        // Le projet n'a pas encore de chef (ownerUserId null) : on transmet le
+        // créateur, dont les consumers (GED, Messaging) ont besoin pour tracer
+        // l'auteur des dossiers et canaux seedés.
         eventPublisher.publishProjectCreated(new ProjectCreatedEvent(
-                project.getId(), project.getName(), project.getOrganisationId(), project.getOwnerUserId()));
+                project.getId(), project.getName(), project.getOrganisationId(), caller.userId()));
 
-        log.info("Projet '{}' créé ({}) par {}", project.getName(), project.getId(), userId);
+        log.info("Projet '{}' créé ({}) par {}", project.getName(), project.getId(), caller.userId());
         return toDto(project);
     }
 
