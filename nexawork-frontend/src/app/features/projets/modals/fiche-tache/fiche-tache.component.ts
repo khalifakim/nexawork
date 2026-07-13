@@ -16,7 +16,8 @@ import { MembersService } from '@core/services/members.service';
 import { SessionService } from '@core/services/session.service';
 import { FilesHttpService } from '@core/http/files.http.service';
 import { ToastService } from '@core/services/toast.service';
-import { Observable, of } from 'rxjs';
+import { extractApiError } from '@core/http/response.model';
+import { HttpErrorResponse } from '@angular/common/http';
 
 const PRIORITIES: { value: TaskPriority; label: string; color: string }[] = [
   { value: 'LOW',    label: 'Basse',   color: '#2BB673' },
@@ -83,11 +84,16 @@ interface CommentRow {
             }
 
             <div class="fields">
-              <div class="frow"><span class="fl"><app-icon name="taskCheck" [size]="16" />Statut</span>
+              <div class="frow frow--top"><span class="fl"><app-icon name="taskCheck" [size]="16" />Statut</span>
                 @if (editMode()) {
-                  <select class="ed ed--sel" [value]="eStatusId()" (change)="eStatusId.set($any($event.target).value)">
-                    @for (c of columns(); track c.id) { <option [value]="c.id">{{ c.name }}</option> }
-                  </select>
+                  <div class="edwrap">
+                    <select class="ed ed--sel" [class.ed--err]="statusError()" [value]="eStatusId()" (change)="eStatusId.set($any($event.target).value); statusError.set('')">
+                      @for (c of columns(); track c.id) { <option [value]="c.id">{{ c.name }}</option> }
+                    </select>
+                    @if (statusError()) {
+                      <div class="ederr"><app-icon name="alert" [size]="13" />{{ statusError() }}</div>
+                    }
+                  </div>
                 } @else {
                   <span class="status" [style.color]="task.tag[1]" [style.background]="statusBg()"><span class="sdot" [style.background]="task.tag[1]"></span>{{ task.tag[0] }}</span>
                 }
@@ -303,6 +309,8 @@ export class FicheTacheComponent implements OnChanges {
   protected eDue = signal('');
   protected ePriority = signal<TaskPriority>('MEDIUM');
   protected eEstimate = signal('');
+  /** Message d'erreur affiché sous le champ Statut si la transition est refusée (FSM). */
+  protected statusError = signal('');
 
   private loadedTaskId: string | null = null;
 
@@ -330,6 +338,7 @@ export class FicheTacheComponent implements OnChanges {
   /** Passe la fiche en édition : initialise les champs + charge les statuts du projet. */
   enterEdit(): void {
     if (this.readonly) return;
+    this.statusError.set('');
     this.eTitle.set(this.task.title);
     this.eDesc.set(this.task.desc ?? '');
     this.eStatusId.set(this.task.statusId);
@@ -354,6 +363,7 @@ export class FicheTacheComponent implements OnChanges {
     const title = this.eTitle().trim();
     if (!title) { this.toast.show({ message: 'Le nom de la tâche est obligatoire.', icon: 'warning' }); return; }
     this.saving.set(true);
+    this.statusError.set('');
 
     const payload: UpdateTaskPayload = {
       title,
@@ -371,19 +381,21 @@ export class FicheTacheComponent implements OnChanges {
       payload.clearAssignee = true;
     }
 
-    const statusChanged = this.eStatusId() && this.eStatusId() !== this.task.statusId;
+    const statusChanged = !!this.eStatusId() && this.eStatusId() !== this.task.statusId;
     this.tasksSvc.updateTask(this.task.id, payload).subscribe({
       next: card => {
         this.task = { ...this.task, ...card };
-        const status$: Observable<TaskCard | null> = statusChanged
-          ? this.tasksSvc.changeStatus(this.task.id, this.eStatusId())
-          : of(null);
-        status$.subscribe({
-          next: fresh => {
-            if (fresh) this.task = { ...this.task, ...fresh };
-            this.finishSave();
+        if (!statusChanged) { this.finishSave(); return; }
+        // Le statut est contrôlé par la FSM (silencieux : on gère l'erreur inline).
+        this.tasksSvc.changeStatus(this.task.id, this.eStatusId(), true).subscribe({
+          next: fresh => { this.task = { ...this.task, ...fresh }; this.finishSave(); },
+          error: (err: HttpErrorResponse) => {
+            // Les autres champs SONT enregistrés ; seul le changement de statut a été refusé.
+            this.saving.set(false);
+            this.eStatusId.set(this.task.statusId); // rétablit le statut réel dans le sélecteur
+            this.statusError.set(extractApiError(err, "Ce changement de statut n'est pas autorisé par le workflow."));
+            this.toast.show({ message: 'Modifications enregistrées (hors statut, non autorisé)' });
           },
-          error: () => { this.finishSave(); }, // updateTask a réussi ; la FSM a refusé le statut
         });
       },
       error: () => this.saving.set(false),
@@ -393,6 +405,7 @@ export class FicheTacheComponent implements OnChanges {
   private finishSave(): void {
     this.saving.set(false);
     this.editMode.set(false);
+    this.statusError.set('');
     this.toast.show({ message: 'Modifications enregistrées avec succès' });
   }
 

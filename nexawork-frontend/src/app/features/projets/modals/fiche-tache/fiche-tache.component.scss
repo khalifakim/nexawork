@@ -121,3 +121,10 @@
 .ed { height: 34px; padding: 0 10px; border: 1px solid var(--nx-border); border-radius: 8px; background: #fff; font-family: inherit; font-size: 13.5px; color: var(--nx-text); outline: none; min-width: 180px; }
 .ed:focus { border-color: var(--nx-indigo); }
 .ed--sel { cursor: pointer; }
+
+/* Erreur inline sous le champ Statut (transition FSM refusée) */
+.frow--top { align-items: flex-start; }
+.edwrap { display: flex; flex-direction: column; gap: 5px; }
+.ed--err { border-color: var(--nx-danger); }
+.ederr { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; color: var(--nx-danger); max-width: 300px; line-height: 1.4; }
+.ederr app-icon { flex: none; }

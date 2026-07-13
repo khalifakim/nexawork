@@ -1,7 +1,9 @@
 import { Injectable, inject } from '@angular/core';
+import { HttpContext } from '@angular/common/http';
 import { Observable, forkJoin, map, of, switchMap } from 'rxjs';
 import { delay } from 'rxjs/operators';
 import { BaseHttpService } from '@core/http/base-http.service';
+import { SKIP_ERROR_TOAST } from '@core/http/http-context';
 import { FilesHttpService, StoredFile } from '@core/http/files.http.service';
 import {
   AttachmentResponse, CommentResponse, CreateStatusPayload, CreateTaskPayload, KanbanColumn,
@@ -34,7 +36,7 @@ export abstract class TasksService {
   abstract updateTask(id: string, patch: UpdateTaskPayload): Observable<TaskCard>;
   abstract deleteTask(id: string): Observable<void>;
   /** `PATCH /tasks/{id}/status` — 422 si la FSM refuse la transition (workflow strict). */
-  abstract changeStatus(id: string, toStatusId: string): Observable<TaskCard>;
+  abstract changeStatus(id: string, toStatusId: string, silent?: boolean): Observable<TaskCard>;
 
   // ── Sous-tâches ─────────────────────────────────────────────────────────────
   abstract subtasks(taskId: string): Observable<SubTask[]>;
@@ -172,7 +174,7 @@ export class TasksMockService extends TasksService {
     return of(void 0).pipe(delay(80));
   }
 
-  changeStatus(id: string, toStatusId: string): Observable<TaskCard> {
+  changeStatus(id: string, toStatusId: string, _silent = false): Observable<TaskCard> {
     const status = this.statuses.find(s => s.id === toStatusId)!;
     this.tasks = this.tasks.map(t => t.id === id ? { ...t, statusId: toStatusId, statusName: status.name } : t);
     const t = this.tasks.find(x => x.id === id)!;
@@ -302,8 +304,10 @@ export class TasksHttpService extends BaseHttpService implements TasksService {
     return this.delete$<void>('project', `/tasks/${id}`);
   }
 
-  changeStatus(id: string, toStatusId: string): Observable<TaskCard> {
-    return this.patch$<TaskResponse>('project', `/tasks/${id}/status`, { toStatusId }).pipe(map(t => toCard(t)));
+  changeStatus(id: string, toStatusId: string, silent = false): Observable<TaskCard> {
+    // `silent` : l'appelant gère l'erreur (message inline) → pas de toast centralisé.
+    const context = silent ? new HttpContext().set(SKIP_ERROR_TOAST, true) : undefined;
+    return this.patch$<TaskResponse>('project', `/tasks/${id}/status`, { toStatusId }, context).pipe(map(t => toCard(t)));
   }
 
   subtasks(taskId: string): Observable<SubTask[]> {

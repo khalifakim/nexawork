@@ -7,6 +7,7 @@ import { extractApiError } from '@core/http/response.model';
 import { ToastService } from '@core/services/toast.service';
 import { selectRefreshToken } from '@store/auth/auth.selectors';
 import { AuthActions } from '@store/auth/auth.actions';
+import { SKIP_ERROR_TOAST } from '@core/http/http-context';
 import { environment } from '@environment/environment';
 
 /** Marqueur interne : la requête a déjà été rejouée après un refresh. */
@@ -51,6 +52,8 @@ export const errorInterceptor: HttpInterceptorFn = (req, next) => {
   const auth = inject(AuthService);
   const toast = inject(ToastService);
   const isApi = req.url.startsWith(environment.apiUrl);
+  // L'appelant gère l'erreur lui-même (message inline) → pas de toast centralisé.
+  const silent = req.context.get(SKIP_ERROR_TOAST);
 
   return next(req).pipe(
     // Timeout uniquement sur les appels backend « courts » (ni upload, ni download binaire).
@@ -59,10 +62,12 @@ export const errorInterceptor: HttpInterceptorFn = (req, next) => {
 
       // ─── Serveur ne répond pas (timeout) ───────────────────────────────────
       if (error instanceof TimeoutError) {
-        toast.show({
-          message: 'Le serveur ne répond pas. Vérifiez que le backend est démarré (localhost:8080).',
-          icon: 'warning',
-        });
+        if (!silent) {
+          toast.show({
+            message: 'Le serveur ne répond pas. Vérifiez que le backend est démarré (localhost:8080).',
+            icon: 'warning',
+          });
+        }
         return throwError(() => error);
       }
 
@@ -70,10 +75,12 @@ export const errorInterceptor: HttpInterceptorFn = (req, next) => {
 
       // ─── Connexion impossible (refusée / réseau / CORS) ────────────────────
       if (isApi && httpErr.status === 0) {
-        toast.show({
-          message: 'Impossible de contacter le serveur. Vérifiez que le backend est démarré.',
-          icon: 'warning',
-        });
+        if (!silent) {
+          toast.show({
+            message: 'Impossible de contacter le serveur. Vérifiez que le backend est démarré.',
+            icon: 'warning',
+          });
+        }
         return throwError(() => httpErr);
       }
 
@@ -106,8 +113,8 @@ export const errorInterceptor: HttpInterceptorFn = (req, next) => {
         );
       }
 
-      // ─── Autres erreurs API : toast informatif ─────────────────────────────
-      if (isApi && httpErr.status >= 400 && httpErr.status !== 401) {
+      // ─── Autres erreurs API : toast informatif (sauf si géré localement) ────
+      if (isApi && httpErr.status >= 400 && httpErr.status !== 401 && !silent) {
         toast.show({ message: extractApiError(httpErr), icon: 'warning' });
       }
       return throwError(() => httpErr);
