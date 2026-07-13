@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
-import { Observable, forkJoin, map, of } from 'rxjs';
-import { delay } from 'rxjs/operators';
+import { Observable, map, of, timer } from 'rxjs';
+import { catchError, delay, shareReplay, switchMap } from 'rxjs/operators';
 import { BaseHttpService } from '@core/http/base-http.service';
 import { Member, MemberResponse } from '@core/models/member.models';
 import { ME, slugName, avatarColorFor } from '@core/util/ui.util';
@@ -53,36 +53,56 @@ const ORG_ROLE_LABEL: Record<MemberResponse['orgRole'], string> = {
   OWNER: 'Propriétaire', ADMIN: 'Administrateur', MEMBER: 'Membre',
 };
 
+/** Cadence de rafraîchissement de la présence (le TTL Redis est réarmé toutes les 20 s). */
+const PRESENCE_POLL_MS = 20_000;
+
 @Injectable()
 export class MembersHttpService extends BaseHttpService implements MembersService {
   private readonly session = inject(SessionService);
 
-  /** Membres actifs du workspace courant (annuaire), triés par nom. */
+  /**
+   * Présence Redis (`GET /presence/online`), tenue par le Notification Service :
+   * une session WebSocket vaut « en ligne », réarmée par le heartbeat STOMP
+   * (V5.1 §3.9). Flux **partagé** et rafraîchi périodiquement — un seul appel
+   * pour tous les abonnés, et les vues suivent les connexions/déconnexions sans
+   * rechargement. Un échec (jeton pas encore posé, service indisponible) vaut
+   * « personne en ligne » et ne casse aucune vue.
+   */
+  private readonly presence$ = timer(0, PRESENCE_POLL_MS).pipe(
+    switchMap(() => this.get$<string[]>('notification', '/presence/online').pipe(catchError(() => of<string[]>([])))),
+    map(ids => new Set(ids)),
+    shareReplay({ bufferSize: 1, refCount: false }),
+  );
+
+  /** Dernière présence connue — sert à teinter l'annuaire, qui doit rester « complétable ». */
+  private lastPresence = new Set<string>();
+
+  constructor() {
+    super();
+    this.presence$.subscribe(on => (this.lastPresence = on));
+  }
+
+  /** Membres actifs du workspace courant (annuaire), triés par nom, présence incluse. */
   directory(): Observable<Member[]> {
     const wsId = this.session.activeWorkspaceId();
     if (!wsId) return of([]);
     return this.get$<MemberResponse[]>('auth', `/workspaces/${wsId}/members`).pipe(
-      map(rs => rs.filter(r => !r.isDeactivated).map(toMember).sort((a, b) => a.name.localeCompare(b.name))),
+      map(rs => rs.filter(r => !r.isDeactivated)
+        .map(toMember)
+        // Sans cette fusion, `online` restait à false partout : fiche profil,
+        // en-tête de conversation, page Membres affichaient tout le monde hors ligne.
+        .map(m => ({ ...m, online: !!m.userId && this.lastPresence.has(m.userId) }))
+        .sort((a, b) => a.name.localeCompare(b.name))),
     );
   }
 
-  /**
-   * Membres en ligne (hors soi). Croise l'annuaire avec la présence Redis, tenue
-   * par le Notification Service (`GET /presence/online`) : la connexion WebSocket
-   * du client vaut « en ligne », réarmée par un heartbeat (V5.1 §3.9).
-   */
+  /** Membres en ligne (hors soi) — **flux vivant** : suit la présence en continu. */
   online(): Observable<Member[]> {
-    return forkJoin({
-      dir: this.directory(),
-      active: this.get$<string[]>('notification', '/presence/online'),
-    }).pipe(
-      map(({ dir, active }) => {
-        const on = new Set(active);
-        const meId = this.session.user()?.id;
-        return dir.filter(m => m.userId && on.has(m.userId) && m.userId !== meId)
-                  .map(m => ({ ...m, online: true }));
-      }),
-    );
+    return this.directory().pipe(switchMap(dir => this.presence$.pipe(map(on => {
+      const meId = this.session.user()?.id;
+      return dir.filter(m => m.userId && on.has(m.userId) && m.userId !== meId)
+                .map(m => ({ ...m, online: true }));
+    }))));
   }
 
   /** Tout l'annuaire sauf soi-même. */

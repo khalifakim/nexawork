@@ -43,6 +43,15 @@ export interface GuestInviteResponse {
   guestLink: string;
 }
 
+/** Accès d'un invité externe à la salle (`GET /guest/{token}` — page publique). */
+export interface GuestAccess {
+  callId: string;
+  topic: string;
+  displayName: string;
+  jitsiUrl: string;
+  jwt: string;
+}
+
 /** A document shared during a meeting. */
 export interface MeetingDoc { name: string; meta: string; color: string; icon: string; }
 

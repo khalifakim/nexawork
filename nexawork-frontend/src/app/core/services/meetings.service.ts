@@ -1,9 +1,12 @@
 import { Injectable, inject } from '@angular/core';
+import { Store } from '@ngrx/store';
 import { Observable, map, of } from 'rxjs';
 import { delay } from 'rxjs/operators';
 import { BaseHttpService } from '@core/http/base-http.service';
+import { api } from '@core/http/api.config';
+import { selectToken } from '@store/auth/auth.selectors';
 import {
-  CallResponse, CallRoom, GuestInviteResponse, Meeting, MeetingThread,
+  CallResponse, CallRoom, GuestAccess, GuestInviteResponse, Meeting, MeetingThread,
 } from '@core/models/meeting.models';
 import { MEETINGS_BY_WORKSPACE, MEETING_THREADS, defaultMeetingThread } from '@core/mock/meetings';
 import { SessionService } from './session.service';
@@ -33,8 +36,17 @@ export abstract class MeetingsService {
   abstract remove(id: string): Observable<void>;
   /** Convie des membres internes à l'appel en cours. */
   abstract inviteParticipants(id: string, userIds: string[]): Observable<void>;
-  /** Invite un participant externe → lien à usage unique. */
+  /** Invite un participant externe → lien à usage unique (envoyé par email). */
   abstract inviteGuest(id: string, email: string, displayName: string): Observable<GuestInviteResponse>;
+  /** Accès d'un invité externe par son token de lien (page publique, sans compte). */
+  abstract guestAccess(token: string): Observable<GuestAccess>;
+  /**
+   * Quitte l'appel alors que la page se ferme. Une requête Angular classique est
+   * annulée avec le document : on part en `fetch(keepalive)`, seul moyen de faire
+   * aboutir l'appel. Sans lui l'appel reste ACTIVE et REF A refuse la réunion
+   * suivante (409 ALREADY_IN_CALL).
+   */
+  abstract leaveOnUnload(id: string): void;
 }
 
 @Injectable()
@@ -63,11 +75,23 @@ export class MeetingsMockService extends MeetingsService {
   inviteGuest(_id: string, email: string, displayName: string): Observable<GuestInviteResponse> {
     return of({ email, displayName, guestLink: '#' });
   }
+  guestAccess(token: string): Observable<GuestAccess> {
+    return of({ callId: token, topic: 'Réunion', displayName: 'Invité', jitsiUrl: '', jwt: '' });
+  }
+  leaveOnUnload(_id: string): void { /* rien en mock */ }
 }
 
 @Injectable()
 export class MeetingsHttpService extends BaseHttpService implements MeetingsService {
   private readonly session = inject(SessionService);
+  private readonly store = inject(Store);
+  /** Dernier jeton connu — nécessaire au `leaveOnUnload` (hors intercepteur Angular). */
+  private accessToken: string | null = null;
+
+  constructor() {
+    super();
+    this.store.select(selectToken).subscribe(t => (this.accessToken = t ?? null));
+  }
 
   history(): Observable<Meeting[]> {
     return this.get$<CallResponse[]>('meeting', '/calls').pipe(
@@ -107,6 +131,20 @@ export class MeetingsHttpService extends BaseHttpService implements MeetingsServ
   }
   inviteGuest(id: string, email: string, displayName: string): Observable<GuestInviteResponse> {
     return this.post$<GuestInviteResponse>('meeting', `/calls/${id}/guests`, { email, displayName });
+  }
+
+  /** Endpoint public (liste blanche du gateway) : l'invité n'a pas de compte. */
+  guestAccess(token: string): Observable<GuestAccess> {
+    return this.get$<GuestAccess>('meeting', `/guest/${token}`);
+  }
+
+  leaveOnUnload(id: string): void {
+    const token = this.accessToken;
+    void fetch(api('meeting', `/calls/${id}/leave`), {
+      method: 'POST',
+      keepalive: true, // survit à la fermeture du document
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    }).catch(() => { /* la page se ferme : rien à rattraper */ });
   }
 }
 

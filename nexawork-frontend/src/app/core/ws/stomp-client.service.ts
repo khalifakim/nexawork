@@ -39,7 +39,10 @@ class StompConnection {
   private ensureConnected(): void {
     if (this.client) return;
     this.client = new Client({
-      brokerURL: toWsUrl(this.url),
+      // `webSocketFactory` (et non `brokerURL`) : l'URL est reconstruite à CHAQUE
+      // (re)connexion, avec le jeton courant — après un refresh, un `brokerURL`
+      // figé rouvrirait la socket avec un jeton périmé.
+      webSocketFactory: () => new WebSocket(this.socketUrl()),
       connectHeaders: this.authHeaders(),
       reconnectDelay: 4000,
       heartbeatIncoming: 10000,
@@ -64,6 +67,19 @@ class StompConnection {
   private authHeaders(): Record<string, string> {
     const t = this.token();
     return t ? { Authorization: `Bearer ${t}` } : {};
+  }
+
+  /**
+   * URL du handshake, jeton compris. Le gateway laisse le handshake public (un
+   * WebSocket natif ne peut pas porter d'en-tête `Authorization`) mais lit
+   * `access_token` pour propager l'identité aux services — sans quoi la session
+   * STOMP n'a pas de Principal : ni file privée de notifications, ni présence.
+   */
+  private socketUrl(): string {
+    const base = toWsUrl(this.url);
+    const t = this.token();
+    if (!t) return base;
+    return base + (base.includes('?') ? '&' : '?') + 'access_token=' + encodeURIComponent(t);
   }
 }
 

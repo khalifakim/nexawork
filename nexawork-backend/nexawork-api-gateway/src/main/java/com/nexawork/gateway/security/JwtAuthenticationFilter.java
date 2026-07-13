@@ -63,7 +63,19 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
                 .build();
 
         if (publicPathMatcher.isPublic(path)) {
-            return chain.filter(exchange.mutate().request(sanitizedRequest).build());
+            // Handshake WebSocket : le navigateur ne peut PAS poser d'en-tête
+            // Authorization sur un WebSocket natif. Le chemin reste donc public
+            // (jamais de 401 → pas de boucle de reconnexion), mais si un jeton
+            // valide accompagne la requête (?access_token=), on propage l'identité
+            // en aval : sans elle, les services n'ont aucun Principal de session
+            // → le push privé /user/queue/… et la présence Redis restent muets.
+            ServerHttpRequest downstream = isWebSocketHandshake(path)
+                    ? resolveQueryToken(sanitizedRequest)
+                            .flatMap(tokenValidator::validateAndParse)
+                            .map(claims -> withIdentityHeaders(sanitizedRequest, claims))
+                            .orElse(sanitizedRequest)
+                    : sanitizedRequest;
+            return chain.filter(exchange.mutate().request(downstream).build());
         }
 
         Optional<String> bearer = resolveBearerToken(sanitizedRequest);
@@ -78,6 +90,16 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
 
         ServerHttpRequest authenticatedRequest = withIdentityHeaders(sanitizedRequest, claims.get());
         return chain.filter(exchange.mutate().request(authenticatedRequest).build());
+    }
+
+    private boolean isWebSocketHandshake(String path) {
+        return path.startsWith("/ws/");
+    }
+
+    /** Jeton porté par la query string — seul canal disponible pour un WebSocket natif. */
+    private Optional<String> resolveQueryToken(ServerHttpRequest request) {
+        String token = request.getQueryParams().getFirst("access_token");
+        return token == null || token.isBlank() ? Optional.empty() : Optional.of(token.trim());
     }
 
     private Optional<String> resolveBearerToken(ServerHttpRequest request) {

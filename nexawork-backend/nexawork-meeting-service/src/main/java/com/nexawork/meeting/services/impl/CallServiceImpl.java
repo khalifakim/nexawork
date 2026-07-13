@@ -65,10 +65,14 @@ public class CallServiceImpl implements CallService {
                 .startedAt(LocalDateTime.now())
                 .build());
 
-        // L'hôte est participant modérateur, entré immédiatement (invité explicitement).
+        // L'hôte est participant modérateur, convié explicitement — mais PAS encore
+        // « entré » : il ne l'est qu'en rejoignant réellement la salle (join()).
+        // Poser joinedAt ici le faisait compter comme « déjà en appel » (REF A) dès
+        // la création : si la salle ne s'ouvrait pas, il restait bloqué en 409
+        // ALREADY_IN_CALL sur toute création suivante, sans aucun moyen de sortir.
         participantRepository.save(CallParticipant.builder()
                 .call(call).userId(host)
-                .joinedAt(LocalDateTime.now()).invitedExplicitly(true).build());
+                .invitedExplicitly(true).build());
 
         // Membres internes conviés dès la création (Lot M1, optionnel).
         if (request.getMemberIds() != null && !request.getMemberIds().isEmpty()) {

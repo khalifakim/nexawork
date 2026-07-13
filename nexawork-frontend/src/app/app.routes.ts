@@ -72,7 +72,6 @@ export const routes: Routes = [
       // --- Réunions ---
       { path: 'reunions', pathMatch: 'full', redirectTo: 'reunions/lancer' },
       { path: 'reunions/lancer',          loadComponent: () => import('@features/reunions/lancer/lancer.component').then(m => m.LancerReunionComponent) },
-      { path: 'reunions/salle/:id',       loadComponent: () => import('@features/reunions/salle/salle-reunion.component').then(m => m.SalleReunionComponent) },
       { path: 'reunions/historique',      loadComponent: () => import('@features/reunions/historique/historique.component').then(m => m.HistoriqueReunionsComponent) },
       { path: 'reunions/historique/:id',  loadComponent: () => import('@features/reunions/discussion/discussion.component').then(m => m.DiscussionReunionComponent) },
 
@@ -85,6 +84,21 @@ export const routes: Routes = [
       { path: 'parametres/invitations', canActivate: [adminGuard], loadComponent: () => import('@features/parametres/invitations/invitations.component').then(m => m.ParamInvitationsComponent) },
       { path: 'parametres/espaces',     loadComponent: () => import('@features/parametres/espaces/espaces.component').then(m => m.ParamEspacesComponent) },
     ],
+  },
+
+  // ─── Salles de réunion : hors du shell (fenêtre dédiée, §4.6) ───────────────
+  // La salle s'ouvre dans une fenêtre séparée, au-dessus de l'application qui
+  // reste utilisable en arrière-plan — d'où une route racine sans header ni rail.
+  {
+    path: 'salle/:id',
+    canActivate: [authGuard],
+    loadComponent: () => import('@features/reunions/salle/salle-reunion.component').then(m => m.SalleReunionComponent),
+  },
+  // Invité externe : page PUBLIQUE atteinte par le lien reçu par email. Aucun
+  // compte requis — le token du lien vaut l'accès (V5.1 §4.6).
+  {
+    path: 'guest/:token',
+    loadComponent: () => import('@features/reunions/invite/salle-invite.component').then(m => m.SalleInviteComponent),
   },
 
   // Racine et routes inconnues → l'app ; l'authGuard renvoie vers /auth/landing si

@@ -318,7 +318,34 @@ Aucun backend neuf (endpoints `/statuses`, `/transitions`, `/workflow`, `/overvi
 | 6 | Colonne mono = **UUID** de la tâche ; colonne « Projet » = sa clé | `toMyTaskRow()` mettait `taskKey` dans `proj`, et le template affichait `t.id` | `MyTaskRow.key` (clé lisible) affichée en mono ; `proj` = **nom du projet**, résolu depuis la liste des projets (`TaskResponse` ne le porte pas) |
 | 7 | Clic sur une tâche de « Mes tâches » → **500** + `GET /projects/undefined/statuses` | La fiche recevait une carte **fabriquée à la main** (sans `projectId` ni `statusId`) → `loadBoard(undefined)` | La ligne ouvre la **vraie** carte (`cardById`). Même correction dans « Mentions reçues », qui fabriquait aussi la sienne |
 
-**🔴 Trous identifiés pendant ce lot — non corrigés, à traiter :**
+### Lot du 2026-07-13 (soir) — WebSocket, présence, canaux auto, réunions
+**Rebuild requis : `api-gateway`, `meeting-service`, `frontend`.** Aucune migration.
+
+| # | Symptôme constaté | Cause racine (**mesurée**) | Correctif |
+| :-: | :- | :- | :- |
+| 8 | **WebSocket en échec permanent** (`/ws/notifications`, `/ws/messaging`) | **L'image `api-gateway` datait de 4 jours** : le correctif « `/ws/**` en liste blanche » (commit `79c9916`, du matin même) **n'avait jamais été construit**. Mesuré : handshake → **401**. *(Piège n°1 du handoff, en vrai.)* | **Rebuild** de `api-gateway`. **Toujours vérifier l'âge de l'image avant de conclure à un bug de code.** |
+| 9 | Même public, le handshake **n'apporte aucune identité** → `/user/queue/notifications` muet, **présence jamais alimentée** | Les deux services lisent l'identité dans l'en-tête **`X-User-Id` posé par le gateway**. Or un chemin public **saute le filtre JWT** → aucun en-tête. Et un **WebSocket natif ne peut pas porter `Authorization`** : le jeton n'atteignait donc jamais le serveur. Aucun `ChannelInterceptor` ne lisait la trame CONNECT. **Résultat : session STOMP sans `Principal`.** | Le jeton voyage en **query string** (`?access_token=`), seul canal disponible. Le gateway le valide sur `/ws/**` et **propage les en-têtes d'identité** — sans jamais rejeter (le chemin reste public → pas de boucle de reconnexion). Front : `webSocketFactory` reconstruit l'URL **à chaque reconnexion** (un `brokerURL` figé rouvrirait avec un jeton périmé). |
+| 10 | **Tous les membres « hors ligne »** dans les conversations | `MembersHttpService.directory()` **ne croisait jamais** `/presence/online` : `online` restait à `false` partout (fiche profil, en-tête de conversation, page Membres). Seule `online()` (2 vues) interrogeait la présence. | Flux de présence **partagé et rafraîchi toutes les 20 s** (un seul appel pour tous les abonnés) ; `directory()` le fusionne, `online()` devient un **flux vivant** (les vues suivent connexions/déconnexions sans rechargement). Un échec vaut « personne en ligne » et ne casse aucune vue. |
+| 11 | Canaux **#général / #annonces** « non créés » à la création d'un projet | **Faux problème** : les logs et la base montrent que le consumer `project.created` **les a bien créés**. Ils étaient **invisibles** : le groupe « Canaux Projets » de la sidebar ne s'affichait jamais (cf. #3 du lot précédent). | Rien à corriger côté backend — **résolu par le correctif #3**. |
+| 12 | Réunion : **409 Conflict** sur toute création | `create()` posait `joinedAt = now()` sur l'hôte → **REF A le comptait « déjà en appel » avant même d'entrer dans la salle**. La salle ne s'ouvrant jamais, l'appel restait `ACTIVE` **indéfiniment** → 409 sur toute création suivante, **sans aucun moyen d'en sortir**. | L'hôte est convié (`invitedExplicitly`) mais **`joinedAt` reste nul** : il n'entre qu'en rejoignant réellement (`join()`). + le front **quitte l'appel à la fermeture de la fenêtre** (`fetch keepalive` — une requête Angular est annulée avec le document). |
+| 13 | Réunion bloquée sur **« Connexion à la salle… »** | Le voile de chargement n'était levé qu'à l'événement `videoConferenceJoined`. Tant qu'il ne venait pas (autorisation caméra, salle d'attente, jeton refusé), **notre overlay masquait l'iframe JaaS** — qui pouvait très bien fonctionner dessous. | L'iframe est révélée **dès qu'elle est montée** ; les erreurs de chargement deviennent de vraies erreurs affichées. |
+| 14 | « Invités internes » : **liste vide** | Le modal était **encore entièrement mock** (5 personnes codées en dur) et n'émettait **ni `memberIds` ni les emails externes**. | Membres **réels** (`MembersService.others()`), `memberIds` transmis → le backend notifie les conviés (`meeting.participant.invited`). Emails externes → `POST /calls/{id}/guests` (lien à usage unique **envoyé par email**, consumer déjà en place). |
+| 15 | Invité externe : **le lien de l'email ne menait nulle part** | La route **`/guest/{token}` n'existait pas** dans le SPA → repli `**` → login. L'invité n'a pourtant pas de compte. | **Page publique `salle-invite`** (`GET /guest/{token}` → JWT JaaS non modérateur). Montage JaaS mutualisé (`core/util/jitsi.util.ts`) entre membre et invité. |
+| 16 | Pas d'indicateur pendant la création ; salle ouverte **dans** l'app | — | Bouton « Création… » ; la salle s'ouvre dans une **fenêtre dédiée** (`/salle/:id`, hors shell), l'app restant utilisable derrière. |
+| 17 | Bannière « Appel en cours » invisible pour les autres participants | Elle était pilotée par un **signal local** (`session.startCall`), posé uniquement dans la fenêtre de la salle → invisible partout ailleurs. Le popover affichait en plus des **participants mock** (« Sarah, Moussa et 3 autres »). | Bannière tenue par le **serveur** : `GET /calls/active` (n'expose que les appels dont l'appelant est hôte ou convié) interrogé toutes les 15 s. Avatars mock supprimés ; « Quitter » appelle réellement `leave`. |
+
+> **⚠️ Le swap remonte pendant un `docker compose build frontend`** (le build Angular consomme ~1-2 Go dans le
+> conteneur, en plus des 14 services). Mesuré ce soir : swap **1 → 744 Mo**, et une **famine Hikari à 19:07**
+> (`Connection is not available, request timed out after 43 s`) — exactement le mécanisme décrit en §4. Ce n'est
+> pas une régression du correctif mémoire : c'est le **build** qui pousse la VM en swap. Éviter de tester
+> pendant un build. *(Connexions PostgreSQL vérifiées : 8 — le pool tient.)*
+
+> **`GET /tasks/{id}` renvoie 500 sur un id non-UUID** (`Invalid UUID string: 1PT-1`, vu en logs — c'était le
+> symptôme des mentions de tâche). Le frontend n'envoie plus de clé, mais le service **devrait répondre 400** :
+> `MethodArgumentTypeMismatchException` n'est pas mappée dans `GlobalControllerExceptionHandler` (commons).
+> Non corrigé : la classe est partagée → **rebuild des 9 services** pour un cas désormais sans appelant.
+
+**🔴 Trous identifiés — non corrigés, à traiter :**
 - **`MessageMention.targetId` n'est JAMAIS renseigné.** `MentionParser` extrait le *texte* mentionné, pas l'identifiant
   (documenté « best-effort »). Or `MentionServiceImpl.listReceived()` filtre sur `targetId = utilisateur courant` →
   **« Mentions reçues » (§5.3) restera vide en permanence**, et aucune notification de mention ne peut partir.

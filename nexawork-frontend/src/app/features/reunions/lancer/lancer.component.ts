@@ -1,5 +1,7 @@
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
+import { forkJoin, of } from 'rxjs';
+import { map, switchMap } from 'rxjs/operators';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 import { CreerReunionComponent } from '@features/reunions/modals/creer-reunion/creer-reunion.component';
 import { ToastService } from '@core/services/toast.service';
@@ -22,7 +24,7 @@ import { slugify } from '@core/util/ui.util';
     </div>
 
     @if (open()) {
-      <app-creer-reunion (closed)="open.set(false)" (created)="onCreated($event)" />
+      <app-creer-reunion [busy]="creating()" (closed)="open.set(false)" (created)="onCreated($event)" />
     }
   `,
   styles: [`
@@ -41,20 +43,24 @@ export class LancerReunionComponent {
   private session = inject(SessionService);
   private meetings = inject(MeetingsService);
   open = signal(false);
+  /** Création en cours : le modal affiche « Création… » (l'appel dure ~1-2 s). */
+  creating = signal(false);
 
   /**
-   * Créer une réunion = démarrer un appel actif (REF A). En mode réel on crée
-   * l'appel côté backend puis on ouvre la salle vidéo (M4) ; le popover header
-   * « Appel en cours » reflète l'état réel via `GET /calls/active`.
+   * Créer une réunion = démarrer un appel actif (REF A). Les membres conviés sont
+   * notifiés par le backend (événement `meeting.participant.invited`) ; chaque
+   * invité externe reçoit par email un lien `/guest/{token}` qui lui ouvre la
+   * salle **sans compte**. La salle s'ouvre ensuite dans une **fenêtre dédiée**,
+   * l'application restant utilisable en arrière-plan.
    */
-  onCreated(ev: { title: string; invites: number; memberIds?: string[] }): void {
-    this.open.set(false);
-    const suffix = ev.invites
-      ? ' — ' + ev.invites + ' invitation' + (ev.invites > 1 ? 's' : '') + ' envoyée' + (ev.invites > 1 ? 's' : '')
+  onCreated(ev: { title: string; memberIds: string[]; emails: string[] }): void {
+    const invites = ev.memberIds.length + ev.emails.length;
+    const suffix = invites
+      ? ' — ' + invites + ' invitation' + (invites > 1 ? 's' : '') + ' envoyée' + (invites > 1 ? 's' : '')
       : '';
 
     if (environment.mock.meetings) {
-      // Mock : simple pastille locale, pas de salle vidéo.
+      this.open.set(false);
       this.session.startCall({
         id: slugify(ev.title) || ('meeting-' + Date.now()),
         meetingTitle: ev.title,
@@ -65,12 +71,31 @@ export class LancerReunionComponent {
       return;
     }
 
-    this.meetings.create(ev.title, ev.memberIds ?? []).subscribe({
+    this.creating.set(true);
+    this.meetings.create(ev.title, ev.memberIds).pipe(
+      // Invités externes : un lien à usage unique par adresse, envoyé par email.
+      switchMap(room => (ev.emails.length
+        ? forkJoin(ev.emails.map(email => this.meetings.inviteGuest(room.id, email, email.split('@')[0])))
+            .pipe(map(() => room))
+        : of(room))),
+    ).subscribe({
       next: room => {
+        this.creating.set(false);
+        this.open.set(false);
         this.toast.show({ message: 'Réunion « ' + ev.title + ' » créée' + suffix });
-        this.router.navigate(['/app/reunions/salle', room.id]);
+        this.openRoomWindow(room.id);
+        this.router.navigate(['/app/reunions/historique']);
       },
-      error: () => {},
+      error: () => this.creating.set(false), // message porté par l'intercepteur
     });
+  }
+
+  /** Ouvre la salle dans une fenêtre séparée ; repli sur un onglet si le popup est bloqué. */
+  private openRoomWindow(callId: string): void {
+    const url = '/salle/' + callId;
+    const win = window.open(url, 'nexawork-reunion-' + callId, 'width=1280,height=800,noopener');
+    if (!win) {
+      this.toast.show({ message: 'Autorisez les fenêtres surgissantes pour ouvrir la salle.', icon: 'warning' });
+    }
   }
 }
