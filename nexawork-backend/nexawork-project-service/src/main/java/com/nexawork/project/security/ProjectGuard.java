@@ -41,9 +41,14 @@ public class ProjectGuard {
         return project;
     }
 
-    /** L'appelant est-il le chef de projet fonctionnel (Project.ownerUserId) ? */
+    /**
+     * L'appelant est-il le chef de projet fonctionnel (Project.ownerUserId) ?
+     * {@code ownerUserId} est null tant qu'aucun chef n'est désigné (CU-CP05) :
+     * dans ce cas personne n'est chef.
+     */
     public boolean isProjectLead(Project project) {
-        return project.getOwnerUserId().equals(caller.userId());
+        return project.getOwnerUserId() != null
+                && project.getOwnerUserId().equals(caller.userId());
     }
 
     /**
