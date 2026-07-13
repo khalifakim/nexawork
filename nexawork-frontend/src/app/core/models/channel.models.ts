@@ -110,6 +110,8 @@ export interface CreateChannelPayload {
   name: string;
   scope: 'org' | 'project';
   project?: string;
+  /** UUID du projet propriétaire quand `scope === 'project'` (sinon canal d'organisation). */
+  projectId?: string;
   kind: 'bell' | 'hash';
   readonly: boolean;
   restriction: ChannelRestriction;

@@ -30,7 +30,7 @@ interface Chan { id: string; n: string; icon: 'bell' | 'hash'; access: string; l
         </div>
         <span class="spacer"></span>
         @if (!readonly && canManage()) {
-          <button class="create" (click)="bus.openNewChannel('project')">
+          <button class="create" (click)="createChannel()">
             <app-icon name="plus" [size]="16" />Créer un canal
           </button>
         }
@@ -138,6 +138,13 @@ export class CanauxProjetComponent {
         last: this.activityLabel(c.lastActivityAt),
       }));
   });
+
+  /** Le canal doit être rattaché au projet courant, sinon il naîtrait canal d'organisation. */
+  createChannel(): void {
+    const pid = this.projectId();
+    if (!pid) return;
+    this.bus.openNewChannel('project', { id: pid, name: this.projectName ?? '' });
+  }
 
   /** « il y a X » à partir de la date du dernier message (vide → « Aucun message »). */
   private activityLabel(iso?: string): string {

@@ -3,6 +3,8 @@ import { Injectable, signal } from '@angular/core';
 export interface EditChannelState { id: string; name: string; kind: 'hash' | 'bell'; }
 export interface AccessChannelState { id: string; name: string; scope: 'org' | 'project'; }
 export interface DeleteChannelState { id: string; name: string; }
+/** Ouverture du modal « Nouveau canal » : portée + projet propriétaire le cas échéant. */
+export interface NewChannelState { scope: 'org' | 'project'; projectId?: string; projectName?: string; }
 
 /**
  * Shared overlay state for the app shell. Any routed view can open the global
@@ -15,7 +17,7 @@ export class ShellBus {
   readonly searchOpen = signal(false);
   readonly newMessageOpen = signal(false);
   readonly createProjectOpen = signal(false);
-  readonly newChannelScope = signal<'org' | 'project' | null>(null);
+  readonly newChannel = signal<NewChannelState | null>(null);
   readonly createWorkspaceOpen = signal(false);
   readonly editChannel = signal<EditChannelState | null>(null);
   readonly accessChannel = signal<AccessChannelState | null>(null);
@@ -60,7 +62,10 @@ export class ShellBus {
   openSearch(): void { this.searchOpen.set(true); }
   openNewMessage(): void { this.newMessageOpen.set(true); }
   openCreateProject(): void { this.createProjectOpen.set(true); }
-  openNewChannel(scope: 'org' | 'project'): void { this.newChannelScope.set(scope); }
+  /** Un canal de projet doit porter son projet : sans lui le backend créerait un canal d'organisation. */
+  openNewChannel(scope: 'org' | 'project', project?: { id: string; name: string }): void {
+    this.newChannel.set({ scope, projectId: project?.id, projectName: project?.name });
+  }
   openCreateWorkspace(): void { this.createWorkspaceOpen.set(true); }
   openEditChannel(s: EditChannelState): void { this.editChannel.set(s); }
   openAccessChannel(s: AccessChannelState): void { this.accessChannel.set(s); }

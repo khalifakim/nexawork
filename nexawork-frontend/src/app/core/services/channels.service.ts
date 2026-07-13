@@ -40,7 +40,12 @@ export abstract class ChannelsService {
 
   abstract rename(id: string, patch: UpdateChannelPayload): void;
   abstract remove(id: string): void;
-  abstract create(payload: CreateChannelPayload): Channel;
+  /**
+   * Crée le canal et ne le résout qu'une fois **persisté** : l'appelant ne peut
+   * naviguer vers le canal (et donc franchir `channelAccessGuard`) qu'après que
+   * le backend le connaît.
+   */
+  abstract create(payload: CreateChannelPayload): Observable<Channel>;
   abstract restrictionOf(id: string): ChannelRestriction;
   abstract setRestriction(id: string, r: ChannelRestriction, readonly?: boolean): void;
   abstract isPrivate(id: string): boolean;
@@ -97,7 +102,7 @@ export class ChannelsMockService extends ChannelsService {
     this.perWs.update(m => ({ ...m, [wsId]: (m[wsId] ?? []).filter(c => c.id !== id) }));
     this.restrictions.update(r => { if (!(id in r)) return r; const { [id]: _, ...rest } = r; return rest; });
   }
-  create(payload: CreateChannelPayload): Channel {
+  create(payload: CreateChannelPayload): Observable<Channel> {
     const wsId = this.session.activeWorkspaceId();
     const existing = this.perWs()[wsId] ?? [];
     const base = slugifyChannel(payload.name) || 'canal';
@@ -108,7 +113,7 @@ export class ChannelsMockService extends ChannelsService {
     if (payload.restriction.mode === 'private') {
       this.restrictions.update(r => ({ ...r, [id]: { mode: 'private', grants: payload.restriction.grants.map(g => ({ ...g })) } }));
     }
-    return channel;
+    return of(channel).pipe(delay(80));
   }
   restrictionOf(id: string): ChannelRestriction { return this.restrictions()[id] ?? { mode: 'open', grants: [] }; }
   setRestriction(id: string, r: ChannelRestriction, readonly?: boolean): void {
@@ -229,18 +234,21 @@ export class ChannelsHttpService extends BaseHttpService implements ChannelsServ
         .subscribe();
     }
   }
-  create(payload: CreateChannelPayload): Channel {
-    // Optimiste : renvoie une entrée locale ; l'appel réel rafraîchit la liste.
-    const slug = slugifyChannel(payload.name) || 'canal';
-    const channel: Channel = { id: slug, name: payload.name, scope: payload.scope, kind: payload.kind, project: payload.project, readonly: payload.readonly };
-    this.post$<ChannelResponse>('messaging', '/channels', {
+  create(payload: CreateChannelPayload): Observable<Channel> {
+    return this.post$<ChannelResponse>('messaging', '/channels', {
       name: payload.name,
       icon: payload.kind === 'bell' ? 'BELL' : 'HASH',
+      projectId: payload.projectId,
       readonly: payload.readonly,
       isPrivate: payload.restriction.mode === 'private',
       memberUserIds: [],
-    }).pipe(this.refresh.mutating('channels')).subscribe(); // loader + refetch sidebar
-    return channel;
+    }).pipe(
+      this.refresh.mutating('channels'), // loader + refetch sidebar
+      map(toChannel),
+      // Le canal est immédiatement connu du cache slug→UUID : la navigation qui
+      // suit passe `channelAccessGuard` sans dépendre du refetch de la sidebar.
+      map(channel => { this.cache.update(m => new Map(m).set(channel.id, channel)); return channel; }),
+    );
   }
   restrictionOf(id: string): ChannelRestriction {
     return { mode: this.cache().get(id)?.isPrivate ? 'private' : 'open', grants: [] };

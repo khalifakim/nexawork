@@ -11,9 +11,13 @@ import {
   TaskComment, TaskResponse, Transition, TransitionResponse, UpdateStatusPayload, UpdateTaskPayload,
   WorkflowUpdatePayload,
 } from '@core/models/task.models';
+import { SearchHitResponse } from '@core/models/search.models';
 import { MOCK_STATUSES, MOCK_TASKS } from '@core/mock/tasks';
 import { toCard, toColumn } from '@core/util/task-display.util';
 import { SessionService } from './session.service';
+
+/** Distingue un UUID backend d'une clé lisible de tâche (`MOB-101`). */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Colonnes + cartes groupées par statut — tout ce qu'il faut pour peindre un board. */
 export interface BoardData {
@@ -32,6 +36,11 @@ export abstract class TasksService {
   abstract loadBoard(projectId: string): Observable<BoardData>;
   /** Résout une carte par son id (mention `@@tâche` ouverte hors du board). */
   abstract cardById(id: string): Observable<TaskCard | undefined>;
+  /**
+   * Résout une carte par UUID **ou** par clé lisible (`MOB-101`). Une mention
+   * `@@tâche` porte la clé, pas l'UUID : c'est ce que voit et tape l'utilisateur.
+   */
+  abstract cardByRef(ref: string): Observable<TaskCard | undefined>;
   abstract createTask(projectId: string, req: CreateTaskPayload): Observable<TaskCard>;
   abstract updateTask(id: string, patch: UpdateTaskPayload): Observable<TaskCard>;
   abstract deleteTask(id: string): Observable<void>;
@@ -131,6 +140,12 @@ export class TasksMockService extends TasksService {
 
   cardById(id: string): Observable<TaskCard | undefined> {
     const t = this.tasks.find(x => x.id === id);
+    const colors = colorIndex(this.statuses);
+    return of(t ? toCard(t, colors[t.statusId]) : undefined).pipe(delay(40));
+  }
+
+  cardByRef(ref: string): Observable<TaskCard | undefined> {
+    const t = this.tasks.find(x => x.id === ref || x.taskKey === ref);
     const colors = colorIndex(this.statuses);
     return of(t ? toCard(t, colors[t.statusId]) : undefined).pipe(delay(40));
   }
@@ -290,6 +305,23 @@ export class TasksHttpService extends BaseHttpService implements TasksService {
 
   cardById(id: string): Observable<TaskCard | undefined> {
     return this.get$<TaskResponse>('project', `/tasks/${id}`).pipe(map(t => toCard(t)));
+  }
+
+  /**
+   * UUID → lecture directe. Clé lisible (`MOB-101`) → résolution par la recherche
+   * du Project Service (elle indexe `task_key` et applique déjà la visibilité R15),
+   * puis lecture de la tâche.
+   */
+  cardByRef(ref: string): Observable<TaskCard | undefined> {
+    const key = ref.trim();
+    if (!key) return of(undefined);
+    if (UUID_RE.test(key)) return this.cardById(key);
+    return this.get$<SearchHitResponse[]>('project', '/search', { q: key }).pipe(
+      switchMap(hits => {
+        const hit = hits.find(h => h.type === 'taches' && h.mono?.toLowerCase() === key.toLowerCase());
+        return hit ? this.cardById(hit.id) : of(undefined);
+      }),
+    );
   }
 
   createTask(projectId: string, req: CreateTaskPayload): Observable<TaskCard> {

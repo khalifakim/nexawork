@@ -3,7 +3,9 @@ import { Router } from '@angular/router';
 import { FicheTacheComponent } from '@features/projets/modals/fiche-tache/fiche-tache.component';
 import { AccueilService } from '@core/services/accueil.service';
 import { SessionService } from '@core/services/session.service';
+import { TasksService } from '@core/services/tasks.service';
 import { ReceivedMention as Mention } from '@core/models/accueil.models';
+import { TaskCard } from '@core/models/task.models';
 import { workspaceSignal } from '@core/util/workspace-signal';
 
 type FilterKey = 'Toutes' | 'Canaux' | 'Discussions' | 'Commentaires' | 'Non lues';
@@ -86,9 +88,10 @@ export class MentionsRecuesComponent {
   private router = inject(Router);
   private session = inject(SessionService);
   private accueil = inject(AccueilService);
+  private tasksSvc = inject(TasksService);
 
   filter      = signal<FilterKey>('Toutes');
-  openedTask  = signal<any>(null);
+  openedTask  = signal<TaskCard | null>(null);
   /** Ids the user marked read this session (on top of the mock's own `read` flag). */
   private readIds = signal<string[]>([]);
 
@@ -142,13 +145,8 @@ export class MentionsRecuesComponent {
     }
   }
 
-  private openTaskById(id: string): void {
-    this.openedTask.set({
-      id, title: 'Voir commentaire — ' + id,
-      desc: '', proj: 'Tâche',
-      prio: ['Haute', '#F5564E', '#FDECEB'],
-      tag: ['Commentaire', '#6C70F0'],
-      team: [], links: 0, comments: 1,
-    });
+  /** `ref` = UUID de la tâche, ou sa clé lisible quand la mention n'a pas d'id résolu. */
+  private openTaskById(ref: string): void {
+    this.tasksSvc.cardByRef(ref).subscribe(card => { if (card) this.openedTask.set(card); });
   }
 }

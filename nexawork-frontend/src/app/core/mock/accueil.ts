@@ -8,30 +8,30 @@ import { Dashboard, MyTaskSection, ReceivedMention } from '@core/models/accueil.
 export const MY_TASKS_BY_WORKSPACE: Record<string, MyTaskSection[]> = {
   'atelier-nexa': [
     { cat: "Aujourd'hui", color: '#5B8DEF', tasks: [
-      { id: 'MOB-094', t: 'Intégration écran profil utilisateur', proj: 'Refonte App Mobile',    prio: ['Haute',   '#F5564E'], due: "Aujourd'hui" },
-      { id: 'MKT-210', t: 'Valider le brief créatif',             proj: 'Campagne Q3 Marketing', prio: ['Moyenne', '#E89A2C'], due: "Aujourd'hui" },
-      { id: 'DS-014',  t: 'Revue des composants boutons',         proj: 'Design System Nexa',    prio: ['Basse',   '#2BB673'], due: "Aujourd'hui" },
-      { id: 'MOB-088', t: 'Préparer la démo client',              proj: 'Refonte App Mobile',    prio: ['Haute',   '#F5564E'], due: "Aujourd'hui" },
-      { id: 'WEB-061', t: 'Relire les textes de la page tarifs',  proj: 'Site Vitrine 2025',     prio: ['Basse',   '#2BB673'], due: "Aujourd'hui" },
-      { id: 'DS-022',  t: 'Exporter les icônes en SVG',           proj: 'Design System Nexa',    prio: ['Moyenne', '#E89A2C'], due: "Aujourd'hui" },
+      { id: 'MOB-094', key: 'MOB-094', t: 'Intégration écran profil utilisateur', proj: 'Refonte App Mobile',    prio: ['Haute',   '#F5564E'], due: "Aujourd'hui" },
+      { id: 'MKT-210', key: 'MKT-210', t: 'Valider le brief créatif',             proj: 'Campagne Q3 Marketing', prio: ['Moyenne', '#E89A2C'], due: "Aujourd'hui" },
+      { id: 'DS-014', key: 'DS-014',  t: 'Revue des composants boutons',         proj: 'Design System Nexa',    prio: ['Basse',   '#2BB673'], due: "Aujourd'hui" },
+      { id: 'MOB-088', key: 'MOB-088', t: 'Préparer la démo client',              proj: 'Refonte App Mobile',    prio: ['Haute',   '#F5564E'], due: "Aujourd'hui" },
+      { id: 'WEB-061', key: 'WEB-061', t: 'Relire les textes de la page tarifs',  proj: 'Site Vitrine 2025',     prio: ['Basse',   '#2BB673'], due: "Aujourd'hui" },
+      { id: 'DS-022', key: 'DS-022',  t: 'Exporter les icônes en SVG',           proj: 'Design System Nexa',    prio: ['Moyenne', '#E89A2C'], due: "Aujourd'hui" },
     ]},
     { cat: 'En retard', color: '#F5564E', tasks: [
-      { id: 'BCK-030', t: 'Migration table utilisateurs',  proj: 'Migration Backend', prio: ['Haute',   '#F5564E'], due: 'Il y a 2 j' },
-      { id: 'WEB-077', t: 'Optimiser images page accueil', proj: 'Site Vitrine 2025', prio: ['Moyenne', '#E89A2C'], due: 'Hier' },
+      { id: 'BCK-030', key: 'BCK-030', t: 'Migration table utilisateurs',  proj: 'Migration Backend', prio: ['Haute',   '#F5564E'], due: 'Il y a 2 j' },
+      { id: 'WEB-077', key: 'WEB-077', t: 'Optimiser images page accueil', proj: 'Site Vitrine 2025', prio: ['Moyenne', '#E89A2C'], due: 'Hier' },
     ]},
   ],
   'studio-lumen': [
     { cat: "Aujourd'hui", color: '#5B8DEF', tasks: [
-      { id: 'IDV-004', t: 'Décliner le logo sur fonds sombres', proj: 'Identité visuelle',  prio: ['Haute',   '#F5564E'], due: "Aujourd'hui" },
-      { id: 'PRT-012', t: 'Calibrer les couleurs CMJN',         proj: 'Print Automne 2026', prio: ['Moyenne', '#E89A2C'], due: "Aujourd'hui" },
+      { id: 'IDV-004', key: 'IDV-004', t: 'Décliner le logo sur fonds sombres', proj: 'Identité visuelle',  prio: ['Haute',   '#F5564E'], due: "Aujourd'hui" },
+      { id: 'PRT-012', key: 'PRT-012', t: 'Calibrer les couleurs CMJN',         proj: 'Print Automne 2026', prio: ['Moyenne', '#E89A2C'], due: "Aujourd'hui" },
     ]},
     { cat: 'En retard', color: '#F5564E', tasks: [
-      { id: 'IDV-001', t: 'Livrer la charte v1', proj: 'Identité visuelle', prio: ['Haute', '#F5564E'], due: 'Hier' },
+      { id: 'IDV-001', key: 'IDV-001', t: 'Livrer la charte v1', proj: 'Identité visuelle', prio: ['Haute', '#F5564E'], due: 'Hier' },
     ]},
   ],
   'projets-perso': [
     { cat: "Aujourd'hui", color: '#5B8DEF', tasks: [
-      { id: 'PF-002', t: 'Mettre à jour la page projets', proj: 'Portfolio 2026', prio: ['Basse', '#2BB673'], due: "Aujourd'hui" },
+      { id: 'PF-002', key: 'PF-002', t: 'Mettre à jour la page projets', proj: 'Portfolio 2026', prio: ['Basse', '#2BB673'], due: "Aujourd'hui" },
     ]},
   ],
 };

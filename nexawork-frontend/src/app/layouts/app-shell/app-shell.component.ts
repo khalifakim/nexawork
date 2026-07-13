@@ -63,7 +63,7 @@ const SECTION_TITLES: Record<string, string> = {
                             (invite)="bus.openInvite()"
                             (createProject)="bus.openCreateProject()"
                             (newMessage)="bus.openNewMessage()"
-                            (newChannel)="bus.openNewChannel($event)" />
+                            (newChannel)="bus.newChannel.set($event)" />
             </div>
           </aside>
         }
@@ -74,7 +74,10 @@ const SECTION_TITLES: Record<string, string> = {
     @if (bus.inviteOpen()) { <app-invitation (closed)="bus.inviteOpen.set(false)" /> }
     @if (bus.searchOpen()) { <app-recherche-globale (closed)="bus.searchOpen.set(false)" /> }
     @if (bus.newMessageOpen()) { <app-nouveau-message (closed)="bus.newMessageOpen.set(false)" /> }
-    @if (bus.newChannelScope(); as sc) { <app-nouveau-canal [scope]="sc" (closed)="bus.newChannelScope.set(null)" /> }
+    @if (bus.newChannel(); as nc) {
+      <app-nouveau-canal [scope]="nc.scope" [project]="nc.projectName ?? ''" [projectId]="nc.projectId"
+                         (closed)="bus.newChannel.set(null)" />
+    }
     @if (bus.createWorkspaceOpen()) { <app-workspace-create (closed)="bus.createWorkspaceOpen.set(false)" /> }
     @if (bus.editChannel(); as ec) { <app-modifier-canal [id]="ec.id" [initialName]="ec.name" [initialKind]="ec.kind" (closed)="bus.editChannel.set(null)" /> }
     @if (bus.accessChannel(); as ac) { <app-gerer-acces-canal [id]="ac.id" [name]="ac.name" [scope]="ac.scope" (closed)="bus.accessChannel.set(null)" /> }
@@ -172,10 +175,11 @@ export class AppShellComponent {
     void this.webPush.enable();
 
     // Résout la carte du `@@mention` ouvert hors d'un projet (canal / conversation).
+    // La mention porte la clé lisible de la tâche (`MOB-101`), pas son UUID.
     effect(() => {
-      const id = this.bus.taskId();
-      if (!id) { this._taskCard.set(null); return; }
-      this.tasksSvc.cardById(id).subscribe(card => this._taskCard.set(card ?? null));
+      const ref = this.bus.taskId();
+      if (!ref) { this._taskCard.set(null); return; }
+      this.tasksSvc.cardByRef(ref).subscribe(card => this._taskCard.set(card ?? null));
     });
 
     // Résout le `@@@document` mentionné (nom → fichier réel) pour un aperçu du

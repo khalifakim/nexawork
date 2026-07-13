@@ -296,12 +296,13 @@ export class ProjetShellComponent {
    * Shows a short loading overlay so it's clear a *different* task is opening,
    * then swaps the modal content in place.
    */
-  switchTask(id: string): void {
-    if (!this.selected() || this.selected()?.id === id) return;
+  switchTask(ref: string): void {
+    if (!this.selected() || this.selected()?.id === ref) return;
     this.taskLoading.set(true);
     clearTimeout(this._taskT);
     this._taskT = setTimeout(() => {
-      this.tasksSvc.cardById(id).subscribe(next => {
+      // `ref` vient d'une mention `@@tâche` : c'est la clé lisible, pas l'UUID.
+      this.tasksSvc.cardByRef(ref).subscribe(next => {
         if (next) this.selected.set({ ...next, proj: this.displayName() });
         this.taskLoading.set(false);
       });

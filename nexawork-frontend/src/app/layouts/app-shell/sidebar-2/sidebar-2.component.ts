@@ -15,7 +15,7 @@ import { SessionService } from '@core/services/session.service';
 import { ArchivedProjectsService } from '@core/services/archived-projects.service';
 import { DataRefreshService } from '@core/services/data-refresh.service';
 import { ToastService } from '@core/services/toast.service';
-import { ShellBus } from '@layouts/app-shell/shell.bus';
+import { NewChannelState, ShellBus } from '@layouts/app-shell/shell.bus';
 import { Project } from '@core/models/project.models';
 import { Conversation } from '@core/models/conversation.models';
 import { Channel } from '@core/models/channel.models';
@@ -129,7 +129,7 @@ import { workspaceQuery, workspaceSignal } from '@core/util/workspace-signal';
 
         <div class="head head--row"><span>Canaux Organisation</span>
           @if (isAdmin()) {
-            <button class="add" (click)="newChannel.emit('org')" title="Ajouter un canal"><app-icon name="plus" [size]="16" /></button>
+            <button class="add" (click)="newChannel.emit({ scope: 'org' })" title="Ajouter un canal"><app-icon name="plus" [size]="16" /></button>
           }
         </div>
         @for (c of filteredOrg(); track c.id) {
@@ -168,7 +168,7 @@ import { workspaceQuery, workspaceSignal } from '@core/util/workspace-signal';
           <button class="row row--group" (click)="canauxGrp.set(!canauxGrp())">
             <app-icon class="row__i" name="projects" [size]="16" /><span>{{ projectChannelName() }}</span>
             @if (canManageProjectChannels()) {
-              <button class="add" (click)="newChannel.emit('project'); $event.stopPropagation()" title="Ajouter un canal"><app-icon name="plus" [size]="16" /></button>
+              <button class="add" (click)="newProjectChannel(); $event.stopPropagation()" title="Ajouter un canal"><app-icon name="plus" [size]="16" /></button>
             }
             <span class="chev2" [style.transform]="canauxGrp() ? '' : 'rotate(-90deg)'"><app-icon name="chevronDown" [size]="15" /></span>
           </button>
@@ -422,7 +422,7 @@ export class Sidebar2Component {
   @Output() invite = new EventEmitter<void>();
   @Output() createProject = new EventEmitter<void>();
   @Output() newMessage = new EventEmitter<void>();
-  @Output() newChannel = new EventEmitter<'org' | 'project'>();
+  @Output() newChannel = new EventEmitter<NewChannelState>();
 
   private projectsSvc = inject(ProjectsService);
   private session = inject(SessionService);
@@ -528,13 +528,27 @@ export class Sidebar2Component {
     const archived = this.archivedSvc.ids();
     return this.channels()
       .filter(c => this.channelsSvc.hasAccess(c.id))
-      .filter(c => !(c.scope === 'project' && c.project && archived.has(this.slugifyProject(c.project))));
+      .filter(c => !(c.scope === 'project' && c.projectId && archived.has(c.projectId)));
   });
 
   orgChannels = computed<Channel[]>(() => this.visibleChannels().filter(c => c.scope === 'org'));
   projectChannels = computed<Channel[]>(() => this.visibleChannels().filter(c => c.scope === 'project'));
-  /** Owning project name of the first project channel (sidebar group header). */
-  projectChannelName = computed<string | null>(() => this.projectChannels()[0]?.project ?? null);
+  /**
+   * Projet propriétaire du premier canal de projet (en-tête du groupe). Le nom
+   * n'est pas porté par le canal : il est résolu depuis la liste des projets.
+   */
+  private projectChannelOwner = computed<Project | null>(() => {
+    const pid = this.projectChannels()[0]?.projectId;
+    return pid ? this.rawProjects().find(p => p.id === pid) ?? null : null;
+  });
+  projectChannelName = computed<string | null>(() => this.projectChannelOwner()?.name ?? null);
+
+  /** « + » du groupe « Canaux Projets » : le canal naît rattaché à ce projet. */
+  newProjectChannel(): void {
+    const owner = this.projectChannelOwner();
+    if (!owner) return;
+    this.newChannel.emit({ scope: 'project', projectId: owner.id, projectName: owner.name });
+  }
   /**
    * True when the user is allowed to create / edit / delete project channels
    * in the sidebar section (règle R15). Currently modelled as `isAdmin` +

@@ -1,5 +1,6 @@
 /** ── Mes tâches ─────────────────────────────────────────────────────────── */
-export interface MyTaskRow { id: string; t: string; proj: string; prio: [string, string]; due: string; }
+/** `id` = UUID de la tâche (ouverture de la fiche) ; `key` = identifiant lisible affiché (PREFIX-NNN). */
+export interface MyTaskRow { id: string; key: string; t: string; proj: string; prio: [string, string]; due: string; }
 export interface MyTaskSection { cat: string; color: string; tasks: MyTaskRow[]; }
 
 /** ── Mentions reçues ───────────────────────────────────────────────────────

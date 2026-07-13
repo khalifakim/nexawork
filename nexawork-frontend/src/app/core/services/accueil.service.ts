@@ -7,10 +7,11 @@ import {
 } from '@core/models/accueil.models';
 import { TaskResponse } from '@core/models/task.models';
 import { MY_TASKS_BY_WORKSPACE, MENTIONS_BY_WORKSPACE, DASHBOARD_BY_WORKSPACE } from '@core/mock/accueil';
-import { prioTuple, dueBucket } from '@core/util/task-display.util';
+import { prioTuple } from '@core/util/task-display.util';
 import { avatarColorFor, initials, slugName } from '@core/util/ui.util';
 import { SessionService } from './session.service';
 import { MembersService } from './members.service';
+import { ProjectsService } from './projects.service';
 
 const EMPTY_DASHBOARD: Dashboard = {
   kpis: { projectsActive: 0, projectsLate: 0, projectsArchived: 0, tasksDone: 0, tasksTotal: 0, tasksOverdue: 0, tasksOverdueProjects: 0, members: 0, membersOnline: 0 },
@@ -74,19 +75,26 @@ interface MentionResponse {
 export class AccueilHttpService extends BaseHttpService implements AccueilService {
   private readonly session = inject(SessionService);
   private readonly members = inject(MembersService);
+  private readonly projects = inject(ProjectsService);
 
   /**
-   * « Mes tâches » : tâches assignées à l'appelant (`GET /users/me/tasks`),
-   * regroupées par bucket d'échéance — en retard, cette semaine, ce mois.
+   * « Mes tâches — Aujourd'hui et en retard » (V5.1 §5.1) : tâches assignées à
+   * l'appelant (`GET /users/me/tasks`), restreintes aux échéances **du jour** ou
+   * **dépassées**. Deux sections, pas de « Sans échéance » (§5.1 e).
+   *
+   * Le nom du projet n'est pas porté par la tâche : il est résolu depuis la
+   * liste des projets (la colonne « Projet » de chaque ligne).
    */
   myTasks(): Observable<MyTaskSection[]> {
-    return this.get$<TaskResponse[]>('project', '/users/me/tasks').pipe(map(tasks => {
-      const rows = tasks.map(toMyTaskRow);
+    return forkJoin({
+      tasks: this.get$<TaskResponse[]>('project', '/users/me/tasks'),
+      projects: this.projects.list(),
+    }).pipe(map(({ tasks, projects }) => {
+      const projectName = new Map(projects.map(p => [p.id, p.name]));
+      const rows = tasks.map(t => toMyTaskRow(t, projectName.get(t.projectId) ?? ''));
       const sections: MyTaskSection[] = [
-        { cat: 'En retard',      color: '#F5564E', tasks: rows.filter(r => r.bucket === 'retard') },
-        { cat: 'Cette semaine',  color: '#E89A2C', tasks: rows.filter(r => r.bucket === 'semaine') },
-        { cat: 'Ce mois',        color: '#5B8DEF', tasks: rows.filter(r => r.bucket === 'mois') },
-        { cat: 'Sans échéance',  color: '#8E8AA0', tasks: rows.filter(r => !r.bucket) },
+        { cat: "Aujourd'hui", color: '#5B8DEF', tasks: rows.filter(r => r.slot === 'today') },
+        { cat: 'En retard',   color: '#F5564E', tasks: rows.filter(r => r.slot === 'late') },
       ];
       return sections.filter(s => s.tasks.length > 0);
     }));
@@ -113,17 +121,32 @@ export class AccueilHttpService extends BaseHttpService implements AccueilServic
 
 // ── Mapping ──────────────────────────────────────────────────────────────────
 
-/** Ligne « Mes tâches », enrichie du bucket d'échéance servant au regroupement. */
-function toMyTaskRow(t: TaskResponse): MyTaskRow & { bucket?: string } {
+/** Ligne « Mes tâches », enrichie du créneau d'échéance servant au regroupement. */
+function toMyTaskRow(t: TaskResponse, projectName: string): MyTaskRow & { slot?: DueSlot } {
   const prio = prioTuple(t.priority);
   return {
     id: t.id,
+    key: t.taskKey,
     t: t.title,
-    proj: t.taskKey,
+    proj: projectName,
     prio: [prio[0], prio[1]],
-    due: t.dueDate ? formatDue(t.dueDate) : 'Sans échéance',
-    bucket: dueBucket(t.dueDate),
+    due: t.dueDate ? formatDue(t.dueDate) : '',
+    slot: dueSlot(t.dueDate),
   };
+}
+
+/** Créneau d'échéance de l'écran §5.1 : le jour même, ou dépassée. Au-delà : non affichée. */
+type DueSlot = 'today' | 'late';
+
+function dueSlot(dueDate?: string): DueSlot | undefined {
+  if (!dueDate) return undefined;
+  const d = new Date(dueDate + 'T00:00:00');
+  if (Number.isNaN(d.getTime())) return undefined;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const days = Math.round((d.getTime() - today.getTime()) / 86_400_000);
+  if (days < 0) return 'late';
+  if (days === 0) return 'today';
+  return undefined;
 }
 
 function formatDue(iso: string): string {
@@ -159,11 +182,13 @@ function toMention(m: MentionResponse, byId: Map<string | undefined, { name: str
     date: formatAgo(m.createdAt),
     kind,
     read: m.isRead,
+    // `targetId` n'est pas résolu côté Messaging : on retombe sur le libellé
+    // mentionné (la clé lisible de la tâche), que `TasksService` sait résoudre.
     target: m.channelName
       ? { kind: 'channel', slug: slugName(m.channelName) }
       : m.conversationId
         ? { kind: 'conversation', slug: slugName(name) }
-        : { kind: 'task', id: m.targetId ?? '' },
+        : { kind: 'task', id: m.targetId ?? m.targetText ?? '' },
   };
 }
 

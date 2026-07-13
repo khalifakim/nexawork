@@ -59,7 +59,9 @@ import { ChannelAccessMode, ChannelGrant } from '@core/models/channel.models';
 
       <div footer>
         <button class="ghost" (click)="closed.emit()">Annuler</button>
-        <button class="primary" [disabled]="!name()" (click)="create()">Créer le canal</button>
+        <button class="primary" [disabled]="!name() || saving()" (click)="create()">
+          {{ saving() ? 'Création…' : 'Créer le canal' }}
+        </button>
       </div>
     </app-modal-shell>
   `,
@@ -96,6 +98,8 @@ import { ChannelAccessMode, ChannelGrant } from '@core/models/channel.models';
 export class NouveauCanalComponent {
   @Input() scope: 'org' | 'project' = 'org';
   @Input() project = '';
+  /** UUID du projet propriétaire (canal de projet). */
+  @Input() projectId?: string;
   @Output() closed = new EventEmitter<void>();
 
   private router = inject(Router);
@@ -103,6 +107,7 @@ export class NouveauCanalComponent {
   private toast = inject(ToastService);
 
   raw = signal('');
+  saving = signal(false);
   readonly = signal(false);
   kind = signal<'hash' | 'bell'>('hash');
   mode = signal<ChannelAccessMode>('open');
@@ -121,19 +126,30 @@ export class NouveauCanalComponent {
       : 'La création de canaux de projet est réservée aux administrateurs et au chef de projet.';
   }
 
+  /**
+   * Crée le canal, puis navigue **une fois le canal persisté** : naviguer avant
+   * la réponse faisait échouer `channelAccessGuard` (le canal n'existait pas
+   * encore côté serveur) et affichait « Ce canal est privé… » à son créateur.
+   */
   create(): void {
     const n = this.name();
-    if (!n) return;
-    const channel = this.channelsSvc.create({
+    if (!n || this.saving()) return;
+    this.saving.set(true);
+    this.channelsSvc.create({
       name: n,
       scope: this.scope,
       project: this.scope === 'project' ? this.project : undefined,
+      projectId: this.scope === 'project' ? this.projectId : undefined,
       kind: this.kind(),
       readonly: this.readonly(),
       restriction: { mode: this.mode(), grants: this.grants() },
+    }).subscribe({
+      next: channel => {
+        this.toast.show({ message: 'Canal « #' + channel.name + ' » créé' });
+        this.closed.emit();
+        this.router.navigate(['/app/canaux', channel.id]);
+      },
+      error: () => this.saving.set(false), // le message d'erreur vient de l'intercepteur
     });
-    this.toast.show({ message: 'Canal « #' + channel.name + ' » créé' });
-    this.closed.emit();
-    this.router.navigate(['/app/canaux', channel.id]);
   }
 }
