@@ -28,7 +28,7 @@
 .bulk__b--danger { background: rgba(245,86,78,.92); }
 .bulk__x { width: 34px; height: 34px; border: none; border-radius: 8px; background: transparent; color: rgba(255,255,255,.7); cursor: pointer; display: flex; align-items: center; justify-content: center; }
 
-.tbl { flex: 1; min-height: 0; overflow: auto; margin: 0 28px 24px; background: #fff; border: 1px solid var(--nx-border); border-radius: 12px; }
+.tbl { flex: 1; min-height: 280px; overflow: auto; margin: 0 28px 24px; background: #fff; border: 1px solid var(--nx-border); border-radius: 12px; }
 .thead, .trow { display: grid; gap: 14px; align-items: center; padding: 0 18px; }
 .thead { height: 40px; border-bottom: 1px solid #ECEAE4; font-size: 11.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--nx-text-400); }
 .th { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

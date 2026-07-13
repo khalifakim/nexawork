@@ -6,6 +6,10 @@ import { forkJoin } from 'rxjs';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 import { TasksService } from '@core/services/tasks.service';
 import { ToastService } from '@core/services/toast.service';
+import { ProjectsService } from '@core/services/projects.service';
+import { MembersService } from '@core/services/members.service';
+import { SessionService } from '@core/services/session.service';
+import { avatarColorFor } from '@core/util/ui.util';
 import { CreateTaskPayload, KanbanColumn, TaskCard, TaskPriority } from '@core/models/task.models';
 import { tintOf } from '@core/util/ui.util';
 
@@ -20,17 +24,10 @@ const PRIOS: { name: string; color: string; value: TaskPriority }[] = [
 
 const EST_OPTIONS = ['0,5 h', '1 h', '2 h', '4 h', '1 j', '2 j', '3 j', '1 sem'];
 
-const ME = { name: 'Moi', c: '#F5A623' };
-
-/**
- * Annuaire des assignés — vide en I2b : l'annuaire des membres (résolution
- * userId → nom/couleur) est câblé en I3. Le sélecteur reste présent (design
- * préservé) mais n'affiche pas de personne tant que I3 n'a pas alimenté ces
- * listes ; l'assigné n'est donc pas encore transmis à la création.
- */
-const MEMBERS: { name: string; c: string }[] = [];
-
-const TEAMS: { name: string; c: string }[] = [];
+/** Personne assignable (membre réel du projet). */
+interface AssignableMember { id: string; name: string; c: string; }
+/** Équipe assignable (équipe réelle du projet). */
+interface AssignableTeam { id: string; name: string; c: string; }
 
 // raw SVG paths used in field labels (not in the icon registry)
 const IC_STATUS = '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.4" fill="currentColor" stroke="none"/>';
@@ -76,7 +73,7 @@ const IC_USER   = '<circle cx="12" cy="8" r="3.4"/><path d="M5.5 20c0-3.6 2.9-6.
         <div class="lsc">
 
           <!-- Title -->
-          <input #titleInput class="ttl" placeholder="Nom de la tâche"
+          <input #titleInput class="ttl" placeholder="Nom de la tâche *"
                  [value]="title()" (input)="title.set($any($event.target).value)" />
 
           <!-- ── Fields ─────────────────────────────────────────────────── -->
@@ -116,7 +113,7 @@ const IC_USER   = '<circle cx="12" cy="8" r="3.4"/><path d="M5.5 20c0-3.6 2.9-6.
 
             <!-- Assignés -->
             <div class="frow">
-              <div class="fl"><app-icon [path]="IC_USER" [size]="17" /><span>Assignés</span></div>
+              <div class="fl"><app-icon [path]="IC_USER" [size]="17" /><span>Assignés<i class="req">*</i></span></div>
               <div class="fv">
                 <div class="fw">
                   @if (assignee()) {
@@ -127,7 +124,7 @@ const IC_USER   = '<circle cx="12" cy="8" r="3.4"/><path d="M5.5 20c0-3.6 2.9-6.
                       } @else {
                         <span class="av" [style.background]="memberColor(assignee()!)">{{ ini(assignee()!) }}</span>
                       }
-                      <span class="av-name">{{ assignee() }}{{ assignee() === ME.name ? ' (moi)' : '' }}</span>
+                      <span class="av-name">{{ assignee() }}{{ assigneeType() === 'user' && isMe(assigneeId() ?? '') ? ' (moi)' : '' }}</span>
                       @if (assigneeType() === 'team') {
                         <span class="team-tag">Équipe</span>
                       }
@@ -152,26 +149,28 @@ const IC_USER   = '<circle cx="12" cy="8" r="3.4"/><path d="M5.5 20c0-3.6 2.9-6.
                                (click)="$event.stopPropagation()"
                                (input)="assigneeQuery.set($any($event.target).value)" />
                         @if (filteredMembers().length) {
-                          @for (m of filteredMembers(); track m.name) {
+                          @for (m of filteredMembers(); track m.id) {
                             <button class="dd__i"
-                                    [class.dd__i--sel]="assigneeType()==='user' && assignee()===m.name"
-                                    (click)="selectAssignee(m.name, 'user')">
+                                    [class.dd__i--sel]="assigneeType()==='user' && assigneeId()===m.id"
+                                    (click)="selectAssignee(m.id, m.name, 'user')">
                               <span class="av sm" [style.background]="m.c">{{ ini(m.name) }}</span>
-                              <span class="dd__name">{{ m.name }}{{ m.name === ME.name ? ' (moi)' : '' }}</span>
+                              <span class="dd__name">{{ m.name }}{{ isMe(m.id) ? ' (moi)' : '' }}</span>
                             </button>
                           }
                         } @else {
-                          <div class="dd__empty">Aucune personne trouvée</div>
+                          <div class="dd__empty">Aucun membre dans ce projet. Ajoutez des collaborateurs depuis l'onglet Équipes.</div>
                         }
                       } @else {
                         <div class="dd__lbl">Équipes du projet</div>
-                        @for (t of TEAMS; track t.name) {
+                        @for (t of teams(); track t.id) {
                           <button class="dd__i"
-                                  [class.dd__i--sel]="assigneeType()==='team' && assignee()===t.name"
-                                  (click)="selectAssignee(t.name, 'team')">
+                                  [class.dd__i--sel]="assigneeType()==='team' && assigneeId()===t.id"
+                                  (click)="selectAssignee(t.id, t.name, 'team')">
                             <span class="av av--sq sm" [style.background]="t.c">{{ t.name[0] }}</span>
                             <span class="dd__name">{{ t.name }}</span>
                           </button>
+                        } @empty {
+                          <div class="dd__empty">Aucune équipe dans ce projet.</div>
                         }
                       }
                     </div>
@@ -182,7 +181,7 @@ const IC_USER   = '<circle cx="12" cy="8" r="3.4"/><path d="M5.5 20c0-3.6 2.9-6.
 
             <!-- Date de début -->
             <div class="frow">
-              <div class="fl"><app-icon name="calendar" [size]="17" /><span>Date de début</span></div>
+              <div class="fl"><app-icon name="calendar" [size]="17" /><span>Date de début<i class="req">*</i></span></div>
               <div class="fv">
                 <div class="fw">
                   @if (dateDebut()) {
@@ -212,7 +211,7 @@ const IC_USER   = '<circle cx="12" cy="8" r="3.4"/><path d="M5.5 20c0-3.6 2.9-6.
 
             <!-- Date de fin -->
             <div class="frow">
-              <div class="fl"><app-icon name="calendar" [size]="17" /><span>Date de fin</span></div>
+              <div class="fl"><app-icon name="calendar" [size]="17" /><span>Date de fin<i class="req">*</i></span></div>
               <div class="fv">
                 <div class="fw">
                   @if (dateFin()) {
@@ -242,7 +241,7 @@ const IC_USER   = '<circle cx="12" cy="8" r="3.4"/><path d="M5.5 20c0-3.6 2.9-6.
 
             <!-- Priorité -->
             <div class="frow">
-              <div class="fl"><app-icon name="flag" [size]="17" /><span>Priorité</span></div>
+              <div class="fl"><app-icon name="flag" [size]="17" /><span>Priorité<i class="req">*</i></span></div>
               <div class="fv">
                 <div class="fw">
                   @if (curPrio(); as p) {
@@ -374,9 +373,9 @@ const IC_USER   = '<circle cx="12" cy="8" r="3.4"/><path d="M5.5 20c0-3.6 2.9-6.
                 }
               </div>
             }
-            <label class="dropzone" (dragover)="$event.preventDefault()" (drop)="onDrop($event)">
-              <app-icon name="upload" [size]="20" />
-              <span>Déposez vos fichiers ici ou <strong style="color:#5B5FE9">parcourir</strong></span>
+            <label class="browse">
+              <app-icon name="upload" [size]="16" />
+              <span>Parcourir</span>
               <input type="file" hidden multiple (change)="onFilesPicked($event)" />
             </label>
           </div>
@@ -675,6 +674,19 @@ const IC_USER   = '<circle cx="12" cy="8" r="3.4"/><path d="M5.5 20c0-3.6 2.9-6.
     .dropzone:hover { border-color: #5B5FE9; }
     .dropzone app-icon { color: #b4b0bb; }
 
+    /* Astérisque des champs obligatoires */
+    .req { color: #F5564E; font-style: normal; margin-left: 3px; font-weight: 700; }
+
+    /* Bouton « Parcourir » (remplace la zone de glisser-déposer) */
+    .browse {
+      display: inline-flex; align-items: center; gap: 8px;
+      height: 36px; padding: 0 14px; border-radius: 9px;
+      border: 1px solid #D9D6CE; background: #fff;
+      color: #46434e; font-size: 13px; font-weight: 600; cursor: pointer;
+    }
+    .browse:hover { background: #F4F2ED; border-color: #5B5FE9; color: #5B5FE9; }
+    .browse app-icon { color: inherit; }
+
     /* Selected files (pre-upload) */
     .att-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
     .att-item {
@@ -738,22 +750,32 @@ export class CreerTacheComponent implements OnInit, AfterViewInit {
 
   private tasksSvc = inject(TasksService);
   private toast    = inject(ToastService);
+  private projectsSvc = inject(ProjectsService);
+  private membersSvc = inject(MembersService);
+  private session = inject(SessionService);
 
   // ── Expose constants to template ────────────────────────────────────────
   readonly PRIOS        = PRIOS;
   readonly EST_OPTIONS  = EST_OPTIONS;
-  readonly ME           = ME;
-  readonly MEMBERS      = MEMBERS;
-  readonly TEAMS        = TEAMS;
   readonly IC_STATUS    = IC_STATUS;
   readonly IC_USER      = IC_USER;
+
+  /** Membres réels du projet (assignables). */
+  members = signal<AssignableMember[]>([]);
+  /** Équipes réelles du projet (assignables). */
+  teams = signal<AssignableTeam[]>([]);
+  /** Id de l'utilisateur courant — pour le suffixe « (moi) ». */
+  private meId = computed(() => this.session.user()?.id ?? '');
 
   // ── State ────────────────────────────────────────────────────────────────
   title        = signal('');
   desc         = signal('');
   field        = signal<string | null>(null);
   statusId     = signal<string | null>(null);
+  /** Nom affiché de l'assigné (membre ou équipe). */
   assignee     = signal<string | null>(null);
+  /** UUID réel de l'assigné (userId ou teamId) — envoyé au backend. */
+  assigneeId   = signal<string | null>(null);
   assigneeType = signal<'user' | 'team' | null>(null);
   assigneeQuery = signal('');
   assignMode   = signal<'user' | 'team'>('user');
@@ -772,10 +794,20 @@ export class CreerTacheComponent implements OnInit, AfterViewInit {
   curStatus = computed<KanbanColumn | undefined>(() =>
     this.columns.find(c => c.id === this.statusId()) ?? this.columns[0]);
   curPrio   = computed(() => PRIOS.find(p => p.name === this.priority()) ?? null);
-  canCreate = computed(() => !!this.title().trim() && !!this.statusId());
-  filteredMembers = computed(() => {
+  /**
+   * Champs obligatoires (§14) : nom, assigné, date de début, date de fin, priorité.
+   * Le statut est toujours défini (colonne d'origine).
+   */
+  canCreate = computed(() =>
+    !!this.title().trim()
+    && !!this.statusId()
+    && !!this.assigneeId()
+    && !!this.dateDebut()
+    && !!this.dateFin()
+    && !!this.priority());
+  filteredMembers = computed<AssignableMember[]>(() => {
     const q = this.assigneeQuery().toLowerCase().trim();
-    return MEMBERS.filter(m => m.name.toLowerCase().includes(q));
+    return this.members().filter(m => m.name.toLowerCase().includes(q));
   });
 
   tint(color: string | undefined): string { return tintOf(color ?? '#8E8AA0'); }
@@ -788,6 +820,22 @@ export class CreerTacheComponent implements OnInit, AfterViewInit {
       ?? this.columns[0]?.id
       ?? null;
     this.statusId.set(initial);
+
+    // Membres et équipes RÉELS du projet (assignables).
+    if (this.projectId) {
+      forkJoin({
+        members: this.projectsSvc.members(this.projectId),
+        teams: this.projectsSvc.teams(this.projectId),
+        dir: this.membersSvc.directory(),
+      }).subscribe(({ members, teams, dir }) => {
+        const byId = new Map(dir.filter(m => m.userId).map(m => [m.userId!, m] as const));
+        this.members.set(members.map(pm => {
+          const m = byId.get(pm.userId);
+          return { id: pm.userId, name: m?.name ?? 'Membre', c: m?.color ?? avatarColorFor(pm.userId) };
+        }));
+        this.teams.set(teams.map(t => ({ id: t.id, name: t.name, c: t.color ?? '#6C70F0' })));
+      });
+    }
   }
 
   ngAfterViewInit(): void {
@@ -801,8 +849,10 @@ export class CreerTacheComponent implements OnInit, AfterViewInit {
 
   ini(name: string): string { return name.split(' ').map(w => w[0]).join(''); }
 
-  memberColor(name: string): string { return MEMBERS.find(m => m.name === name)?.c ?? '#5B5FE9'; }
-  teamColor(name: string):   string { return TEAMS.find(t => t.name === name)?.c   ?? '#5B5FE9'; }
+  memberColor(name: string): string { return this.members().find(m => m.name === name)?.c ?? '#5B5FE9'; }
+  teamColor(name: string):   string { return this.teams().find(t => t.name === name)?.c   ?? '#5B5FE9'; }
+  /** Vrai si l'assigné sélectionné est l'utilisateur courant (suffixe « (moi) »). */
+  isMe(id: string): boolean { return id === this.meId(); }
 
   fmtDate(iso: string): string {
     if (!iso) return '';
@@ -811,9 +861,10 @@ export class CreerTacheComponent implements OnInit, AfterViewInit {
     return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
   }
 
-  selectAssignee(name: string, type: 'user' | 'team'): void {
-    const already = this.assigneeType() === type && this.assignee() === name;
+  selectAssignee(id: string, name: string, type: 'user' | 'team'): void {
+    const already = this.assigneeType() === type && this.assigneeId() === id;
     this.assignee.set(already ? null : name);
+    this.assigneeId.set(already ? null : id);
     this.assigneeType.set(already ? null : type);
     this.field.set(null);
     this.assigneeQuery.set('');
@@ -866,7 +917,7 @@ export class CreerTacheComponent implements OnInit, AfterViewInit {
   create(): void {
     const title = this.title().trim();
     const statusId = this.statusId();
-    if (!title || !statusId || this.busy()) return;
+    if (!this.canCreate() || !statusId || this.busy()) return;
     this.busy.set(true);
 
     const payload: CreateTaskPayload = {
@@ -877,7 +928,9 @@ export class CreerTacheComponent implements OnInit, AfterViewInit {
       startDate: this.dateDebut() || undefined,
       dueDate: this.dateFin() || undefined,
       estimate: this.estimate() || undefined,
-      // Assigné : câblé en I3 (annuaire des membres).
+      // Assigné réel (membre ou équipe du projet).
+      assigneeType: this.assigneeType() === 'team' ? 'TEAM' : 'USER',
+      assigneeId: this.assigneeId() ?? undefined,
     };
 
     this.tasksSvc.createTask(this.projectId, payload).subscribe({

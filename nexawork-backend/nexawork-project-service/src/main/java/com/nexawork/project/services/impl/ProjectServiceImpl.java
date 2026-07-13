@@ -6,8 +6,6 @@ import com.nexawork.project.dtos.requests.CreateProjectRequest;
 import com.nexawork.project.dtos.requests.UpdateProjectRequest;
 import com.nexawork.project.dtos.responses.ProjectResponse;
 import com.nexawork.project.entities.Project;
-import com.nexawork.project.entities.ProjectMember;
-import com.nexawork.project.entities.enums.ProjectRole;
 import com.nexawork.project.entities.enums.ProjectStatus;
 import com.nexawork.project.events.publishers.ProjectCreatedEvent;
 import com.nexawork.project.events.publishers.ProjectEventPublisher;
@@ -61,7 +59,6 @@ public class ProjectServiceImpl implements ProjectService {
         // CU-A03 : la création d'un projet est réservée à l'administrateur (ou au
         // propriétaire) du workspace ; le chef de projet est désigné ensuite (CU-CP05).
         caller.requireWorkspaceAdmin("créer un projet");
-        UUID userId = caller.userId();
         String prefix = generateUniquePrefix(request.getPrefix(), request.getName(), caller.organisationId());
         Project project = projectRepository.save(Project.builder()
                 .name(request.getName())
@@ -78,13 +75,9 @@ public class ProjectServiceImpl implements ProjectService {
                 .enforceWorkflowOrder(false)
                 .build());
 
-        // Le créateur est ajouté comme MEMBRE du projet (accès), mais PAS comme chef.
-        projectMemberRepository.save(ProjectMember.builder()
-                .project(project)
-                .userId(userId)
-                .projectRole(ProjectRole.PROJECT_MEMBER)
-                .isProjectLead(false)
-                .build());
+        // Aucun membre n'est ajouté d'office : l'administrateur crée le projet, il
+        // n'en devient ni membre ni chef. Il ajoute explicitement les collaborateurs
+        // ensuite (et peut s'ajouter lui-même s'il le souhaite).
 
         // Workflow Kanban par défaut (4 colonnes + transitions) — V5.1 §8.1.
         workflowSeeder.seedDefault(project);

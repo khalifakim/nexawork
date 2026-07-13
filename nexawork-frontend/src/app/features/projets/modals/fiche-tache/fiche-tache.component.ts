@@ -255,6 +255,7 @@ interface CommentRow {
             <div class="composer">
               <app-comment-composer
                 [placeholder]="'Commentez, mentionnez avec @, @@, @@@ ou #…'"
+                [sending]="commentSending()"
                 (submitted)="onNewComment($event)"
               />
             </div>
@@ -291,6 +292,8 @@ export class FicheTacheComponent implements OnChanges {
 
   protected subtasks = signal<SubRow[]>([]);
   protected comments = signal<CommentRow[]>([]);
+  /** Envoi de commentaire en cours (spinner du composeur). */
+  protected commentSending = signal(false);
   protected attachments = signal<AttachedRef[]>([]);
   adding = signal(false);
   draft = signal('');
@@ -500,8 +503,18 @@ export class FicheTacheComponent implements OnChanges {
   // ── Commentaires ────────────────────────────────────────────────────────────
   onNewComment(payload: { parts: RichPart[]; files: { file?: File }[]; text: string }): void {
     const files = payload.files.map(f => f.file).filter((f): f is File => !!f);
+    this.commentSending.set(true);
     this.tasksSvc.addComment(this.task.id, this.task.projectId, payload.text, files)
-      .subscribe(c => this.comments.update(list => [...list, this.toRow(c)]));
+      .subscribe({
+        next: c => {
+          this.comments.update(list => [...list, this.toRow(c)]);
+          this.commentSending.set(false);
+        },
+        error: () => {
+          this.commentSending.set(false);
+          this.toast.show({ message: "L'envoi du commentaire a échoué.", icon: 'warning' });
+        },
+      });
   }
   removeComment(id: string): void {
     const snapshot = this.comments();
