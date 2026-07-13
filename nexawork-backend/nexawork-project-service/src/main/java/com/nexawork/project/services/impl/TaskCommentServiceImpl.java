@@ -7,9 +7,13 @@ import com.nexawork.project.dtos.requests.CommentAttachmentRequest;
 import com.nexawork.project.dtos.requests.CreateCommentRequest;
 import com.nexawork.project.dtos.responses.CommentResponse;
 import com.nexawork.project.entities.CommentAttachment;
+import com.nexawork.project.entities.ProjectMember;
 import com.nexawork.project.entities.Task;
 import com.nexawork.project.entities.TaskComment;
+import com.nexawork.project.events.publishers.ProjectEventPublisher;
+import com.nexawork.project.events.publishers.TaskCommentedEvent;
 import com.nexawork.project.mappers.CommentMapper;
+import com.nexawork.project.repositories.ProjectMemberRepository;
 import com.nexawork.project.repositories.TaskCommentRepository;
 import com.nexawork.project.repositories.TaskRepository;
 import com.nexawork.project.security.CallerContext;
@@ -36,6 +40,8 @@ public class TaskCommentServiceImpl implements TaskCommentService {
 
     TaskRepository taskRepository;
     TaskCommentRepository taskCommentRepository;
+    ProjectMemberRepository projectMemberRepository;
+    ProjectEventPublisher eventPublisher;
     CommentMapper commentMapper;
     ProjectGuard guard;
     CallerContext caller;
@@ -75,7 +81,35 @@ public class TaskCommentServiceImpl implements TaskCommentService {
             }
         }
 
-        return commentMapper.asDto(taskCommentRepository.saveAndFlush(comment));
+        TaskComment saved = taskCommentRepository.saveAndFlush(comment);
+
+        // Notifie tous les membres du projet (hors auteur) — V5.1 §7.2.
+        List<UUID> recipients = projectMemberRepository.findByProjectId(task.getProject().getId()).stream()
+                .map(ProjectMember::getUserId)
+                .filter(uid -> !uid.equals(caller.userId()))
+                .distinct()
+                .toList();
+        if (!recipients.isEmpty()) {
+            eventPublisher.publishTaskCommented(new TaskCommentedEvent(
+                    task.getId(),
+                    task.getTaskKey(),
+                    task.getTitle(),
+                    task.getProject().getId(),
+                    task.getProject().getName(),
+                    caller.userId(),
+                    excerpt(saved.getContent()),
+                    recipients));
+        }
+        return commentMapper.asDto(saved);
+    }
+
+    /** Extrait court du commentaire pour le corps de la notification. */
+    private String excerpt(String content) {
+        if (content == null || content.isBlank()) {
+            return "A joint un fichier.";
+        }
+        String s = content.strip();
+        return s.length() <= 120 ? s : s.substring(0, 117) + "…";
     }
 
     @Override

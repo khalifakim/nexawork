@@ -83,7 +83,7 @@ const SPACE_COLOR: Record<string, string> = {
         </div>
       }
     </div>
-    @if (preview(); as p) { <app-apercu-document [name]="p" (closed)="preview.set(null)" /> }
+    @if (preview(); as p) { <app-apercu-document [name]="p.name" [url]="p.url" (closed)="preview.set(null)" /> }
   `,
   styleUrl: './mes-documents.component.scss',
 })
@@ -95,7 +95,7 @@ export class MesDocumentsComponent {
 
   private readonly real = !environment.mock.ged;
 
-  preview = signal<string | null>(null);
+  preview = signal<{ name: string; url?: string } | null>(null);
   q = signal('');
   fSpace = signal<string | null>(null);
   fType = signal<string | null>(null);
@@ -199,7 +199,7 @@ export class MesDocumentsComponent {
     }
   }
 
-  open(it: Doc): void { if (it.it !== 'folder') this.preview.set(it.name); }
+  open(it: Doc): void { if (it.it !== 'folder') this.preview.set({ name: it.name, url: it.item?.url }); }
   toggleMenu(name: string, ev: Event): void { ev.stopPropagation(); this.menu.set(this.menu() === name ? null : name); }
   resetFilters(): void { this.q.set(''); this.fSpace.set(null); this.fType.set(null); }
 

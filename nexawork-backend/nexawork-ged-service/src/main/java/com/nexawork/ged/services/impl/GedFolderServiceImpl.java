@@ -104,6 +104,7 @@ public class GedFolderServiceImpl implements GedFolderService {
                     .map(a -> TaskAttachmentLineResponse.builder()
                             .attachmentId(a.attachmentId())
                             .taskId(a.taskId())
+                            .taskKey(a.taskKey())
                             .taskTitle(a.taskTitle())
                             .fileName(a.fileName())
                             .fileUrl(a.fileUrl())

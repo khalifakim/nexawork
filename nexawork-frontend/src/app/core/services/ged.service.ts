@@ -431,6 +431,7 @@ function toFileItem(f: FileResponse, byId: Map<string, Member>): GedItem {
     added: formatDate(f.addedAt),
     restricted: f.restricted,
     projectId: f.projectId,
+    url: f.fileUrl,
   };
 }
 
@@ -443,7 +444,8 @@ function toTaskAttachmentItem(a: TaskAttachmentLineResponse, byId: Map<string, M
     size: formatSize(a.fileSize),
     added: formatDate(a.uploadedAt),
     system: true,
-    task: { id: a.taskId, title: a.taskTitle },
+    task: { id: a.taskId, key: a.taskKey, title: a.taskTitle },
+    url: a.fileUrl,
   };
 }
 

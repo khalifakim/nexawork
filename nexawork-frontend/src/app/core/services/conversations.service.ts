@@ -106,7 +106,9 @@ export class ConversationsHttpService extends BaseHttpService implements Convers
       }).pipe(map(({ page, dir }) => {
         const meId = this.session.user()?.id;
         const byId = new Map(dir.map(m => [m.userId, m]));
-        return page.messages.map(msg => toConversationMessage(msg, meId, byId));
+        // Le backend pagine du plus récent au plus ancien (curseur) : on ré-inverse
+        // pour l'affichage chronologique (anciens en haut, nouveaux en bas).
+        return page.messages.map(msg => toConversationMessage(msg, meId, byId)).reverse();
       }));
     }));
   }

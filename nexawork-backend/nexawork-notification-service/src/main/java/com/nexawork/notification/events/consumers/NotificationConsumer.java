@@ -45,9 +45,28 @@ public class NotificationConsumer {
                 .type(NotificationType.TASK_ASSIGNED)
                 .title("Nouvelle tâche assignée")
                 .body("Une tâche vous a été assignée : « " + e.taskTitle() + " » (" + e.projectName() + ").")
-                .targetUrl("/app/projets/" + e.projectId() + "/tasks/" + e.taskId())
+                // Ouvre le Kanban du projet avec la fiche de tâche dépliée (?task=<id>).
+                .targetUrl("/app/projets/" + e.projectId() + "/kanban?task=" + e.taskId())
                 .payload(Map.of("taskId", e.taskId().toString(), "projectId", e.projectId().toString()))
                 .build());
+    }
+
+    /** Nouveau commentaire : tous les membres du projet (hors auteur) sont notifiés. */
+    @RabbitListener(queues = "nexawork.notification.task-commented")
+    public void onTaskCommented(Events.TaskCommented e) {
+        if (e.recipientUserIds() == null) {
+            return;
+        }
+        for (java.util.UUID recipient : e.recipientUserIds()) {
+            creator.create(Command.builder()
+                    .recipientUserId(recipient)
+                    .type(NotificationType.MENTION)
+                    .title("Nouveau commentaire")
+                    .body("Commentaire sur « " + e.taskTitle() + " » (" + e.projectName() + ") : " + e.excerpt())
+                    .targetUrl("/app/projets/" + e.projectId() + "/kanban?task=" + e.taskId())
+                    .payload(Map.of("taskId", e.taskId().toString(), "projectId", e.projectId().toString()))
+                    .build());
+        }
     }
 
     @RabbitListener(queues = "nexawork.notification.livrable-validated")

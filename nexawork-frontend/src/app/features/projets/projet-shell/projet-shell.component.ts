@@ -1,6 +1,6 @@
 ﻿import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { toObservable, toSignal } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { of } from 'rxjs';
 import { map, switchMap } from 'rxjs/operators';
 import { IconComponent } from '@shared/ui/icon/icon.component';
@@ -183,6 +183,18 @@ export class ProjetShellComponent {
       const pid = this.id();
       if (pid) this.store.projectId.set(pid);
     });
+
+    // Notification cliquée (?task=<id>) → ouvre directement la fiche de la tâche.
+    this.route.queryParamMap
+      .pipe(map(q => q.get('task')), takeUntilDestroyed())
+      .subscribe(taskId => {
+        if (!taskId || this.selected()?.id === taskId) return;
+        this.taskLoading.set(true);
+        this.tasksSvc.cardById(taskId).subscribe(card => {
+          this.taskLoading.set(false);
+          if (card) this.selected.set({ ...card, proj: this.displayName() });
+        });
+      });
   }
   /** True when current user is ADMIN or OWNER (règles R7, R8). */
   isAdmin = this.session.isAdmin;

@@ -32,6 +32,7 @@ interface SubRow { id: string; title: string; done: boolean; }
 /** Vue d'affichage d'un commentaire (contenu parsé en parts + fichiers). */
 interface CommentRow {
   id: string;
+  authorUserId: string;
   author: string; color: string; time: string;
   parts: RichPart[];
   files: AttachedRef[];
@@ -336,7 +337,15 @@ export class FicheTacheComponent implements OnChanges {
       requestAnimationFrame(() => this.scrollThreadToBottom());
     });
     // Annuaire chargé une fois — sert à résoudre le nom de l'assigné (affichage + édition).
-    this.membersSvc.directory().subscribe(list => this.directory.set(list));
+    this.membersSvc.directory().subscribe(list => {
+      this.directory.set(list);
+      // L'annuaire peut arriver après les commentaires : on re-résout les auteurs.
+      const meId = this.session.user()?.id;
+      this.comments.update(rows => rows.map(r => r.authorUserId === meId ? r : ({
+        ...r,
+        author: list.find(m => m.userId === r.authorUserId)?.name ?? r.author,
+      })));
+    });
   }
 
   // ── Mode édition ────────────────────────────────────────────────────────────
@@ -440,7 +449,11 @@ export class FicheTacheComponent implements OnChanges {
     const mine = c.authorUserId === this.session.user()?.id;
     return {
       id: c.id,
-      author: mine ? (this.session.user()?.displayName ?? 'Moi') : 'Membre',
+      // Nom réel de l'auteur, résolu via l'annuaire du workspace.
+      author: mine
+        ? (this.session.user()?.displayName ?? 'Moi')
+        : (this.directory().find(m => m.userId === c.authorUserId)?.name ?? 'Membre'),
+      authorUserId: c.authorUserId,
       color: avatarColorFor(c.authorUserId),
       time: this.fmtDateTime(c.createdAt),
       parts: parseRichText(c.content),

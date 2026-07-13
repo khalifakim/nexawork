@@ -64,6 +64,7 @@ delete_queue_if_exists nexawork.messaging.call-ended
 echo "Notification queues :"
 declare_queue_binding nexawork.notification.member-invited      member.invited
 declare_queue_binding nexawork.notification.task-assigned       task.assigned
+declare_queue_binding nexawork.notification.task-commented     task.commented
 declare_queue_binding nexawork.notification.livrable-validated  livrable.validated
 declare_queue_binding nexawork.notification.call-ended          call.ended
 declare_queue_binding nexawork.notification.external-guest      external.guest.invited

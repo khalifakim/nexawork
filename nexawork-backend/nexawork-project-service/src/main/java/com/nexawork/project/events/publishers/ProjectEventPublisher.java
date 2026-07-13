@@ -21,6 +21,7 @@ public class ProjectEventPublisher {
     public static final String EXCHANGE = "nexawork.events";
     public static final String ROUTING_PROJECT_CREATED = "project.created";
     public static final String ROUTING_TASK_ASSIGNED = "task.assigned";
+    public static final String ROUTING_TASK_COMMENTED = "task.commented";
     public static final String ROUTING_LIVRABLE_VALIDATED = "livrable.validated";
 
     RabbitTemplate rabbitTemplate;
@@ -31,6 +32,10 @@ public class ProjectEventPublisher {
 
     public void publishTaskAssigned(TaskAssignedEvent event) {
         publish(ROUTING_TASK_ASSIGNED, event, "tâche " + event.taskId() + " → " + event.assigneeUserId());
+    }
+
+    public void publishTaskCommented(TaskCommentedEvent event) {
+        publish(ROUTING_TASK_COMMENTED, event, "commentaire sur tâche " + event.taskId());
     }
 
     public void publishLivrableValidated(LivrableValidatedEvent event) {

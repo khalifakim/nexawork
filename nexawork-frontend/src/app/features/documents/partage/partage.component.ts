@@ -36,7 +36,7 @@ interface Shared {
       <div class="tbl">
         <div class="thead"><span>Nom</span><span>Partagé par</span><span>Date de partage</span><span>Taille</span><span></span></div>
         @for (it of shown(); track it.name) {
-          <div class="row" (click)="preview.set(it.name)">
+          <div class="row" (click)="preview.set({ name: it.name, url: it.item?.url })">
             <div class="name">
               <span class="ic" [style.color]="color(it.type)"><app-icon [name]="icon(it.type)" [size]="18" /></span>
               <span class="nm">{{ it.name }}</span>
@@ -59,7 +59,7 @@ interface Shared {
         }
       </div>
     </div>
-    @if (preview(); as p) { <app-apercu-document [name]="p" (closed)="preview.set(null)" /> }
+    @if (preview(); as p) { <app-apercu-document [name]="p.name" [url]="p.url" (closed)="preview.set(null)" /> }
   `,
   styleUrl: './partage.component.scss',
 })
@@ -70,7 +70,7 @@ export class DocumentsPartageComponent {
 
   private readonly real = !environment.mock.ged;
 
-  preview = signal<string | null>(null);
+  preview = signal<{ name: string; url?: string } | null>(null);
   q = signal('');
   fType = signal<string | null>(null);
   fDate = signal<string | null>(null);
@@ -154,7 +154,7 @@ export class DocumentsPartageComponent {
 
   onAction(action: string, it: Shared): void {
     switch (action) {
-      case 'open':     this.preview.set(it.name); break;
+      case 'open':     this.preview.set({ name: it.name, url: it.item?.url }); break;
       case 'download': this.toast.show({ message: 'Téléchargement de « ' + it.name + ' »…' }); break;
       case 'versions':
         if (it.item) this.gedOverlay.openVersionsFor(it.item); else this.gedOverlay.openVersions(it.name);

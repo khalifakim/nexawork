@@ -82,6 +82,7 @@ public class TaskAttachmentServiceImpl implements TaskAttachmentService {
                 .map(a -> TaskAttachmentAggregateResponse.builder()
                         .attachmentId(a.getId())
                         .taskId(a.getTask().getId())
+                        .taskKey(a.getTask().getTaskKey())
                         .taskTitle(a.getTask().getTitle())
                         .fileName(a.getFileName())
                         .fileUrl(a.getFileUrl())
