@@ -14,6 +14,7 @@ import { parseRichText } from '@core/util/mention.util';
 import { avatarColorFor } from '@core/util/ui.util';
 import { SessionService } from './session.service';
 import { MembersService } from './members.service';
+import { DataRefreshService } from './data-refresh.service';
 
 /**
  * Channel data (workspace-scoped). Swap `ChannelsMockService` for
@@ -151,6 +152,7 @@ export class ChannelsHttpService extends BaseHttpService implements ChannelsServ
   private readonly members = inject(MembersService);
   private readonly stomp = inject(StompClientService);
   private readonly filesSvc = inject(FilesHttpService);
+  private readonly refresh = inject(DataRefreshService);
 
   /** Snapshot des canaux visibles (par slug) — alimente les méthodes synchrones. */
   private readonly cache = signal<Map<string, Channel>>(new Map());
@@ -217,7 +219,7 @@ export class ChannelsHttpService extends BaseHttpService implements ChannelsServ
   }
   remove(id: string): void {
     const uuid = this.uuidOf(id);
-    if (uuid) this.delete$<void>('messaging', `/channels/${uuid}`).subscribe();
+    if (uuid) this.delete$<void>('messaging', `/channels/${uuid}`).subscribe(() => this.refresh.bumpChannels());
   }
   create(payload: CreateChannelPayload): Channel {
     // Optimiste : renvoie une entrée locale ; l'appel réel rafraîchit la liste.
@@ -229,7 +231,7 @@ export class ChannelsHttpService extends BaseHttpService implements ChannelsServ
       readonly: payload.readonly,
       isPrivate: payload.restriction.mode === 'private',
       memberUserIds: [],
-    }).subscribe();
+    }).subscribe(() => this.refresh.bumpChannels()); // rafraîchit la sidebar
     return channel;
   }
   restrictionOf(id: string): ChannelRestriction {

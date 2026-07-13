@@ -22,6 +22,9 @@ public interface GedFolderRepository extends JpaRepository<GedFolder, UUID> {
     List<GedFolder> findByOrganisationIdAndProjectIdIsNullAndParentIdIsNullAndIsDeletedFalse(
             UUID organisationId);
 
+    /** Corbeille (R11) : dossiers supprimés par l'appelant. */
+    List<GedFolder> findByCreatedByUserIdAndIsDeletedTrue(UUID createdByUserId);
+
     /** Idempotence du seeding project.created : dossier racine par type. */
     Optional<GedFolder> findByProjectIdAndFolderTypeAndParentIdIsNull(UUID projectId, FolderType folderType);
 

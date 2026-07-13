@@ -7,6 +7,10 @@ import { IconComponent } from '@shared/ui/icon/icon.component';
 import { ProjectsService } from '@core/services/projects.service';
 import { ConversationsService } from '@core/services/conversations.service';
 import { ChannelsService } from '@core/services/channels.service';
+import { AccueilService } from '@core/services/accueil.service';
+import { MembersService } from '@core/services/members.service';
+import { ReceivedMention } from '@core/models/accueil.models';
+import { Member } from '@core/models/member.models';
 import { SessionService } from '@core/services/session.service';
 import { ArchivedProjectsService } from '@core/services/archived-projects.service';
 import { DataRefreshService } from '@core/services/data-refresh.service';
@@ -32,7 +36,7 @@ import { workspaceSignal } from '@core/util/workspace-signal';
           <app-icon class="row__i" name="taskCheck" [size]="16" /><span>Mes tâches</span>
         </a>
         <a class="row" routerLink="/app/accueil/mentions-recues" routerLinkActive="row--on">
-          <app-icon class="row__i" name="at" [size]="16" /><span>Mentions reçues</span><span class="row__badge">3</span>
+          <app-icon class="row__i" name="at" [size]="16" /><span>Mentions reçues</span>@if (mentionsCount() > 0) { <span class="row__badge">{{ mentionsCount() }}</span> }
         </a>
         @if (isAdmin()) {
           <a class="row" routerLink="/app/accueil/tableau-de-bord" routerLinkActive="row--on">
@@ -206,7 +210,7 @@ import { workspaceSignal } from '@core/util/workspace-signal';
       @case ('conversations') {
         <button class="primary" (click)="newMessage.emit()"><app-icon name="plus" [size]="16" />Nouveau message</button>
         <a class="row row--actifs" routerLink="/app/conversations/actifs" routerLinkActive="row--on">
-          <span class="dot" style="background:var(--nx-success)"></span><span style="flex:1">En ligne</span><span class="row__badge">3</span>
+          <span class="dot" style="background:var(--nx-success)"></span><span style="flex:1">En ligne</span>@if (onlineCount() > 0) { <span class="row__badge">{{ onlineCount() }}</span> }
         </a>
         <div class="head">Conversations</div>
         <button class="search">
@@ -405,8 +409,17 @@ export class Sidebar2Component {
   private toast = inject(ToastService);
   bus = inject(ShellBus);
   private channelsSvc = inject(ChannelsService);
+  private accueilSvc = inject(AccueilService);
+  private membersSvc = inject(MembersService);
   /** True when current user is ADMIN or OWNER of the active workspace. */
   isAdmin = this.session.isAdmin;
+
+  /** Nombre réel de mentions reçues (badge « Mentions reçues »). */
+  private mentionsList = workspaceSignal<ReceivedMention[]>(this.session, () => this.accueilSvc.mentions(), []);
+  mentionsCount = computed(() => this.mentionsList().length);
+  /** Nombre réel de membres en ligne (badge « En ligne » des conversations). */
+  private onlineList = workspaceSignal<Member[]>(this.session, () => this.membersSvc.online(), []);
+  onlineCount = computed(() => this.onlineList().length);
   /** Team currently opened in the Équipes space (rendered under its project). */
   openTeam = this.bus.openTeamNav;
   /** Meeting whose discussion is currently open — rendered under « Historique discussion ». */
@@ -466,7 +479,7 @@ export class Sidebar2Component {
     return this.projects()[0]?.id ?? null;
   });
 
-  private channels = workspaceSignal<Channel[]>(this.session, () => this.channelsSvc.list(), []);
+  private channels = workspaceSignal<Channel[]>(this.session, () => this.channelsSvc.list(), [], this.refresh.channels);
   private archivedSvc = inject(ArchivedProjectsService);
 
   canalQ = signal('');

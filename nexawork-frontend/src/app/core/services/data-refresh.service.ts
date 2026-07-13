@@ -12,4 +12,9 @@ export class DataRefreshService {
   readonly projects = signal(0);
 
   bumpProjects(): void { this.projects.update(v => v + 1); }
+
+  /** Bumpé après création/suppression d'un canal (rafraîchit les sidebars). */
+  readonly channels = signal(0);
+
+  bumpChannels(): void { this.channels.update(v => v + 1); }
 }

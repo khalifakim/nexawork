@@ -26,4 +26,13 @@ public interface GedFolderService {
 
     /** Soft-delete (corbeille). */
     void deleteFolder(UUID folderId);
+
+    /** Corbeille (R11) : dossiers mis à la corbeille par l'appelant. */
+    List<FolderResponse> trashedFolders();
+
+    /** Restaure un dossier depuis la corbeille. */
+    FolderResponse restoreFolder(UUID folderId);
+
+    /** Supprime définitivement un dossier de la corbeille (et son contenu). */
+    void purgeFolder(UUID folderId);
 }

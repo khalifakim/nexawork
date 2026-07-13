@@ -132,14 +132,14 @@ type ChMsg = ChannelMessage;
         }
       </div>
 
-      @if (readonly()) {
-        <div class="ro"><app-icon name="lock" [size]="16" /><span>{{ archived() ? 'Projet archivé — canal en lecture seule.' : 'Canal en lecture seule — écriture réservée aux administrateurs.' }}</span></div>
-      } @else {
+      @if (canWrite()) {
         <div class="composer">
           <app-comment-composer
             [placeholder]="'Écrire dans #' + name() + '…'"
             (submitted)="onSend($event)" />
         </div>
+      } @else {
+        <div class="ro"><app-icon name="lock" [size]="16" /><span>{{ archived() ? 'Projet archivé — canal en lecture seule.' : 'Canal en lecture seule — écriture réservée aux administrateurs.' }}</span></div>
       }
     </div>
   `,
@@ -181,6 +181,11 @@ export class CanalComponent {
   /** Readonly = intrinsic channel flag OR belongs to an archived project. */
   readonly = computed(() => this.channelsSvc.isReadonly(this.name()) || this.archived());
   isPrivate = computed(() => this.channelsSvc.isPrivate(this.name()));
+  /**
+   * Droit d'écrire : `canWrite` calculé par le backend (REF D — l'admin peut
+   * écrire même dans un canal en lecture seule), sauf projet archivé (REF E).
+   */
+  canWrite = computed(() => this.channelsSvc.canWriteInReadonly(this.name(), false) && !this.archived());
 
   private slugifyProject(name: string): string {
     return name.trim().toLowerCase()

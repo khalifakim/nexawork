@@ -1,6 +1,7 @@
 package com.nexawork.ged.services.impl;
 
 import com.nexawork.commons.exceptions.InvalidRequestException;
+import com.nexawork.commons.exceptions.ResourceNotFoundException;
 import com.nexawork.ged.dtos.requests.CreateFolderRequest;
 import com.nexawork.ged.dtos.requests.UpdateFolderRequest;
 import com.nexawork.ged.dtos.responses.FolderContentResponse;
@@ -159,5 +160,44 @@ public class GedFolderServiceImpl implements GedFolderService {
         folder.setDeletedAt(LocalDateTime.now());
         folderRepository.save(folder);
         log.info("Dossier {} mis en corbeille par {}", folderId, caller.userId());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<FolderResponse> trashedFolders() {
+        // R11 : corbeille strictement personnelle (chacun ne voit que ses éléments).
+        return folderRepository.findByCreatedByUserIdAndIsDeletedTrue(caller.userId()).stream()
+                .filter(f -> f.getOrganisationId().equals(caller.organisationId()))
+                .map(folderMapper::asDto)
+                .toList();
+    }
+
+    @Override
+    public FolderResponse restoreFolder(UUID folderId) {
+        GedFolder folder = loadTrashedFolder(folderId);
+        folder.setIsDeleted(false);
+        folder.setDeletedAt(null);
+        log.info("Dossier {} restauré par {}", folderId, caller.userId());
+        return folderMapper.asDto(folderRepository.save(folder));
+    }
+
+    @Override
+    public void purgeFolder(UUID folderId) {
+        GedFolder folder = loadTrashedFolder(folderId);
+        // Suppression définitive : les fichiers du dossier tombent en cascade (FK).
+        folderRepository.delete(folder);
+        log.info("Dossier {} supprimé définitivement par {}", folderId, caller.userId());
+    }
+
+    /** Charge un dossier de la corbeille de l'appelant (404 sinon — R11). */
+    private GedFolder loadTrashedFolder(UUID folderId) {
+        GedFolder folder = folderRepository.findById(folderId)
+                .orElseThrow(() -> new ResourceNotFoundException("Dossier introuvable."));
+        if (!Boolean.TRUE.equals(folder.getIsDeleted())
+                || !folder.getOrganisationId().equals(caller.organisationId())
+                || !folder.getCreatedByUserId().equals(caller.userId())) {
+            throw new ResourceNotFoundException("Dossier introuvable dans votre corbeille.");
+        }
+        return folder;
     }
 }

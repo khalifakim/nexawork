@@ -41,10 +41,10 @@ export abstract class GedService {
   abstract sharedWithMe(): Observable<GedItem[]>;
   /** Corbeille de l'appelant (suppression logique). */
   abstract trash(): Observable<GedItem[]>;
-  /** Restaure un fichier depuis la corbeille. */
-  abstract restoreFile(fileId: string): Observable<void>;
-  /** Supprime définitivement un fichier de la corbeille. */
-  abstract purgeFile(fileId: string): Observable<void>;
+  /** Restaure un élément depuis la corbeille (fichier ou dossier). */
+  abstract restoreFile(fileId: string, isFolder?: boolean): Observable<void>;
+  /** Supprime définitivement un élément de la corbeille (fichier ou dossier). */
+  abstract purgeFile(fileId: string, isFolder?: boolean): Observable<void>;
   /** Vide entièrement la corbeille. */
   abstract emptyTrash(): Observable<void>;
 
@@ -188,7 +188,21 @@ export class GedHttpService extends BaseHttpService implements GedService {
   // ── Bibliothèque ────────────────────────────────────────────────────────────
   myDocuments(): Observable<GedItem[]> { return this.library('/ged/my-documents'); }
   sharedWithMe(): Observable<GedItem[]> { return this.library('/ged/shared-with-me'); }
-  trash(): Observable<GedItem[]> { return this.library('/ged/trash'); }
+
+  /** Corbeille : fichiers ET dossiers supprimés par l'appelant (R11). */
+  trash(): Observable<GedItem[]> {
+    return forkJoin({
+      files: this.get$<FileResponse[]>('ged', '/ged/trash'),
+      folders: this.get$<FolderResponse[]>('ged', '/ged/folders/trash'),
+      dir: this.members.directory(),
+    }).pipe(map(({ files, folders, dir }) => {
+      const byId = new Map<string, Member>(dir.map(m => [m.userId ?? '', m]));
+      return [
+        ...folders.map(f => toFolderItem(f, byId)),
+        ...files.map(f => toFileItem(f, byId)),
+      ];
+    }));
+  }
 
   private library(path: string): Observable<GedItem[]> {
     return forkJoin({
@@ -200,11 +214,15 @@ export class GedHttpService extends BaseHttpService implements GedService {
     }));
   }
 
-  restoreFile(fileId: string): Observable<void> {
-    return this.post$<FileResponse>('ged', `/ged/files/${fileId}/restore`, {}).pipe(map(() => void 0));
+  /** Restaure un élément de la corbeille (fichier ou dossier). */
+  restoreFile(fileId: string, isFolder = false): Observable<void> {
+    const path = isFolder ? `/ged/folders/${fileId}/restore` : `/ged/files/${fileId}/restore`;
+    return this.post$<unknown>('ged', path, {}).pipe(map(() => void 0));
   }
-  purgeFile(fileId: string): Observable<void> {
-    return this.delete$<void>('ged', `/ged/trash/${fileId}`);
+  /** Supprime définitivement un élément de la corbeille (fichier ou dossier). */
+  purgeFile(fileId: string, isFolder = false): Observable<void> {
+    const path = isFolder ? `/ged/folders/trash/${fileId}` : `/ged/trash/${fileId}`;
+    return this.delete$<void>('ged', path);
   }
   emptyTrash(): Observable<void> {
     return this.delete$<void>('ged', '/ged/trash');

@@ -69,19 +69,21 @@ public class ProjectServiceImpl implements ProjectService {
                 .taskSequence(0)
                 .color(request.getColor())
                 .organisationId(caller.organisationId())
-                .ownerUserId(userId)
+                // Pas de chef de projet à la création : il est désigné explicitement
+                // ensuite (CU-CP05). ownerUserId reste null tant qu'aucun chef n'est nommé.
+                .ownerUserId(null)
                 .status(ProjectStatus.ACTIVE)
                 .startDate(request.getStartDate())
                 .endDate(request.getEndDate())
                 .enforceWorkflowOrder(false)
                 .build());
 
-        // Le créateur devient chef de projet (PROJECT_LEAD, isProjectLead) — V5.1 §4.2.
+        // Le créateur est ajouté comme MEMBRE du projet (accès), mais PAS comme chef.
         projectMemberRepository.save(ProjectMember.builder()
                 .project(project)
                 .userId(userId)
-                .projectRole(ProjectRole.PROJECT_LEAD)
-                .isProjectLead(true)
+                .projectRole(ProjectRole.PROJECT_MEMBER)
+                .isProjectLead(false)
                 .build());
 
         // Workflow Kanban par défaut (4 colonnes + transitions) — V5.1 §8.1.

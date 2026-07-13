@@ -101,7 +101,7 @@ export class DocumentsCorbeilleComponent {
 
   restore(it: GedItem): void {
     if (!it.id) return;
-    this.ged.restoreFile(it.id).subscribe(() => {
+    this.ged.restoreFile(it.id, it.type === 'folder').subscribe(() => {
       this.reload();
       this.toast.show({ message: '« ' + it.name + ' » restauré depuis la corbeille' });
     });
@@ -110,7 +110,7 @@ export class DocumentsCorbeilleComponent {
   doDelete(it: GedItem): void {
     this.confirmDelete.set(null);
     if (!it.id) return;
-    this.ged.purgeFile(it.id).subscribe(() => {
+    this.ged.purgeFile(it.id, it.type === 'folder').subscribe(() => {
       this.reload();
       this.toast.show({ message: '« ' + it.name + ' » supprimé définitivement' });
     });

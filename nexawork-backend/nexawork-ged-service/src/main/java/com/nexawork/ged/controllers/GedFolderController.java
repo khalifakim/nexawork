@@ -46,6 +46,25 @@ public class GedFolderController {
         return Response.<List<FolderResponse>>ok().setPayload(folderService.listRootFolders(projectId));
     }
 
+    /** Corbeille : dossiers supprimés par l'appelant (R11). */
+    @GetMapping("/trash")
+    public Response<List<FolderResponse>> trash() {
+        return Response.<List<FolderResponse>>ok().setPayload(folderService.trashedFolders());
+    }
+
+    /** Restaure un dossier depuis la corbeille. */
+    @PostMapping("/{id}/restore")
+    public Response<FolderResponse> restore(@PathVariable UUID id) {
+        return Response.<FolderResponse>ok().setPayload(folderService.restoreFolder(id));
+    }
+
+    /** Supprime définitivement un dossier de la corbeille. */
+    @DeleteMapping("/trash/{id}")
+    public Response<Void> purge(@PathVariable UUID id) {
+        folderService.purgeFolder(id);
+        return Response.deleted();
+    }
+
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public Response<FolderResponse> create(@Valid @RequestBody CreateFolderRequest request) {
