@@ -48,17 +48,23 @@ spring:
               predicates:
                 - Path=/nexawork-ged-api-v1/**
 
-            # WebSocket — Messaging (STOMP over SockJS)
+            # WebSocket — Messaging (STOMP). L'endpoint STOMP est servi SOUS le
+            # context-path du service (/nexawork-messaging-api-v1/ws/messaging) :
+            # on préfixe donc le path, sinon le handshake tombe en 404 (échec en boucle).
             - id: messaging-ws
               uri: ws://${MESSAGING_SERVICE_HOST:localhost}:8083
               predicates:
                 - Path=/ws/messaging/**
+              filters:
+                - PrefixPath=/nexawork-messaging-api-v1
 
-            # WebSocket — Notifications
+            # WebSocket — Notifications (même règle : préfixe du context-path).
             - id: notification-ws
               uri: ws://${NOTIFICATION_SERVICE_HOST:localhost}:8085
               predicates:
                 - Path=/ws/notifications/**
+              filters:
+                - PrefixPath=/nexawork-notification-api-v1
 
           globalcors:
             cors-configurations:
