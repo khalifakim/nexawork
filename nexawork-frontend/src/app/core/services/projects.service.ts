@@ -26,6 +26,14 @@ export abstract class ProjectsService {
   abstract teams(projectId: string): Observable<ProjectTeam[]>;
   /** Membres d'un projet — R16 : périmètre des bénéficiaires d'un document projet. */
   abstract members(projectId: string): Observable<ProjectMember[]>;
+  /** Crée une équipe dans un projet (nom + couleur). */
+  abstract createTeam(projectId: string, name: string, color: string): Observable<ProjectTeam>;
+  /** Renomme / recolore une équipe. */
+  abstract updateTeam(projectId: string, teamId: string, patch: { name?: string; color?: string }): Observable<ProjectTeam>;
+  /** Supprime une équipe (ses membres repassent « sans équipe »). */
+  abstract deleteTeam(projectId: string, teamId: string): Observable<void>;
+  /** Assigne un membre à une équipe (`teamId = null` → le retire de son équipe). */
+  abstract setMemberTeam(projectId: string, userId: string, teamId: string | null): Observable<void>;
 }
 
 @Injectable()
@@ -112,6 +120,14 @@ export class ProjectsMockService extends ProjectsService {
   members(_projectId: string): Observable<ProjectMember[]> {
     return of([]).pipe(delay(60));
   }
+  createTeam(_projectId: string, name: string, color: string): Observable<ProjectTeam> {
+    return of({ id: 't' + Date.now(), name, color }).pipe(delay(60));
+  }
+  updateTeam(_projectId: string, teamId: string, patch: { name?: string; color?: string }): Observable<ProjectTeam> {
+    return of({ id: teamId, name: patch.name ?? '', color: patch.color }).pipe(delay(60));
+  }
+  deleteTeam(_projectId: string, _teamId: string): Observable<void> { return of(void 0).pipe(delay(60)); }
+  setMemberTeam(_projectId: string, _userId: string, _teamId: string | null): Observable<void> { return of(void 0).pipe(delay(60)); }
 }
 
 @Injectable()
@@ -146,6 +162,19 @@ export class ProjectsHttpService extends BaseHttpService implements ProjectsServ
   }
   members(projectId: string): Observable<ProjectMember[]> {
     return this.get$<ProjectMember[]>('project', `/projects/${projectId}/members`);
+  }
+  createTeam(projectId: string, name: string, color: string): Observable<ProjectTeam> {
+    return this.post$<ProjectTeam>('project', `/projects/${projectId}/teams`, { name, color });
+  }
+  updateTeam(projectId: string, teamId: string, patch: { name?: string; color?: string }): Observable<ProjectTeam> {
+    return this.patch$<ProjectTeam>('project', `/projects/${projectId}/teams/${teamId}`, patch);
+  }
+  deleteTeam(projectId: string, teamId: string): Observable<void> {
+    return this.delete$<void>('project', `/projects/${projectId}/teams/${teamId}`);
+  }
+  setMemberTeam(projectId: string, userId: string, teamId: string | null): Observable<void> {
+    const body = teamId ? { teamId } : { clearTeam: true };
+    return this.patch$<unknown>('project', `/projects/${projectId}/members/${userId}`, body).pipe(map(() => void 0));
   }
 }
 

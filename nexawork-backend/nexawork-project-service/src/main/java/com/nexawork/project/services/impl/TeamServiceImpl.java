@@ -1,7 +1,9 @@
 package com.nexawork.project.services.impl;
 
 import com.nexawork.commons.exceptions.ForbiddenException;
+import com.nexawork.commons.exceptions.ResourceNotFoundException;
 import com.nexawork.project.dtos.requests.CreateTeamRequest;
+import com.nexawork.project.dtos.requests.UpdateTeamRequest;
 import com.nexawork.project.dtos.responses.TeamResponse;
 import com.nexawork.project.entities.Project;
 import com.nexawork.project.entities.Team;
@@ -61,5 +63,42 @@ public class TeamServiceImpl implements TeamService {
                 .color(request.getColor())
                 .build());
         return teamMapper.asDto(team);
+    }
+
+    @Override
+    public TeamResponse updateTeam(UUID projectId, UUID teamId, UpdateTeamRequest request) {
+        Project project = guard.loadInOrg(projectId);
+        guard.assertActive(project);
+        guard.requireProjectManager(project, "modifier une équipe");
+
+        Team team = loadTeamOfProject(teamId, projectId);
+        if (request.getName() != null && !request.getName().isBlank()) {
+            team.setName(request.getName().trim());
+        }
+        if (request.getColor() != null && !request.getColor().isBlank()) {
+            team.setColor(request.getColor());
+        }
+        return teamMapper.asDto(teamRepository.save(team));
+    }
+
+    @Override
+    public void deleteTeam(UUID projectId, UUID teamId) {
+        Project project = guard.loadInOrg(projectId);
+        guard.assertActive(project);
+        guard.requireProjectManager(project, "supprimer une équipe");
+
+        Team team = loadTeamOfProject(teamId, projectId);
+        // Les membres rattachés repassent « sans équipe » (FK ON DELETE SET NULL).
+        teamRepository.delete(team);
+    }
+
+    /** Charge une équipe en vérifiant qu'elle appartient bien au projet (404 sinon). */
+    private Team loadTeamOfProject(UUID teamId, UUID projectId) {
+        Team team = teamRepository.findById(teamId)
+                .orElseThrow(() -> new ResourceNotFoundException("Équipe introuvable."));
+        if (!team.getProject().getId().equals(projectId)) {
+            throw new ResourceNotFoundException("Équipe introuvable dans ce projet.");
+        }
+        return team;
     }
 }
