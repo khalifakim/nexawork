@@ -164,3 +164,11 @@
 .mghost { height: 36px; padding: 0 14px; border: 1px solid #D9D6CE; border-radius: 8px; background: #fff; color: #46434e; font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
 .mprimary { display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 16px; border: none; border-radius: 8px; background: var(--nx-indigo); color: #fff; font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; box-shadow: 0 4px 12px rgba(91,95,233,.24); }
 .mprimary:disabled { background: #C9C5BD; cursor: not-allowed; box-shadow: none; }
+
+/* État vide : aucun projet dans le workspace */
+.noproj { max-width: 440px; margin: 48px auto; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.noproj__ic { width: 68px; height: 68px; border-radius: 20px; background: rgba(91,95,233,0.10); color: var(--nx-indigo); display: flex; align-items: center; justify-content: center; margin-bottom: 10px; }
+.noproj h2 { font-size: 19px; font-weight: 700; color: var(--nx-text); margin: 0; }
+.noproj p { font-size: 13.5px; line-height: 1.55; color: var(--nx-text-500); margin: 2px 0 14px; }
+.noproj__cta { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 18px; border: none; border-radius: 9px; background: var(--nx-indigo); color: #fff; font-family: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; box-shadow: var(--nx-shadow-primary); }
+.noproj__cta:hover { filter: brightness(1.04); }
