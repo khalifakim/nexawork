@@ -4,9 +4,33 @@ name: nexawork
 # Sans limite, chaque JVM Spring Boot en conteneur fixe son heap à ~25 % de la RAM
 # Docker (~1,2 Go/service). Avec 9 services, cela réclame ~10 Go sur ~4,8 Go → swap
 # permanent → lenteur → timeouts, famine Hikari, connexions PostgreSQL perdues.
-# On borne donc le heap (Xmx) et on utilise le GC série (mono-thread : empreinte et
-# CPU réduits — c'est aussi ce qui faisait tourner le config-server à ~120 % CPU).
-x-java-opts: &JAVA_OPTS "-Xms32m -Xmx256m -XX:+UseSerialGC -XX:MaxMetaspaceSize=192m"
+#
+# Mesuré le 2026-07-13 (VM Docker de 4,9 Go) : used 3870 Mo, free 95 Mo, SWAP 1034 Mo.
+# Le noyau ne tuait personne (aucun OOM au dmesg) — il SWAPPAIT, ce qui est pire :
+# les JVM se figeaient (« thread starvation », housekeeper delta = 1 min 17 s), les
+# clients PostgreSQL coupaient (« Broken pipe »), le postmaster y voyait un crash et
+# repartait en récupération — laquelle n'aboutissait jamais (fsync > 50 s, disque
+# saturé par le swap) → boucle de crash → « le serveur ne répond pas ».
+#
+#   -Xmx192m              heap réellement utilisé < 150 Mo par service (mesuré)
+#   -XX:TieredStopAtLevel=1  JIT C1 seul : ~2× moins de CPU et de code cache. Sur une
+#                         machine à 2 cœurs qui porte 9 services, la compilation C2
+#                         coûte plus qu'elle ne rapporte.
+#   -Xss512k              9 services × ~50 threads : 512k au lieu de 1 Mo = −25 Mo/service
+#   +ExitOnOutOfMemoryError  un service à court de mémoire MEURT (et redémarre, cf.
+#                         restart: unless-stopped) au lieu d'agoniser en boucle de GC
+#                         et d'entraîner toute la VM avec lui.
+# Le second levier (le plus gros) est côté pool de connexions : voir le bloc Hikari
+# de nexawork-config-repo/application.yml.
+x-java-opts: &JAVA_OPTS "-Xms32m -Xmx192m -XX:+UseSerialGC -XX:MaxMetaspaceSize=160m -Xss512k -XX:TieredStopAtLevel=1 -XX:+ExitOnOutOfMemoryError"
+
+# ─── Garde-fous mémoire ────────────────────────────────────────────────────────
+# `-Xmx` ne borne QUE le tas : le metaspace, les piles de threads, le code JIT et les
+# buffers directs s'y ajoutent (project-service était mesuré à 458 Mo pour Xmx=256m).
+# `mem_limit` borne le conteneur POUR DE VRAI. Ces plafonds sont des garde-fous, pas
+# des réservations : l'empreinte attendue est ~300 Mo par service. Ils garantissent
+# qu'aucun service emballé ne puisse à nouveau pousser la VM dans le swap.
+x-svc-mem: &SVC_MEM 448m
 
 services:
 
@@ -14,6 +38,12 @@ services:
   postgres:
     image: postgres:17
     container_name: nexawork-postgres
+    init: true
+    restart: unless-stopped
+    # PostgreSQL est le service critique : il a la part la plus large et la garantie
+    # de ne jamais être la victime d'une pression mémoire venue des services.
+    mem_limit: 768m
+    shm_size: 256m
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -36,6 +66,9 @@ services:
   redis:
     image: redis:7-alpine
     container_name: nexawork-redis
+    init: true
+    restart: unless-stopped
+    mem_limit: 128m
     ports:
       - "6379:6379"
     volumes:
@@ -52,7 +85,13 @@ services:
   rabbitmq:
     image: rabbitmq:3-management
     container_name: nexawork-rabbitmq
+    init: true
+    restart: unless-stopped
+    mem_limit: 384m
     environment:
+      # Erlang plafonne sa mémoire à 40 % de la RAM VUE — sans cette borne il lit les
+      # 4,9 Go de la VM entière et se croit autorisé à en prendre 2 Go.
+      RABBITMQ_VM_MEMORY_HIGH_WATERMARK: "0.6"
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS}
       RABBITMQ_ERLANG_COOKIE: "nexawork-cookie"
@@ -97,6 +136,9 @@ services:
   minio:
     image: minio/minio:latest
     container_name: nexawork-minio
+    init: true
+    restart: unless-stopped
+    mem_limit: 256m
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_USER}
@@ -145,6 +187,8 @@ services:
       dockerfile: nexawork-config-server/Dockerfile
     container_name: nexawork-config-server
     init: true
+    restart: unless-stopped
+    mem_limit: 320m
     ports:
       - "8888:8888"
     environment:
@@ -168,6 +212,8 @@ services:
       dockerfile: nexawork-auth-service/Dockerfile
     container_name: nexawork-auth-service
     init: true
+    restart: unless-stopped
+    mem_limit: *SVC_MEM
     depends_on:
       postgres: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
@@ -211,6 +257,8 @@ services:
       dockerfile: nexawork-project-service/Dockerfile
     container_name: nexawork-project-service
     init: true
+    restart: unless-stopped
+    mem_limit: *SVC_MEM
     depends_on:
       postgres: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
@@ -242,6 +290,8 @@ services:
       dockerfile: nexawork-messaging-service/Dockerfile
     container_name: nexawork-messaging-service
     init: true
+    restart: unless-stopped
+    mem_limit: *SVC_MEM
     depends_on:
       postgres: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
@@ -273,6 +323,8 @@ services:
       dockerfile: nexawork-meeting-service/Dockerfile
     container_name: nexawork-meeting-service
     init: true
+    restart: unless-stopped
+    mem_limit: *SVC_MEM
     depends_on:
       postgres: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
@@ -307,6 +359,8 @@ services:
       dockerfile: nexawork-notification-service/Dockerfile
     container_name: nexawork-notification-service
     init: true
+    restart: unless-stopped
+    mem_limit: *SVC_MEM
     depends_on:
       postgres: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
@@ -351,6 +405,8 @@ services:
       dockerfile: nexawork-file-service/Dockerfile
     container_name: nexawork-file-service
     init: true
+    restart: unless-stopped
+    mem_limit: *SVC_MEM
     depends_on:
       postgres: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
@@ -387,6 +443,8 @@ services:
       dockerfile: nexawork-ged-service/Dockerfile
     container_name: nexawork-ged-service
     init: true
+    restart: unless-stopped
+    mem_limit: *SVC_MEM
     depends_on:
       postgres: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
@@ -420,6 +478,8 @@ services:
       dockerfile: nexawork-api-gateway/Dockerfile
     container_name: nexawork-api-gateway
     init: true
+    restart: unless-stopped
+    mem_limit: *SVC_MEM
     # Les hôtes downstream sont résolus paresseusement (au premier appel routé) ;
     # seuls config-server (config) et auth-service (seul service métier livré à ce
     # stade) sont exigés healthy. Les autres depends_on seront réintroduits au fil
@@ -461,6 +521,8 @@ services:
     build: ./nexawork-frontend
     container_name: nexawork-frontend
     init: true
+    restart: unless-stopped
+    mem_limit: 96m
     depends_on:
       - api-gateway
     ports:
