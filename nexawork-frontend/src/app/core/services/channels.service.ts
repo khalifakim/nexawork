@@ -402,6 +402,7 @@ function toChannelMessage(msg: MessageResponse, meId: string | undefined, byId: 
   const author = byId.get(msg.senderUserId)?.name ?? 'Membre';
   const files = messageFiles(msg);
   return {
+    id: msg.id,
     author,
     color: avatarColorFor(msg.senderUserId),
     time: formatTime(msg.sentAt),

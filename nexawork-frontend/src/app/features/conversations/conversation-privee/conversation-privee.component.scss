@@ -56,3 +56,13 @@
 .cbtn { width: 32px; height: 32px; border: none; border-radius: 8px; background: transparent; color: var(--nx-text-500); display: flex; align-items: center; justify-content: center; cursor: pointer; }
 .cbtn:hover { background: var(--nx-surface-2); }
 .send { width: 36px; height: 36px; border: none; border-radius: 10px; background: var(--nx-indigo); color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: var(--nx-shadow-primary); }
+
+/* Message ciblé par une notification de mention : encadré + pulsation brève. */
+.line--focus .bubble {
+  box-shadow: 0 0 0 2px var(--nx-indigo);
+  animation: nxFocusPulse 2.6s ease-out;
+}
+@keyframes nxFocusPulse {
+  0%, 65% { filter: brightness(.97); }
+  100%    { filter: none; }
+}

@@ -235,6 +235,7 @@ function toConversationMessage(msg: MessageResponse, meId: string | undefined, _
   const mine = msg.senderUserId === meId;
   const files = messageFiles(msg);
   return {
+    id: msg.id,
     me: mine,
     parts: parseRichText(msg.content),
     time: formatTime(msg.sentAt),

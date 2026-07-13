@@ -126,6 +126,7 @@ public class MessageAssembler {
                     message.getId(),
                     mention.getTargetId(),
                     message.getSenderUserId(),
+                    caller.displayName(),
                     caller.organisationId(),
                     excerpt(message.getContent()),
                     channelId, channelName, conversationId));

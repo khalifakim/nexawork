@@ -92,6 +92,8 @@ export interface ChannelFile { id: number; name: string; size: number; /** Chemi
 
 /** A single message inside a channel. */
 export interface ChannelMessage {
+  /** UUID backend — sert à cibler un message (mention : « ouvrir et encadrer »). */
+  id?: string;
   author: string;
   color: string;
   time: string;

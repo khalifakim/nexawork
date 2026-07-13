@@ -14,6 +14,7 @@ public record MessageMentionEvent(
         UUID messageId,
         UUID recipientUserId,
         UUID authorUserId,
+        String authorDisplayName,
         UUID organisationId,
         String excerpt,
         UUID channelId,

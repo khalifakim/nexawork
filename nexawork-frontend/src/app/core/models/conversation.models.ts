@@ -31,6 +31,8 @@ export interface ConversationFile { id: number; name: string; size: number; /** 
 
 /** A single message inside a private conversation. */
 export interface ConversationMessage {
+  /** UUID backend — sert à cibler un message (mention : « ouvrir et encadrer »). */
+  id?: string;
   me: boolean;
   parts: RichPart[];   // rich text (mentions rendered as chips)
   time: string;

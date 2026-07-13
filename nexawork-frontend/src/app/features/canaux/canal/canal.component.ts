@@ -81,7 +81,9 @@ type ChMsg = ChannelMessage;
         <div class="msgs" #msgsEl>
           <div class="day"><div class="day__l"></div><span>Aujourd'hui</span><div class="day__l"></div></div>
           @for (m of visible(); track $index) {
-            <div class="msg" [class.msg--me]="m.mine">
+            <div class="msg" [class.msg--me]="m.mine"
+                 [class.msg--focus]="m.id && m.id === focusMessageId()"
+                 [attr.data-mid]="m.id">
               @if (!m.mine) {
                 <span class="av" [style.background]="m.color" style="cursor:pointer" (click)="bus.openProfile(m.author)">{{ ini(m.author) }}</span>
               }
@@ -247,6 +249,16 @@ export class CanalComponent {
     return out;
   });
 
+  /**
+   * Message ciblé par une notification de mention (`?message=<uuid>`) : on le
+   * fait défiler dans la vue et on l'encadre, pour que l'utilisateur voie
+   * **exactement** où il a été mentionné.
+   */
+  protected focusMessageId = toSignal(
+    this.route.queryParamMap.pipe(map(q => q.get('message'))),
+    { initialValue: null },
+  );
+
   @ViewChild('msgsEl') private msgsEl?: ElementRef<HTMLDivElement>;
   @ViewChild('sinput') private searchInput?: ElementRef<HTMLInputElement>;
 
@@ -262,10 +274,23 @@ export class CanalComponent {
     toObservable(this.name)
       .pipe(switchMap(id => this.channelsSvc.live(id)), takeUntilDestroyed())
       .subscribe(msg => { if (!msg.mine) this.msgs.update(list => [...list, msg]); });
+    // Défilement vers le message mentionné, une fois le fil peint.
+    effect(() => {
+      const id = this.focusMessageId();
+      const painted = this.visible().length;
+      if (!id || !painted) return;
+      requestAnimationFrame(() => {
+        const el = this.msgsEl?.nativeElement.querySelector(`[data-mid="${id}"]`);
+        el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      });
+    });
+
     // Pin the scroll to the bottom whenever the visible thread changes
     // (open a channel, switch channel, or send a new message).
     effect(() => {
       this.visible();
+      // Sauf si un message est ciblé (mention) : le ramener en bas l'effacerait.
+      if (this.focusMessageId()) return;
       // Wait one frame so the newly-appended DOM node is measurable.
       requestAnimationFrame(() => this.scrollToBottom());
     });

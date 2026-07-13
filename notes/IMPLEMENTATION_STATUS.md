@@ -345,16 +345,16 @@ Aucun backend neuf (endpoints `/statuses`, `/transitions`, `/workflow`, `/overvi
 > `MethodArgumentTypeMismatchException` n'est pas mappée dans `GlobalControllerExceptionHandler` (commons).
 > Non corrigé : la classe est partagée → **rebuild des 9 services** pour un cas désormais sans appelant.
 
-**🔴 Trous identifiés — non corrigés, à traiter :**
-- **`MessageMention.targetId` n'est JAMAIS renseigné.** `MentionParser` extrait le *texte* mentionné, pas l'identifiant
-  (documenté « best-effort »). Or `MentionServiceImpl.listReceived()` filtre sur `targetId = utilisateur courant` →
-  **« Mentions reçues » (§5.3) restera vide en permanence**, et aucune notification de mention ne peut partir.
-  Correctif : le frontend **connaît** l'id à la saisie (le picker vient du catalogue réel) → passer les mentions
-  résolues dans `SendMessageRequest` et les persister. *(Le repli par clé lisible ajouté ici fait fonctionner le clic,
-  mais ne remplace pas la résolution serveur.)*
-- **Les bénéficiaires d'un canal privé sont ignorés.** `create()` **et** `setRestriction()` envoient
-  `memberUserIds: []`, et `ChannelGrant` ne porte qu'un **nom**, pas d'`userId`. Le modal « Gérer les accès » laisse
-  donc croire à un partage qui n'est jamais transmis. Seul le créateur (et les admins) voit le canal.
+### Lot du 2026-07-13 (nuit) — mentions rattachées, canaux privés réels, 400 vs 500
+**Rebuild requis : `messaging-service`, `notification-service`, `project-service`, `frontend`** + **`rabbitmq-init`**
+(nouvelle queue `nexawork.notification.mention`). Aucune migration.
+
+| # | Symptôme | Cause racine | Correctif |
+| :-: | :- | :- | :- |
+| 18 | **« Mentions reçues » (§5.3) toujours vide**, aucune notification de mention | `MessageMention.targetId` n'était **jamais** renseigné : `MentionParser` n'extrait que le **texte** mentionné — les utilisateurs, tâches, documents et canaux appartiennent à **d'autres domaines**, le Messaging ne peut pas les résoudre. Or `listReceived()` filtre sur `targetId = utilisateur courant` → la vue ne pouvait rien trouver, **jamais**. | Le **client** connaît la cible à la saisie (son catalogue de mentions est déjà réel). `SendMessageRequest.mentions` porte `{type, targetId, targetText}` ; `MessageAssembler` les rattache aux mentions que le **parser** trouve réellement dans le texte — **le contenu reste la source de vérité** sur ce qui est mentionné, la requête n'apporte que l'identifiant. |
+| 19 | Aucune notification quand on est mentionné | Le Messaging ne publiait **aucun événement** (documenté tel quel). | Nouvel événement **`message.mention`** + `MessagingEventPublisher` + queue **`nexawork.notification.mention`** + consumer. Le lien ouvre le canal / la conversation d'origine. ⚠️ Le **nom de l'auteur n'est pas transmis** : la Gateway ne propage que l'`userId` et aucun service ne résout les noms — on ne l'invente pas, le corps dit « Vous avez été mentionné dans #… ». |
+| 20 | Canal privé : **les bénéficiaires n'atteignaient jamais le serveur** | `create()` **et** `setRestriction()` envoyaient tous deux `memberUserIds: []`, et `ChannelGrant` ne portait qu'un **nom** (pas d'id). Le picker était en outre **entièrement mock** (5 personnes + 3 équipes en dur). Le modal « Gérer les accès » laissait croire à un partage inexistant, et rouvrait toujours **une liste vide**. | `ChannelGrant` porte un **id réel** ; le picker liste les **membres réels** et les **équipes réelles du projet** ; les bénéficiaires partent vraiment. Une **équipe est déployée en ses membres** (le Messaging ne stocke que des `userId` — il ignore la composition des projets). Le modal **relit** les accès existants (`GET /channels/{id}/access`). |
+| 21 | `GET /tasks/{id}` → **500** sur un id non-UUID | `MethodArgumentTypeMismatchException` n'était pas mappée dans `GlobalControllerExceptionHandler` (**commons**) : une erreur d'appelant sortait en **panne serveur** (`Invalid UUID string: 1PT-1`). | Mappée en **400**. ⚠️ La classe étant partagée, le mapping n'est effectif que dans les services **reconstruits** (`project-service`, `messaging`, `notification` ici) ; les autres l'auront à leur prochain build. |
 
 ## 3 · Décisions/gaps (voir plan §5)
 

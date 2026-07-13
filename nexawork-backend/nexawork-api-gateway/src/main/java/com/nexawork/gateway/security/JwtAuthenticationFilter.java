@@ -14,6 +14,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 
 /**
@@ -43,6 +45,8 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
     public static final String HEADER_USER_ID = "X-User-Id";
     public static final String HEADER_ORG_ID = "X-Org-Id";
     public static final String HEADER_ORG_ROLE = "X-Org-Role";
+    /** Nom d'affichage — porté par le JWT, il n'était propagé à aucun service. */
+    public static final String HEADER_USER_NAME = "X-User-Name";
 
     private final JwtTokenValidator tokenValidator;
     private final PublicPathMatcher publicPathMatcher;
@@ -59,6 +63,7 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
                     headers.remove(HEADER_USER_ID);
                     headers.remove(HEADER_ORG_ID);
                     headers.remove(HEADER_ORG_ROLE);
+                    headers.remove(HEADER_USER_NAME);
                 })
                 .build();
 
@@ -121,6 +126,7 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
         String userId = claims.get("userId", String.class);
         String organisationId = claims.get("organisationId", String.class);
         String orgRole = claims.get("orgRole", String.class);
+        String displayName = claims.get("displayName", String.class);
 
         return request.mutate()
                 .headers(headers -> {
@@ -132,6 +138,12 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
                     }
                     if (orgRole != null) {
                         headers.set(HEADER_ORG_ROLE, orgRole);
+                    }
+                    if (displayName != null && !displayName.isBlank()) {
+                        // Un en-tête HTTP n'est pas sûr en UTF-8 : « Moussa Bâ » doit
+                        // être encodé, sinon le nom arrive mutilé côté service.
+                        headers.set(HEADER_USER_NAME,
+                                URLEncoder.encode(displayName, StandardCharsets.UTF_8));
                     }
                 })
                 .build();

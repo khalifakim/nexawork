@@ -44,7 +44,7 @@ public final class Events {
 
     /** {@code message.mention} — quelqu'un a été mentionné dans un message (§4.7). */
     public record MessageMentioned(
-            UUID messageId, UUID recipientUserId, UUID authorUserId,
+            UUID messageId, UUID recipientUserId, UUID authorUserId, String authorDisplayName,
             UUID organisationId, String excerpt, UUID channelId, String channelName,
             UUID conversationId) {
     }

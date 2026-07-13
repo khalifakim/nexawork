@@ -58,3 +58,13 @@
 
 /* Composer épinglé en bas — largeur pleine, padding fidèle au prototype */
 .composer { flex: none; padding: 0 28px 22px; background: transparent; }
+
+/* Message ciblé par une notification de mention : encadré + pulsation brève. */
+.msg--focus .b {
+  box-shadow: 0 0 0 2px var(--nx-indigo);
+  animation: nxFocusPulse 2.6s ease-out;
+}
+@keyframes nxFocusPulse {
+  0%, 65% { background: rgba(91, 95, 233, .12); }
+  100%    { background: inherit; }
+}

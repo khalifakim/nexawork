@@ -86,7 +86,9 @@ type Msg = ConversationMessage;
             @if (m.day) {
               <div class="day"><div class="day__l"></div><span>{{ m.day }}</span><div class="day__l"></div></div>
             }
-            <div class="line" [class.line--me]="m.me">
+            <div class="line" [class.line--me]="m.me"
+                 [class.line--focus]="m.id && m.id === focusMessageId()"
+                 [attr.data-mid]="m.id">
               <div class="bubble" [class.bubble--me]="m.me">
                 @if (m.parts.length > 0) {
                   <div>
@@ -230,6 +232,12 @@ export class ConversationPriveeComponent {
     return out;
   });
 
+  /** Message ciblé par une notification de mention (`?message=<uuid>`) — cf. canal. */
+  protected focusMessageId = toSignal(
+    this.route.queryParamMap.pipe(map(q => q.get('message'))),
+    { initialValue: null },
+  );
+
   @ViewChild('msgsEl') private msgsEl?: ElementRef<HTMLDivElement>;
   @ViewChild('sinput') private searchInput?: ElementRef<HTMLInputElement>;
 
@@ -277,7 +285,19 @@ export class ConversationPriveeComponent {
     // conversation, switch peer, or send a new message).
     effect(() => {
       this.visible();
+      // Sauf si un message est ciblé (mention) : le ramener en bas l'effacerait.
+      if (this.focusMessageId()) return;
       requestAnimationFrame(() => this.scrollToBottom());
+    });
+
+    // Défilement vers le message mentionné, une fois le fil peint.
+    effect(() => {
+      const id = this.focusMessageId();
+      if (!id || !this.visible().length) return;
+      requestAnimationFrame(() => {
+        this.msgsEl?.nativeElement.querySelector(`[data-mid="${id}"]`)
+          ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      });
     });
     // Autofocus the header search field as soon as it opens.
     effect(() => {

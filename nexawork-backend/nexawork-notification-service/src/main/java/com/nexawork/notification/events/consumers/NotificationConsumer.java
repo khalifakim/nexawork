@@ -117,17 +117,25 @@ public class NotificationConsumer {
     @RabbitListener(queues = "nexawork.notification.mention")
     public void onMessageMentioned(Events.MessageMentioned e) {
         String where = e.channelName() != null ? "#" + e.channelName() : "une conversation";
+        // Le lien porte le message : la vue l'ouvre, l'y fait défiler et l'encadre.
+        // Une conversation directe n'a que deux participants : elle se route par le
+        // slug de l'auteur, seul interlocuteur possible du destinataire.
         String url = e.channelName() != null
-                ? "/app/canaux/" + slug(e.channelName())
-                : "/app/conversations";
+                ? "/app/canaux/" + slug(e.channelName()) + "?message=" + e.messageId()
+                : "/app/conversations/" + slug(author(e.authorDisplayName())) + "?message=" + e.messageId();
         creator.create(Command.builder()
                 .recipientUserId(e.recipientUserId())
                 .type(NotificationType.MENTION)
                 .title("Vous avez été mentionné")
-                .body("Vous avez été mentionné dans " + where + " : « " + e.excerpt() + " »")
+                .body(author(e.authorDisplayName()) + " vous a mentionné dans " + where + " : « " + e.excerpt() + " »")
                 .targetUrl(url)
                 .workspaceId(e.organisationId())
                 .build());
+    }
+
+    /** Nom de l'auteur, ou un libellé neutre si la Gateway ne l'a pas propagé. */
+    private String author(String displayName) {
+        return displayName != null && !displayName.isBlank() ? displayName : "Quelqu'un";
     }
 
     /** Nom de canal → segment d'URL (le frontend route les canaux par slug). */
