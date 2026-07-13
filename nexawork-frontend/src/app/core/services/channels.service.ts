@@ -217,11 +217,17 @@ export class ChannelsHttpService extends BaseHttpService implements ChannelsServ
     const uuid = this.uuidOf(id);
     if (!uuid) return;
     const icon = patch.kind === 'bell' ? 'BELL' : 'HASH';
-    this.patch$<ChannelResponse>('messaging', `/channels/${uuid}`, { name: patch.name, icon }).subscribe();
+    this.patch$<ChannelResponse>('messaging', `/channels/${uuid}`, { name: patch.name, icon })
+      .pipe(this.refresh.mutating('channels'))
+      .subscribe();
   }
   remove(id: string): void {
     const uuid = this.uuidOf(id);
-    if (uuid) this.delete$<void>('messaging', `/channels/${uuid}`).subscribe(() => this.refresh.bumpChannels());
+    if (uuid) {
+      this.delete$<void>('messaging', `/channels/${uuid}`)
+        .pipe(this.refresh.mutating('channels'))
+        .subscribe();
+    }
   }
   create(payload: CreateChannelPayload): Channel {
     // Optimiste : renvoie une entrée locale ; l'appel réel rafraîchit la liste.
@@ -233,7 +239,7 @@ export class ChannelsHttpService extends BaseHttpService implements ChannelsServ
       readonly: payload.readonly,
       isPrivate: payload.restriction.mode === 'private',
       memberUserIds: [],
-    }).subscribe(() => this.refresh.bumpChannels()); // rafraîchit la sidebar
+    }).pipe(this.refresh.mutating('channels')).subscribe(); // loader + refetch sidebar
     return channel;
   }
   restrictionOf(id: string): ChannelRestriction {

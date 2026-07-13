@@ -19,7 +19,7 @@ import { ShellBus } from '@layouts/app-shell/shell.bus';
 import { Project } from '@core/models/project.models';
 import { Conversation } from '@core/models/conversation.models';
 import { Channel } from '@core/models/channel.models';
-import { workspaceSignal } from '@core/util/workspace-signal';
+import { workspaceQuery, workspaceSignal } from '@core/util/workspace-signal';
 
 /** Sidebar 2 body — contextual sub-navigation for the active rail section. */
 @Component({
@@ -125,13 +125,15 @@ import { workspaceSignal } from '@core/util/workspace-signal';
                  placeholder="Rechercher un canal…" aria-label="Rechercher un canal" />
         </button>
 
+        @if (channelsBusy()) { <div class="sync" role="status"><span class="spin"></span>Mise à jour…</div> }
+
         <div class="head head--row"><span>Canaux Organisation</span>
           @if (isAdmin()) {
             <button class="add" (click)="newChannel.emit('org')" title="Ajouter un canal"><app-icon name="plus" [size]="16" /></button>
           }
         </div>
         @for (c of filteredOrg(); track c.id) {
-          <div class="chwrap">
+          <div class="chwrap" [class.stale]="channelsBusy()">
             <a class="row row--ch" [routerLink]="['/app/canaux', c.id]" routerLinkActive="row--on">
               <app-icon class="row__i" [name]="c.kind" [size]="16" />
               <span>{{ c.name }}</span>
@@ -172,7 +174,7 @@ import { workspaceSignal } from '@core/util/workspace-signal';
           </button>
           @if (canauxGrp()) {
             @for (c of filteredProject(); track c.id) {
-              <div class="chwrap chwrap--sub">
+              <div class="chwrap chwrap--sub" [class.stale]="channelsBusy()">
                 <a class="row row--sub row--ch" [routerLink]="['/app/canaux', c.id]" routerLinkActive="row--on">
                   <app-icon class="row__i" [name]="c.kind" [size]="16" />
                   <span>{{ c.name }}</span>
@@ -295,14 +297,20 @@ import { workspaceSignal } from '@core/util/workspace-signal';
         <app-icon name="search" [size]="15" />
         <input [value]="projQ()" (input)="projQ.set($any($event.target).value)" placeholder="Rechercher un projet…" aria-label="Rechercher un projet" />
       </button>
-      <div class="head">Tous les projets</div>
-      @for (p of filteredProjects(); track p.id) {
-        <a class="row" [routerLink]="['/app/projets', p.id]" routerLinkActive="row--on">
-          <span class="dot" [style.background]="p.color"></span><span style="flex:1">{{ p.name }}</span>
-        </a>
-      } @empty {
-        <div class="empty">Aucun projet trouvé.</div>
-      }
+      <div class="head head--row">
+        <span>Tous les projets</span>
+        @if (projectsBusy()) { <span class="spin" aria-hidden="true"></span> }
+      </div>
+      @if (projectsBusy()) { <div class="sync" role="status">Mise à jour…</div> }
+      <div [class.stale]="projectsBusy()">
+        @for (p of filteredProjects(); track p.id) {
+          <a class="row" [routerLink]="['/app/projets', p.id]" routerLinkActive="row--on">
+            <span class="dot" [style.background]="p.color"></span><span style="flex:1">{{ p.name }}</span>
+          </a>
+        } @empty {
+          @if (!projectsBusy()) { <div class="empty">Aucun projet trouvé.</div> }
+        }
+      </div>
     </ng-template>
   `,
   styles: [`
@@ -350,6 +358,19 @@ import { workspaceSignal } from '@core/util/workspace-signal';
     .search input::placeholder { color: var(--nx-text-400); }
     .empty { padding: 10px 12px; font-size: 12.5px; color: var(--nx-text-400); }
     .row--group { font-weight: 600; }
+
+    /* ─── Mise à jour en cours (mutation + rechargement) ─────────────────────
+       La liste affichée est périmée le temps que le serveur réponde : on l'estompe
+       et on l'annonce, plutôt que de laisser croire que l'action n'a rien fait. */
+    .sync { display: flex; align-items: center; gap: 7px; padding: 6px 10px; margin: 0 2px 6px;
+      font-size: 12px; font-weight: 600; color: var(--nx-text-500); background: var(--nx-surface-2);
+      border-radius: 8px; }
+    .stale { opacity: .45; pointer-events: none; transition: opacity .12s; }
+    .spin { width: 12px; height: 12px; flex: none; border-radius: 50%;
+      border: 2px solid var(--nx-border); border-top-color: var(--nx-indigo);
+      animation: nx-spin .6s linear infinite; }
+    @keyframes nx-spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) { .spin { animation-duration: 2s; } }
 
     /* Channels: row + trailing dots + private lock */
     .chwrap { position: relative; }
@@ -425,7 +446,16 @@ export class Sidebar2Component {
   /** Meeting whose discussion is currently open — rendered under « Historique discussion ». */
   openMeeting = this.bus.openMeetingNav;
   private refresh = inject(DataRefreshService);
-  private rawProjects = workspaceSignal<Project[]>(this.session, () => this.projectsSvc.list(), [], this.refresh.projects);
+  private projectsQuery = workspaceQuery<Project[]>(this.session, () => this.projectsSvc.list(), [], this.refresh.projects);
+  private rawProjects = this.projectsQuery.value;
+  private projectsMutating = this.refresh.busy('projects');
+  /**
+   * Vrai pendant TOUTE la fenêtre où la liste affichée est périmée : de l'envoi de
+   * la mutation (`busy`) jusqu'à la fin du rechargement qu'elle déclenche
+   * (`loading`). Sans quoi l'utilisateur voit le toast de confirmation alors que
+   * l'élément est encore listé, et croit à une anomalie.
+   */
+  projectsBusy = computed(() => this.projectsMutating() || this.projectsQuery.loading());
   /** Active projects only — archived ones are hidden from every sidebar list (REF E). */
   projects = computed<Project[]>(() => {
     const archived = this.archivedSvc.ids();
@@ -479,7 +509,11 @@ export class Sidebar2Component {
     return this.projects()[0]?.id ?? null;
   });
 
-  private channels = workspaceSignal<Channel[]>(this.session, () => this.channelsSvc.list(), [], this.refresh.channels);
+  private channelsQuery = workspaceQuery<Channel[]>(this.session, () => this.channelsSvc.list(), [], this.refresh.channels);
+  private channels = this.channelsQuery.value;
+  private channelsMutating = this.refresh.busy('channels');
+  /** Idem `projectsBusy`, pour la liste des canaux. */
+  channelsBusy = computed(() => this.channelsMutating() || this.channelsQuery.loading());
   private archivedSvc = inject(ArchivedProjectsService);
 
   canalQ = signal('');
