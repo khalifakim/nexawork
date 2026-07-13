@@ -1,5 +1,13 @@
 name: nexawork
 
+# ─── Options JVM communes (CAUSE RACINE des « serveur ne répond pas ») ─────────
+# Sans limite, chaque JVM Spring Boot en conteneur fixe son heap à ~25 % de la RAM
+# Docker (~1,2 Go/service). Avec 9 services, cela réclame ~10 Go sur ~4,8 Go → swap
+# permanent → lenteur → timeouts, famine Hikari, connexions PostgreSQL perdues.
+# On borne donc le heap (Xmx) et on utilise le GC série (mono-thread : empreinte et
+# CPU réduits — c'est aussi ce qui faisait tourner le config-server à ~120 % CPU).
+x-java-opts: &JAVA_OPTS "-Xms32m -Xmx256m -XX:+UseSerialGC -XX:MaxMetaspaceSize=192m"
+
 services:
 
   # ─── PostgreSQL ─────────────────────────────────────────────────────────────
@@ -139,6 +147,7 @@ services:
     ports:
       - "8888:8888"
     environment:
+      JAVA_TOOL_OPTIONS: *JAVA_OPTS
       CONFIG_REPO_PATH: /config-repo
     volumes:
       - ./nexawork-config-repo:/config-repo
@@ -162,6 +171,7 @@ services:
       rabbitmq: { condition: service_healthy }
       config-server: { condition: service_healthy }
     environment:
+      JAVA_TOOL_OPTIONS: *JAVA_OPTS
       CONFIG_SERVER_URL: config-server
       DB_HOST: postgres
       DB_NAME: nexawork_auth_db
@@ -203,6 +213,7 @@ services:
       rabbitmq: { condition: service_healthy }
       config-server: { condition: service_healthy }
     environment:
+      JAVA_TOOL_OPTIONS: *JAVA_OPTS
       CONFIG_SERVER_URL: config-server
       DB_HOST: postgres
       DB_NAME: nexawork_project_db
@@ -232,6 +243,7 @@ services:
       rabbitmq: { condition: service_healthy }
       config-server: { condition: service_healthy }
     environment:
+      JAVA_TOOL_OPTIONS: *JAVA_OPTS
       CONFIG_SERVER_URL: config-server
       DB_HOST: postgres
       DB_NAME: nexawork_messaging_db
@@ -261,6 +273,7 @@ services:
       rabbitmq: { condition: service_healthy }
       config-server: { condition: service_healthy }
     environment:
+      JAVA_TOOL_OPTIONS: *JAVA_OPTS
       CONFIG_SERVER_URL: config-server
       DB_HOST: postgres
       DB_NAME: nexawork_meeting_db
@@ -294,6 +307,7 @@ services:
       redis: { condition: service_healthy }
       config-server: { condition: service_healthy }
     environment:
+      JAVA_TOOL_OPTIONS: *JAVA_OPTS
       CONFIG_SERVER_URL: config-server
       DB_HOST: postgres
       DB_NAME: nexawork_notification_db
@@ -336,6 +350,7 @@ services:
       minio: { condition: service_healthy }
       config-server: { condition: service_healthy }
     environment:
+      JAVA_TOOL_OPTIONS: *JAVA_OPTS
       CONFIG_SERVER_URL: config-server
       DB_HOST: postgres
       DB_NAME: nexawork_file_db
@@ -369,6 +384,7 @@ services:
       rabbitmq: { condition: service_healthy }
       config-server: { condition: service_healthy }
     environment:
+      JAVA_TOOL_OPTIONS: *JAVA_OPTS
       CONFIG_SERVER_URL: config-server
       DB_HOST: postgres
       DB_NAME: nexawork_ged_db
@@ -409,6 +425,7 @@ services:
       notification-service: { condition: service_healthy }
       meeting-service: { condition: service_healthy }
     environment:
+      JAVA_TOOL_OPTIONS: *JAVA_OPTS
       CONFIG_SERVER_URL: config-server
       JWT_SECRET: ${JWT_SECRET}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:4200}
