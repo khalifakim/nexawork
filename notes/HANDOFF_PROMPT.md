@@ -1,200 +1,154 @@
-# NexaWork — Reprise du travail (prompt pour une nouvelle instance Claude Code)
+# NexaWork — Reprise de session (phase de correction post-tests)
 
-> Copie-colle ce fichier entier comme premier message à une nouvelle instance. Il est autosuffisant :
-> l'instance se localise via les fichiers de suivi + l'état Docker, puis continue.
+> **Copie-colle ce fichier entier comme premier message à une nouvelle instance Claude Code.**
+> Il est autosuffisant : l'instance se localise via les fichiers de suivi + l'état Docker, puis continue.
 >
-> **Dernière mise à jour : 2026-07-10** (clôture de la phase I1).
+> **Dernière mise à jour : 2026-07-13.**
 
 ---
 
 ## 🎯 Mission
 
-Tu reprends le développement de **NexaWork** (plateforme collaborative de gestion de projets — sujet de mémoire).
+Tu reprends le développement de **NexaWork** (plateforme collaborative de gestion de projets — sujet de
+mémoire de master). **Réponds toujours en français.**
 
-- **Backend** : 9 microservices Spring Boot 3.5 / Java 21. **Baseline livrée** (phases 0-10).
-- **Frontend** : Angular 20, **entièrement construit** mais initialement sur données **mockées**.
-- **Phase actuelle** : **intégration Frontend ↔ Backend** — remplacer les mocks par de vrais appels HTTP,
-  **phase par phase**, selon un plan qui fait autorité.
+- **Backend** : 9 microservices Spring Boot 3.5 / Java 21.
+- **Frontend** : Angular 20.
+- **Phase actuelle** : **correction post-tests**. L'intégration frontend↔backend est **terminée**.
+  L'utilisateur déroule l'application dans le navigateur, te signale les bugs, tu les corriges
+  **à la racine** — jamais de contournement, jamais de donnée simulée.
 
-⚠️ **Nuance importante** : « backend livré » vaut pour la **baseline**, pas pour tout le plan. **Trois phases
-restantes exigent du développement backend neuf** : **I9** (endpoints de recherche), **I10** (génération PDF),
-**M2** (persistance du chat de réunion) — et **M3** partiellement (claim `lobby_bypass`).
+## 📖 PREMIÈRE ACTION — lis ces fichiers dans l'ordre
 
-**Réponds toujours en français.**
-
-## 📖 Première action OBLIGATOIRE — lis ces fichiers dans l'ordre
-
-1. **`nexawork/notes/IMPLEMENTATION_STATUS.md`** — le suivi d'avancement. **Ton point d'entrée.**
-   Il contient l'état réel du code, les pièges d'environnement et les décisions actées.
-2. **`docs-config/memoire/notes/PLAN_INTEGRATION_FRONTEND_BACKEND.md`** — le **plan faisant autorité** :
-   pour chaque phase, les endpoints exacts, DTO, signatures, mapping champ par champ, composants à recâbler, tests.
-3. **`docs-config/memoire/conception/references/nexawork-reference-v5.md`** — référentiel fonctionnel V5.1
-   (**source de vérité** de l'app). À maintenir aligné à 100 % avec le réel.
-4. Vérifie l'état réel : `git status` + `git log --oneline -5` ; `docker compose ps`.
+1. **`nexawork/notes/IMPLEMENTATION_STATUS.md`** — l'état d'avancement réel. Ton point d'entrée.
+2. **`nexawork/notes/PLAN_TEST_FINAL.md`** — la checklist de test et la séquence de démarrage Docker.
+3. **`docs-config/memoire/conception/references/nexawork-reference-v5.md`** — référentiel fonctionnel
+   V5.1, **source de vérité** de l'application.
+4. Vérifie l'état réel : `git log --oneline -15` et `git status` (branche `backend/dev`).
 
 ---
 
-## 📍 Où on en est (2026-07-10)
+## 📍 OÙ ON EN EST
 
-**Progression : 2 / 14 phases du périmètre livrable.** (14 = 16 phases initiales − M5/M6 passées en perspective.)
+L'intégration est finie ; une longue session de correction a suivi (~35 commits). Le travail restant :
+**poursuivre les corrections signalées par l'utilisateur**.
 
-- **I0 · Socle transverse** — ✅ livré. Enveloppe `Response<T>` + `unwrap()`, context-paths
-  (`core/http/api.config.ts`), `base-http.service.ts`, UUID partout, intercepteurs `jwt`/`error`
-  (refresh 401 + timeout 20 s), drapeaux `environment.mock` par domaine.
-- **I1 · Auth & Workspace** — ✅ **clôturé et validé en navigateur**. Login/register/reset, token org-scopé
-  (`refresh(workspaceId)`), workspaces (CRUD, switch, quitter), membres, invitations (dont **compte existant**),
-  profil, sécurité, changement d'email avec invalidation des sessions. `environment.mock.auth = false`.
+### ⚠️ GIT — à traiter en premier
+**Des commits locaux ne sont pas poussés** : le proxy TLS du réseau fait échouer `git push` **depuis
+l'agent** (timeout). Demande à l'utilisateur de les pousser lui-même :
+```
+! git push origin backend/dev
+```
 
-### 🔎 État réel du code (vérifié)
-- **Seulement 2 `*HttpService` existent** : `AuthHttpService`, `WorkspaceHttpService`.
-  Les **10 autres domaines** (projets, tâches, membres, canaux, conversations, GED, notifications, accueil,
-  réunions, recherche) sont liés **en dur** à leurs `*MockService` dans `core/services/data.providers.ts`.
-- **Client STOMP : non écrit.** `@stomp/stompjs` + `sockjs-client` sont installés, aucun service WebSocket.
-- **Absents du backend** : endpoints `/search` (I9), génération PDF/OpenPDF (I10), entités
-  `MeetingMessage`/`MeetingFile` (les tables existent, vides).
-
-### ✅ Git — état propre
-`HEAD` = `backend/dev` = `main` = `origin/backend/dev` = `origin/main` = **`36606e9`**. Arbre de travail propre.
-
----
-
-## 🚀 TÂCHE IMMÉDIATE — Phase **I2 · Projects + Tasks / Kanban**
-
-**La phase la plus lourde du plan.** Le backend (Project Service, FSM Kanban, `taskKey` `PREFIX-NNN`) est
-**déjà prêt** : il n'y a que du **frontend** à écrire.
-
-**À faire** :
-1. Créer `ProjectsHttpService` et `TasksHttpService` (`extends BaseHttpService`).
-2. **Étendre les contrats abstraits** — c'est le gros du travail : aujourd'hui `projects.service.ts` et
-   `tasks.service.ts` sont en **lecture seule**. Créations/éditions (drag-drop Kanban, création de tâche,
-   sous-tâches, commentaires, pièces jointes) ne font que **muter des signals locaux** dans les composants.
-3. Recâbler : `kanban` (drag-drop → `PATCH /tasks/{id}/status`, gérer le **422** de la FSM par un toast),
-   `creer-tache`, `fiche-tache`, `creer-projet`, `projets-archives`, `accueil/mes-taches`, `gantt`.
-4. Binder dans `data.providers.ts` puis passer `environment.mock.projects` et `.tasks` à `false`.
-5. Tester dans le navigateur, mettre à jour V5.1 si divergence, puis `IMPLEMENTATION_STATUS.md`.
-
-**Détails à trancher pendant I2** (voir plan §5) :
-- `progress` / `docs` / `folders` d'un projet : **dériver** (tâches done/total ; comptes GED) ou enrichir `ProjectResponse` ?
-- **`taskKey`** : à **ajouter** au modèle `TaskCard` (l'identifiant mono affiché sur les cartes).
-- Les routes `projets/:id` utilisent aujourd'hui un **slug** ; le backend renvoie un **UUID** → adapter.
-
-> **Le plan `PLAN_INTEGRATION_FRONTEND_BACKEND.md` § Phase I2 contient le contrat backend exact, les signatures
-> à ajouter et le mapping champ par champ. Lis-le avant de proposer quoi que ce soit.**
+### 🐳 DOCKER
+13 conteneurs. Après chaque correction backend, l'utilisateur doit **build ET recréer** le service :
+```cmd
+docker compose build <service>
+docker compose up -d --no-deps --force-recreate <service>
+docker compose logs --since 15m <service> | findstr /I "Started ERROR"
+```
+⚠️ **Toujours vérifier que le conteneur tourne sur le code récent** (l'heure de `Started …Application` doit
+être récente). L'utilisateur a plusieurs fois testé sans avoir recréé le conteneur, et cru à un bug.
 
 ---
 
-## 🖥️ SETUP D'EXÉCUTION — particularités CRITIQUES de cette machine (8 Go RAM)
+## ✅ DÉJÀ CORRIGÉ (ne pas refaire)
 
-1. **Ne lance QUE les services de la phase en cours.** Pour I2 :
-   `config-server`, `postgres`, `rabbitmq`, `auth-service`, `project-service`, `api-gateway`, `frontend`.
-   ⚠️ `api-gateway` a un `depends_on` sur les 8 microservices → **toujours** `--no-deps` :
-   `docker compose up -d --no-deps api-gateway`.
+**Causes racines d'infrastructure**
+- **« Le serveur ne répond pas »** : cause = **aucune limite mémoire JVM**. Sans `-Xmx`, chaque JVM en
+  conteneur réserve ~25 % de la RAM Docker (~1,2 Go × 9 services sur 4,8 Go) → swap permanent → timeouts,
+  famine Hikari, connexions PostgreSQL perdues. Fix : anchor `x-java-opts` dans `docker-compose.yml`
+  (`-Xmx256m -XX:+UseSerialGC`) appliqué aux 9 services.
+- **WebSocket en boucle (`/ws/notifications failed`)** : cause = le handshake WS n'était **pas** dans la
+  liste blanche du gateway. Or un WebSocket natif ne peut pas porter d'en-tête `Authorization` → 401 →
+  reconnexion toutes les 4 s. Fix : `/ws/**` ajouté à `PublicPathMatcher` + `PrefixPath` du context-path
+  sur les routes WS (`nexawork-config-repo/nexawork-gateway.yml`).
+- **Zombies Docker** : `init: true` (tini en PID 1) sur tous les services.
+- **Timeout HTTP** : 60 s, et **uploads/downloads exclus** du timeout (`error.interceptor.ts`).
 
-2. **🔴 springdoc / Swagger — le piège n°1.** `SPRINGDOC_ENABLED` est **désactivé par défaut**. Son init a été
-   **mesurée à 81 s** et sature le CPU → dépasse le **timeout de 20 s** du frontend → toasts
-   « Le serveur ne répond pas » **intermittents**, famine de threads Hikari, connexions PostgreSQL perdues.
-   **Ne l'active jamais pendant les tests.** Ponctuellement :
-   `SPRINGDOC_ENABLED=true docker compose up -d --no-deps --force-recreate auth-service`, puis
-   `http://localhost:4200/nexawork-auth-api-v1/swagger-ui/index.html`. Remettre à `false` après.
+**Fin des données mockées** (le frontend affichait de fausses données)
+- Pages **Projets** et **Canaux** : composants index réels (ouvrent le 1er élément ou un état vide).
+- Page **Équipes** : réécrite sur données réelles + toutes les mutations backend.
+- **Canaux d'un projet**, **en-tête projet**, **compteurs** (membres, mentions, en ligne), **mentions**
+  (@ @@ @@@ #) : réels et **contextuels** (projet vs workspace).
 
-3. **🔴 JAMAIS `docker compose build --no-cache frontend`.** Cela force `npm install` à retélécharger depuis
-   `registry.npmjs.org` → le **proxy TLS** fait échouer le build. Un build **normal** suffit : `npm install` reste
-   en cache et seules les couches `COPY . .` + `npm run build` re-tournent.
-   **Une date d'image inchangée après un build = le code était déjà à jour**, ce n'est pas une anomalie.
+**Backend développé pendant la correction**
+- `messaging` : `message_attachments` (**V2**, PJ multiples par message), `MessageType` réduit à `USER`
+  (**V3**), indicateur **« est en train d'écrire »** (STOMP), `memberCount`/`lastActivityAt` sur `ChannelResponse`.
+- `ged` : fichiers **à la racine** sans dossier (**V2**), endpoint `/ged/files/all` (récursif),
+  **corbeille des dossiers** (trash/restore/purge).
+- `project` : endpoints équipes (update/delete), **event `task.commented`** (notifie tous les membres du
+  projet), `taskKey` dans les pièces jointes.
+- `notification` : consumer `task.commented` (queue `nexawork.notification.task-commented`) ; `targetUrl`
+  corrigé en `/app/projets/{pid}/kanban?task={id}` → ouvre la fiche de tâche au clic.
+- `meeting` : `CallStatus` réduit à `ACTIVE`/`ENDED` (**V2**), `scheduled_at` supprimé (**V3**).
 
-4. **Ports Java hôtes gelés** : Docker Desktop (Windows/WSL2) fige le port-forwarding de `:8080` et `:8081`
-   (timeout depuis l'hôte alors que les services répondent en interne).
-   → **On teste toujours via http://localhost:4200** : le conteneur **frontend (nginx)** sert l'app **et**
-   proxifie `/nexawork-*` et `/ws/*` vers `api-gateway:8080` en interne (`nexawork-frontend/nginx.conf`).
-   `ng serve` en local NE marche PAS (il aurait besoin du `:8080` hôte).
-
-5. **Tester en ligne de commande** = conteneur curl sur le réseau interne, jamais `localhost:8080` :
-   `docker run --rm --network nexawork_default curlimages/curl:latest -s http://api-gateway:8080/...`
-   On peut forger `X-User-Id`/`X-Org-Id`/`X-Org-Role` (le `GatewayIdentityFilter` leur fait confiance) pour
-   tester les 403/200 des règles RBAC.
-
-6. **Workflow rebuild/redeploy** (⚠️ **l'utilisateur lance lui-même ces commandes**) :
-   `docker compose build <service>` → vérifier la date de l'image (`docker images <img> --format "{{.CreatedAt}}"`,
-   **une seule image à la fois** — la commande refuse deux arguments) →
-   `docker compose up -d --no-deps --force-recreate <service>`. **Toujours `--force-recreate`** après un build.
-
-7. **`config-server` brûle ~120 % de CPU** en continu, mais n'est lu qu'**au démarrage** des services.
-   Une fois tous `healthy` : `docker compose stop config-server` libère un cœur. Le redémarrer avant tout
-   `up`/`--force-recreate` d'un service backend. *(Il sert les fichiers de `config-repo` directement : un
-   changement dans `config-repo/*.yml` est pris au redémarrage du service concerné, sans rebuild.)*
-
-8. **Réseau à proxy TLS intercepteur** (école/entreprise) — casse tout TLS sortant :
-   - **SMTP** : réglé par `mail.smtp.ssl.trust: ${SMTP_SSL_TRUST:*}` (`config-repo/nexawork-auth.yml`) → les emails
-     partent réellement. Reste **intermittent** : un envoi peut échouer (`SSLHandshakeException`) puis réussir
-     juste après. Les envois sont `@Async` → un échec SMTP **ne bloque jamais** la requête HTTP.
-   - **Maven hôte** : `MAVEN_OPTS=-Djavax.net.ssl.trustStoreType=WINDOWS-ROOT` + `JAVA_HOME=C:\Program Files\Java\jdk-21`.
-     Le build **Docker** n'est pas affecté.
-   - **Git** : `git config --global http.sslBackend schannel` (déjà fait). **Jamais** `http.sslVerify false`.
-
-9. **PostgreSQL** : conteneur `nexawork-postgres`, user `postgres`, 7 bases `nexawork_*_db`.
-   Repartir de zéro sur l'auth :
-   `docker exec nexawork-postgres psql -U postgres -d nexawork_auth_db -c "TRUNCATE users, organisations, organisation_members, invitations, refresh_tokens, user_action_tokens, audit_trail CASCADE;"`
-
-10. **1ʳᵉ invitation lente (~10 s)** : la connexion RabbitMQ est créée paresseusement au premier `publish` (6 s).
-    Normal, sous le timeout. Les suivantes sont instantanées.
-
-11. **Édition de `.sh`** : Edit/Write réécrit en **CRLF** sur ce poste → casse les scripts en conteneur Linux
-    (`$'\r'`). Repasser en LF (`sed -i 's/\r$//'`) après édition.
+**Fonctionnel**
+- Fiche de tâche : **mode édition** (crayon → champs → ✓), statut contrôlé par la **FSM** avec erreur
+  **inline**, refresh du Kanban sans rechargement, vrai nom du commentateur.
+- Création de tâche : membres/équipes **réels**, champs **obligatoires** (astérisques), bouton « Parcourir ».
+- **Aperçu GED réel** (PDF en iframe, images) — c'était une maquette.
+- **Pièces jointes** fonctionnelles partout (tâches, commentaires, canaux, conversations, GED).
+- **Messages en ordre chronologique** (anciens en haut).
+- **Loaders** sur les écrans principaux.
+- Le **créateur d'un projet n'est plus ajouté** au projet (ni membre, ni chef — décision utilisateur).
 
 ---
 
-## 🔒 Règles NON NÉGOCIABLES
+## 🚨 PIÈGES QUI ONT DÉJÀ COÛTÉ DU TEMPS
 
-1. **Git : ne commite JAMAIS.** L'utilisateur gère tout Git. Tu **proposes** les blocs de commit
-   (Bloc A = `nexawork`, Bloc B = `docs-config`). **Aucun trailer `Co-Authored-By`.**
-2. **⚠️ Ne PAS faire `git checkout main` depuis `backend/dev`.** Les deux branches diffèrent de milliers de
-   fichiers ; un verrou Windows sur `.git/HEAD` a déjà **interrompu un checkout en plein milieu** (HEAD resté sur
-   `backend/dev`, arbre passé sur `main` → faux diff géant). Récupération : `git reset --hard HEAD`.
-   Pour merger sans toucher un fichier :
-   `git push origin backend/dev:main` → `git fetch origin --prune` → `git branch -f main origin/main`.
-3. **Ne change pas le design ni les workflows du frontend.** Tu remplaces les données mockées par de vrais appels
-   HTTP, tu étends les contrats (`abstract *Service`) et recâbles les handlers. Rien de visuel.
-4. **Bascule par domaine** : chaque phase livrée → drapeau `environment.mock.X` à `false` (+ binding HTTP dans
-   `core/services/data.providers.ts`) et **test dans le navigateur**. Pas de flip global en fin de projet.
-5. **V5.1 est la source de vérité** : toute divergence/évolution → corriger `nexawork-reference-v5.md`
-   **immédiatement**. *(Le référentiel a déjà sur-affirmé plusieurs fois : vérifie toujours dans le code avant
-   d'affirmer qu'une chose est implémentée.)*
-6. **`IMPLEMENTATION_STATUS.md` à jour à la fin de chaque étape.**
-7. **Proposer la liste des fichiers AVANT de coder**, et attendre le feu vert de l'utilisateur.
-8. **Aucune fonctionnalité simulée dans le livrable final** : ce qui est **annoncé comme livré** au mémoire doit
-   fonctionner. Une fonctionnalité **présentée en perspective** (M5, M6, port `VideoConferencePort`) ne viole pas
-   cette règle.
-
----
-
-## 🗺️ Ce qui reste — 12 phases
-
-| Ordre | Phase | Backend | Charge |
-| :-: | :- | :-: | :- |
-| **I2** | Projects + Tasks/Kanban | ✅ prêt | **La plus lourde** — 2 HttpServices + recâblage des écritures |
-| I3 | Members | ✅ prêt | Légère — annuaire + présence Redis (`/presence/active`) |
-| I4 | Channels + Conversations | ✅ prêt | Lourde — 2 HttpServices + **client STOMP à écrire** |
-| I5 | GED / Documents | ✅ prêt | Lourde — 1 HttpService (~13 méthodes) + File Service. Inclut la **photo de profil** (reste de I1) |
-| I6 | Notifications | ✅ prêt | Moyenne — STOMP + **Service Worker Web Push** |
-| I7 | Accueil / Dashboard | ✅ prêt | Légère — agrège I2/I4 ; retirer `membersOnline` ; trancher `myTasks()` |
-| I9 | Recherche globale | 🔴 **à développer** | Endpoints `search` ILIKE par service + agrégation Gateway (respecter REF F/G) |
-| I10 | Rapports PDF | 🔴 **à développer** | OpenPDF + `/projects/{id}/report` et `/workspaces/{id}/report` |
-| I8 | Meetings — socle | ✅ (M1) | Ajouter `jitsiUrl`/`jwt` au modèle |
-| M4 | IFrame API JaaS | n/a | Embed + events |
-| M2 | **Chat de réunion persistant (F5)** | 🔴 **à développer** | Entité `MeetingMessage` + repo + 2 endpoints |
-| M3 | Lobby (approbation) | 🔴 partiel | Claim `lobby_bypass` dans `JitsiTokenService` |
-
-**🔮 Hors périmètre (perspectives)** : **M5** partage de fichiers en réunion · **M6** enregistrement
-(bloqué par le tier JaaS gratuit : `features.recording=false`). Documentés comme tels dans V5.1 §4.6/§14.4.
+1. **Compiler AVANT d'affirmer que c'est bon.** Une erreur (`cannot find symbol: variable userId`) est passée
+   jusqu'au build Docker parce que `project-service` ne compilait pas hors ligne (OpenPDF absent du cache
+   Maven). **OpenPDF est maintenant dans le cache local**, donc ceci fonctionne :
+   ```bash
+   cd nexawork-backend
+   JAVA_HOME="/c/Program Files/Java/jdk-21" MAVEN_OPTS="-Djavax.net.ssl.trustStoreType=WINDOWS-ROOT" \
+     mvn -o -q -pl nexawork-<service>-service compile
+   ```
+   Frontend : `cd nexawork-frontend && npx ng build --configuration=development`.
+2. **Migrations Flyway** : ne JAMAIS modifier une migration déjà appliquée (checksum mismatch → le service
+   refuse de démarrer). Si tu resserres une contrainte CHECK, **reclasse d'abord les lignes existantes**.
+   En dernier recours (données de test) : `DROP DATABASE … WITH (FORCE);` puis `CREATE DATABASE …`
+   (deux commandes `psql -c` **séparées** — `DROP DATABASE` ne passe pas dans un bloc transactionnel).
+3. **Scripts `.sh`** : Edit/Write les réécrit en **CRLF** → casse en conteneur Linux. Repasser en LF :
+   `sed -i 's/\r$//' scripts/init-rabbitmq.sh`.
+4. **Nouvelle queue RabbitMQ** → relancer le sidecar : `docker compose up -d --force-recreate rabbitmq-init`.
+5. **Jamais `docker compose build --no-cache frontend`** (le proxy TLS ferait échouer `npm install`).
+6. **Ne jamais activer `SPRINGDOC_ENABLED`** (init mesurée à 81 s → sature le CPU, timeouts).
+7. Les logs `WebSocketMessageBrokerStats` (toutes les 30 min) et les `Connection reset` RabbitMQ sont des
+   **INFO/WARN bénins**, pas des erreurs.
 
 ---
 
-## 🚦 Démarrage
+## 🔒 RÈGLES NON NÉGOCIABLES
 
-1. Lis les 3 fichiers de référence ci-dessus.
-2. `git status` (doit être propre sur `backend/dev`) et `docker compose ps`.
-3. Lis la **§ Phase I2** du plan.
-4. **Propose la liste des fichiers** pour I2 et attends le feu vert.
+1. **Aucune donnée mockée, simulée ou codée en dur** dans le livrable. Tout vient du backend. Si une donnée
+   n'existe pas côté backend, on **développe l'endpoint** — on n'invente pas de valeur d'affichage.
+2. **Corriger à la racine**, jamais masquer le symptôme. **Vérifie dans le code avant d'affirmer** qu'une
+   chose est implémentée (le référentiel a déjà sur-affirmé plusieurs fois).
+3. **Ne change pas le design ni les workflows du frontend.** On corrige des bugs, on ne redessine pas.
+4. **Git** : tu peux commiter toi-même. **Pas de trailer `Co-Authored-By`.** Ne JAMAIS faire
+   `git checkout main` depuis `backend/dev` (les branches diffèrent de milliers de fichiers ; un verrou
+   Windows a déjà corrompu un checkout en plein milieu).
+5. **V5.1 est la source de vérité** : toute divergence constatée → corriger `nexawork-reference-v5.md`.
+6. **`IMPLEMENTATION_STATUS.md` à jour** après chaque correction significative.
+7. Valider chaque correction par une **compilation réelle** (piège n°1) avant de la déclarer faite.
 
-Si Docker Desktop est éteint, demande à l'utilisateur de le relancer. S'il voit des toasts
-« Le serveur ne répond pas », vérifie **d'abord** que `SPRINGDOC_ENABLED` n'a pas été activé.
+---
+
+## 🚦 DÉMARRAGE
+
+1. Lis les fichiers de référence ci-dessus.
+2. `git status` (des commits sont à pousser — demande à l'utilisateur) et `docker compose ps`.
+3. **Attends que l'utilisateur signale le prochain bug**, puis corrige méthodiquement :
+   **localiser dans le code → corriger à la racine → compiler/builder → commiter → indiquer quoi rebuild.**
+
+### Points à revérifier au prochain test navigateur
+- **WebSocket** : console F12 propre ; `/ws/notifications` doit passer en **101 Switching Protocols**.
+- **Recherche globale** : elle renvoyait **0 résultat** (les erreurs backend sont avalées par un `catchError`
+  dans `search.service.ts`). À revérifier maintenant que le gateway est corrigé ; si toujours vide, débugger
+  les endpoints `/search` des 4 services.
+- **Canaux auto** (#général, #annonces) à la création d'un projet : le consumer et la binding RabbitMQ
+  existent → `docker compose logs messaging-service | findstr /I "project.created Canal"`.
+- **Notification de commentaire** → clic → doit ouvrir la fiche de tâche.
+- **Équipes d'un projet archivé** : l'utilisateur les voyait vides (le backend autorise pourtant la lecture).
