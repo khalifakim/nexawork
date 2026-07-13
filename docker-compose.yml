@@ -527,7 +527,12 @@ services:
     depends_on:
       - api-gateway
     ports:
-      - "4200:80"
+      # IPv4 EXPLICITE. Avec « 4200:80 », Docker publie AUSSI sur [::]:4200 — or sur ce
+      # poste l'écouteur IPv6 accepte la connexion puis la coupe. Comme `localhost` se
+      # résout en ::1 AVANT 127.0.0.1, le navigateur tombait dessus : ERR_CONNECTION_RESET
+      # intermittent sur les chunks JS (page blanche), alors que 127.0.0.1:4200 répondait
+      # 200. Publier en IPv4 seul supprime l'écouteur fautif : plus rien à intercepter.
+      - "0.0.0.0:4200:80"
     networks:
       - default
     healthcheck:
