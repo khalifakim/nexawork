@@ -94,6 +94,20 @@ export class KanbanStore {
     this.board.update(b => ({ ...b, [card.statusId]: [...(b[card.statusId] ?? []), card] }));
   }
 
+  /**
+   * Met à jour une carte existante après édition (fiche de tâche). Si son statut
+   * a changé, la carte est déplacée vers la bonne colonne. Sans appel réseau —
+   * la persistance a déjà été faite par la fiche.
+   */
+  updateCard(card: TaskCard): void {
+    this.board.update(b => {
+      const next: Record<string, TaskCard[]> = {};
+      for (const [col, list] of Object.entries(b)) next[col] = list.filter(t => t.id !== card.id);
+      (next[card.statusId] ??= []).push(card);
+      return next;
+    });
+  }
+
   deleteTask(id: string): void {
     const snapshot = this.board();
     // Optimiste : on retire la carte tout de suite, on rétablit si le backend refuse.

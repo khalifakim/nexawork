@@ -106,10 +106,11 @@
 
 /* Mode édition — bouton crayon / validation */
 .edit { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 11px; border: 1px solid var(--nx-border); border-radius: 8px; background: #fff; color: var(--nx-text-700); font-family: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
-.edit:hover { background: var(--nx-surface-2); }
+.edit:not(.edit--save):hover { background: var(--nx-surface-2); }
 .edit--save { background: var(--nx-indigo); border-color: var(--nx-indigo); color: #fff; box-shadow: var(--nx-shadow-primary); }
-.edit--save:hover { filter: brightness(1.05); }
+.edit--save:hover { background: var(--nx-indigo); filter: brightness(1.08); }
 .edit--cancel { padding: 0 9px; color: var(--nx-text-500); }
+.edit--icon { padding: 0; width: 30px; justify-content: center; }
 .edit:disabled { opacity: .6; cursor: default; }
 
 /* Titre / description en lecture (non-édition) */

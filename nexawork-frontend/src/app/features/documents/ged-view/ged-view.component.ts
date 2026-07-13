@@ -126,7 +126,7 @@ import { GED_COLOR, GED_ICON, TASK_FOLDER } from '@core/util/ui.util';
 
     @if (preview(); as p) { <app-apercu-document [name]="p" (closed)="preview.set(null)" /> }
     @if (newFolder()) { <app-nouveau-dossier [scope]="modalScope()" (closed)="newFolder.set(false)" (created)="onCreateFolder($event)" /> }
-    @if (upload()) { <app-importer-fichier [scope]="modalScope()" (closed)="upload.set(false)" (imported)="onImportFile($event)" /> }
+    @if (upload()) { <app-importer-fichier [scope]="modalScope()" [busy]="uploadBusy()" [error]="uploadError()" (closed)="closeUpload()" (imported)="onImportFile($event)" /> }
 
     @if (toastMsg(); as t) { <div class="gtoast"><span class="gtoast__i"><app-icon name="check" [size]="14" /></span>{{ t }}</div> }
   `,
@@ -151,6 +151,10 @@ export class GedViewComponent {
   preview = signal<string | null>(null);
   newFolder = signal(false);
   upload = signal(false);
+  /** Upload GED en cours (loader dans le modal). */
+  uploadBusy = signal(false);
+  /** Message d'erreur d'upload (affiché dans le modal, qui reste ouvert). */
+  uploadError = signal('');
   menu = signal<string | null>(null);
   toastMsg = signal<string | null>(null);
   private toastTimer: ReturnType<typeof setTimeout> | undefined;
@@ -199,11 +203,33 @@ export class GedViewComponent {
       .subscribe(() => { this.reload(); this.toast('Dossier « ' + ev.name + ' » créé'); });
   }
 
+  /**
+   * Import : le modal reste ouvert avec un loader jusqu'à la réponse. Succès →
+   * recharge l'espace, toast, ferme. Échec → message d'erreur dans le modal.
+   */
   onImportFile(ev: { file: File; name: string; restricted: boolean }): void {
-    this.upload.set(false);
-    this.toast('Import de « ' + ev.name + ' » en cours…');
+    this.uploadError.set('');
+    this.uploadBusy.set(true);
     this.ged.importFile(this.path(), this.projectId, ev.file, ev.name, ev.restricted)
-      .subscribe(() => { this.reload(); this.toast('« ' + ev.name + ' » importé'); });
+      .subscribe({
+        next: () => {
+          this.uploadBusy.set(false);
+          this.upload.set(false);        // ferme le modal
+          this.reload();                 // met à jour l'espace GED
+          this.toast('« ' + ev.name + ' » importé');
+        },
+        error: () => {
+          this.uploadBusy.set(false);
+          this.uploadError.set("L'import a échoué. Vérifiez le fichier et réessayez.");
+        },
+      });
+  }
+
+  /** Ferme le modal d'import (ignoré pendant l'upload). */
+  closeUpload(): void {
+    if (this.uploadBusy()) return;
+    this.upload.set(false);
+    this.uploadError.set('');
   }
 
   shown = computed(() => {

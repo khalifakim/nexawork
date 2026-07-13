@@ -1,7 +1,8 @@
 ﻿import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { toSignal } from '@angular/core/rxjs-interop';
-import { map } from 'rxjs/operators';
+import { toObservable, toSignal } from '@angular/core/rxjs-interop';
+import { of } from 'rxjs';
+import { map, switchMap } from 'rxjs/operators';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 import { KanbanComponent } from '@features/projets/kanban/kanban.component';
 import { VueDEnsembleComponent } from '@features/projets/vue-d-ensemble/vue-d-ensemble.component';
@@ -15,6 +16,8 @@ import { StatutsComponent } from '@features/projets/modals/statuts/statuts.compo
 import { WorkflowComponent } from '@features/projets/modals/workflow/workflow.component';
 import { ConfirmDialogComponent } from '@shared/overlays/confirm-dialog/confirm-dialog.component';
 import { ProjectsService } from '@core/services/projects.service';
+import { MembersService } from '@core/services/members.service';
+import { Member } from '@core/models/member.models';
 import { SessionService } from '@core/services/session.service';
 import { ArchivedProjectsService } from '@core/services/archived-projects.service';
 import { Project } from '@core/models/project.models';
@@ -53,7 +56,7 @@ interface ConfirmCfg { title: string; danger: boolean; btn: string; icon: string
           @if (isRo()) {
             <span class="pill pill--arch"><app-icon name="lock" [size]="12" />Projet archivé</span>
           } @else {
-            <span class="pill">En bonne voie</span>
+            <span class="pill" [class.pill--warn]="health().cls === 'warn'">{{ health().label }}</span>
           }
           <span class="spacer"></span>
 
@@ -83,9 +86,15 @@ interface ConfirmCfg { title: string; danger: boolean; btn: string; icon: string
         }
 
         <div class="meta-row">
-          <span class="meta"><app-icon name="teams" [size]="15" />8 membres</span>
-          <span class="meta"><app-icon name="user" [size]="15" />Chef de projet · Sarah Diallo</span>
-          <span class="meta"><app-icon name="calendar" [size]="15" />Échéance · 30 sept. 2025</span>
+          <span class="meta"><app-icon name="teams" [size]="15" />{{ memberCountLabel() }}</span>
+          @if (chiefName(); as chief) {
+            <span class="meta"><app-icon name="user" [size]="15" />Chef de projet · {{ chief }}</span>
+          } @else {
+            <span class="meta"><app-icon name="user" [size]="15" />Aucun chef de projet</span>
+          }
+          @if (dueLabel(); as due) {
+            <span class="meta"><app-icon name="calendar" [size]="15" />Échéance · {{ due }}</span>
+          }
         </div>
         <div class="tabs">
           @for (t of tabs; track t.key) {
@@ -117,7 +126,7 @@ interface ConfirmCfg { title: string; danger: boolean; btn: string; icon: string
       </div>
     </div>
 
-    @if (selected(); as t) { <app-fiche-tache [task]="t" [loading]="taskLoading()" (closed)="selected.set(null)" (openTask)="switchTask($event)" (deleted)="onTaskDeleted($event)" /> }
+    @if (selected(); as t) { <app-fiche-tache [task]="t" [loading]="taskLoading()" (closed)="selected.set(null)" (openTask)="switchTask($event)" (deleted)="onTaskDeleted($event)" (updated)="onTaskUpdated($event)" /> }
     @if (createCol() !== null) {
       <app-creer-tache
         [projectId]="id()"
@@ -158,6 +167,7 @@ interface ConfirmCfg { title: string; danger: boolean; btn: string; icon: string
 export class ProjetShellComponent {
   private route    = inject(ActivatedRoute);
   private projectsSvc = inject(ProjectsService);
+  private membersSvc = inject(MembersService);
   private tasksSvc = inject(TasksService);
   private session = inject(SessionService);
   private archivedSvc = inject(ArchivedProjectsService);
@@ -208,9 +218,41 @@ export class ProjetShellComponent {
     { key: 'canaux',         label: 'Canaux',          icon: 'channels'  },
   ];
 
-  projectName  = computed(() => this.allProjects().find(p => p.id === this.id())?.name ?? '');
+  /** Projet réellement sélectionné (données d'en-tête). */
+  curProject   = computed(() => this.allProjects().find(p => p.id === this.id()));
+  projectName  = computed(() => this.curProject()?.name ?? '');
   displayName  = computed(() => (this.isRo() && this.archName()) ? this.archName() : this.projectName());
   tabLabel     = computed(() => this.tabs.find(t => t.key === this.tab())?.label ?? '');
+
+  // ── En-tête réel du projet ──────────────────────────────────────────────────
+  /** Annuaire du workspace — résout ownerUserId → nom du chef de projet. */
+  private directory = toSignal(this.membersSvc.directory(), { initialValue: [] as Member[] });
+  memberCountLabel = computed(() => {
+    const n = this.curProject()?.memberCount ?? 0;
+    return n + (n > 1 ? ' membres' : ' membre');
+  });
+  chiefName = computed(() => {
+    const owner = this.curProject()?.ownerUserId;
+    if (!owner) return null;
+    return this.directory().find(m => m.userId === owner)?.name ?? null;
+  });
+  dueLabel = computed(() => {
+    const d = this.curProject()?.endDate;
+    if (!d) return null;
+    const date = new Date(d);
+    return isNaN(date.getTime()) ? null : date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+  });
+  /** Santé dérivée de la vue d'ensemble réelle (avancement + retard). */
+  private overview = toSignal(
+    toObservable(this.id).pipe(switchMap(id => id ? this.tasksSvc.overview(id) : of(null))),
+    { initialValue: null },
+  );
+  health = computed<{ label: string; cls: string }>(() => {
+    const o = this.overview();
+    if (!o) return { label: 'En bonne voie', cls: 'ok' };
+    if ((o.overdueTasks ?? 0) > 0) return { label: 'À surveiller', cls: 'warn' };
+    return { label: 'En bonne voie', cls: 'ok' };
+  });
 
   /** Colonnes réelles du board (statuts) — passées au modal de création. */
   kanbanColumns = this.store.columns;
@@ -228,6 +270,13 @@ export class ProjetShellComponent {
   onTaskDeleted(id: string): void {
     this.store.deleteTask(id);
     this.selected.set(null);
+  }
+
+  /** Une tâche a été éditée depuis sa fiche → mettre à jour le board sans recharger. */
+  onTaskUpdated(card: TaskCard): void {
+    this.store.updateCard(card);
+    // Garde la fiche ouverte synchronisée avec les nouvelles valeurs.
+    this.selected.update(s => s ? { ...s, ...card } : s);
   }
 
   /**

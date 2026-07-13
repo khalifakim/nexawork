@@ -65,10 +65,10 @@ interface CommentRow {
             <span class="created">Créée le {{ fmtDate(task.createdDate) }}</span>
             @if (!readonly) {
               @if (editMode()) {
-                <button class="edit edit--save" [disabled]="saving()" (click)="saveEdit()" title="Enregistrer les modifications"><app-icon name="check" [size]="15" [stroke]="2.4" />{{ saving() ? 'Enregistrement…' : 'Enregistrer' }}</button>
+                <button class="edit edit--save" [disabled]="saving()" (click)="saveEdit()" title="Enregistrer les modifications"><app-icon name="check" [size]="15" [stroke]="2.4" /><span>{{ saving() ? 'Enregistrement…' : 'Enregistrer' }}</span></button>
                 <button class="edit edit--cancel" [disabled]="saving()" (click)="cancelEdit()" title="Annuler"><app-icon name="x" [size]="15" /></button>
               } @else {
-                <button class="edit" (click)="enterEdit()" title="Modifier la tâche"><app-icon name="edit" [size]="14" />Modifier</button>
+                <button class="edit edit--icon" (click)="enterEdit()" title="Modifier la tâche"><app-icon name="edit" [size]="15" /></button>
                 <button class="del" (click)="deleteTask()"><app-icon name="trash" [size]="14" />Supprimer</button>
               }
             } @else {
@@ -276,6 +276,8 @@ export class FicheTacheComponent implements OnChanges {
   @Output() openTask = new EventEmitter<string>();
   /** Emitted (with the task id) after the task has been deleted from its detail. */
   @Output() deleted = new EventEmitter<string>();
+  /** Émis après enregistrement d'une édition — le board se met à jour sans rechargement. */
+  @Output() updated = new EventEmitter<TaskCard>();
 
   private router = inject(Router);
   protected bus = inject(ShellBus);
@@ -395,6 +397,7 @@ export class FicheTacheComponent implements OnChanges {
             this.eStatusId.set(this.task.statusId); // rétablit le statut réel dans le sélecteur
             this.statusError.set(extractApiError(err, "Ce changement de statut n'est pas autorisé par le workflow."));
             this.toast.show({ message: 'Modifications enregistrées (hors statut, non autorisé)' });
+            this.updated.emit(this.task); // le board reflète les champs sauvés
           },
         });
       },
@@ -407,6 +410,7 @@ export class FicheTacheComponent implements OnChanges {
     this.editMode.set(false);
     this.statusError.set('');
     this.toast.show({ message: 'Modifications enregistrées avec succès' });
+    this.updated.emit(this.task); // met à jour le board sans rechargement
   }
 
   ngOnChanges(): void {
@@ -424,6 +428,9 @@ export class FicheTacheComponent implements OnChanges {
       this.subtasks.set(list.map(s => ({ id: s.id, title: s.title, done: s.done }))));
     this.tasksSvc.attachments(id).subscribe(list => this.attachments.set(list));
     this.tasksSvc.comments(id).subscribe(list => this.comments.set(list.map(c => this.toRow(c))));
+    // Précharge les statuts du projet pour que le sélecteur soit prérempli
+    // dès l'entrée en édition (les <option> doivent exister avant le [value]).
+    this.tasksSvc.loadBoard(this.task.projectId).subscribe(b => this.columns.set(b.columns));
   }
 
   private toRow(c: TaskComment): CommentRow {

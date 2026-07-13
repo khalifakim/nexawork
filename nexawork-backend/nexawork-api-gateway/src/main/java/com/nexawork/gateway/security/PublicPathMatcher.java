@@ -44,6 +44,14 @@ public class PublicPathMatcher {
             // validé côté service. Page publique /guest/{token} côté front.
             "/nexawork-meeting-api-v1/api/v1/guest/*",
 
+            // ─── Handshake WebSocket STOMP (messaging + notifications) ───
+            // Le navigateur ne peut PAS poser d'en-tête Authorization sur un
+            // WebSocket natif : le handshake HTTP doit donc être public. L'identité
+            // est établie plus bas, à la trame STOMP CONNECT (lue par le
+            // WebSocketHandshakeInterceptor de chaque service). Sans cette entrée,
+            // le filtre JWT rejette le handshake en 401 → reconnexion en boucle.
+            "/ws/**",
+
             // ─── Sondes techniques + OpenAPI (tous services) ───
             "/*/actuator/health/**",
             "/*/actuator/info",
