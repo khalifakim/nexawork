@@ -144,6 +144,7 @@ services:
       context: ./nexawork-backend
       dockerfile: nexawork-config-server/Dockerfile
     container_name: nexawork-config-server
+    init: true
     ports:
       - "8888:8888"
     environment:
@@ -166,6 +167,7 @@ services:
       context: ./nexawork-backend
       dockerfile: nexawork-auth-service/Dockerfile
     container_name: nexawork-auth-service
+    init: true
     depends_on:
       postgres: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
@@ -208,6 +210,7 @@ services:
       context: ./nexawork-backend
       dockerfile: nexawork-project-service/Dockerfile
     container_name: nexawork-project-service
+    init: true
     depends_on:
       postgres: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
@@ -238,6 +241,7 @@ services:
       context: ./nexawork-backend
       dockerfile: nexawork-messaging-service/Dockerfile
     container_name: nexawork-messaging-service
+    init: true
     depends_on:
       postgres: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
@@ -268,6 +272,7 @@ services:
       context: ./nexawork-backend
       dockerfile: nexawork-meeting-service/Dockerfile
     container_name: nexawork-meeting-service
+    init: true
     depends_on:
       postgres: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
@@ -301,6 +306,7 @@ services:
       context: ./nexawork-backend
       dockerfile: nexawork-notification-service/Dockerfile
     container_name: nexawork-notification-service
+    init: true
     depends_on:
       postgres: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
@@ -344,6 +350,7 @@ services:
       context: ./nexawork-backend
       dockerfile: nexawork-file-service/Dockerfile
     container_name: nexawork-file-service
+    init: true
     depends_on:
       postgres: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
@@ -379,6 +386,7 @@ services:
       context: ./nexawork-backend
       dockerfile: nexawork-ged-service/Dockerfile
     container_name: nexawork-ged-service
+    init: true
     depends_on:
       postgres: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
@@ -411,6 +419,7 @@ services:
       context: ./nexawork-backend
       dockerfile: nexawork-api-gateway/Dockerfile
     container_name: nexawork-api-gateway
+    init: true
     # Les hôtes downstream sont résolus paresseusement (au premier appel routé) ;
     # seuls config-server (config) et auth-service (seul service métier livré à ce
     # stade) sont exigés healthy. Les autres depends_on seront réintroduits au fil
@@ -451,6 +460,7 @@ services:
   frontend:
     build: ./nexawork-frontend
     container_name: nexawork-frontend
+    init: true
     depends_on:
       - api-gateway
     ports:
