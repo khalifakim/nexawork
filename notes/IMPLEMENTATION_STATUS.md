@@ -347,6 +347,36 @@ ira en prod. Le frontend est servi par **nginx** qui fait aussi **reverse-proxy*
 
 ## 4 · Notes d'environnement (à connaître pour builder/tester)
 
+- **🔴 « Le serveur ne répond pas » — cause racine trouvée et corrigée (2026-07-13).** Le diagnostic
+  précédent (« absence de `-Xmx` ») était **incomplet** : borner le tas était nécessaire mais très
+  insuffisant. Mesure de la VM Docker (4,9 Go) : `used 3870 Mo, free 95 Mo, **SWAP 1034 Mo**`.
+  **Aucun OOM au `dmesg`** — le noyau ne tuait personne, il **swappait**, ce qui est pire :
+  1. les JVM se figeaient (Hikari : `Thread starvation or clock leap detected`, housekeeper delta **1 min 17 s**) ;
+  2. les clients PostgreSQL coupaient → `Broken pipe` / `connection to client lost` / `exit code 2` ;
+  3. le postmaster y voyait un **crash** → `terminating any other active server processes` → récupération ;
+  4. la récupération n'aboutissait **jamais** (`syncing data directory` > 50 s, disque saturé par le swap)
+     → `last known up` figé sur **3 crashs successifs** → **boucle de crash** → toutes les requêtes échouent.
+  - **Cause n°1 (la plus grosse) : Hikari n'était configuré nulle part.** Son défaut est
+    `maximum-pool-size=10` **ET `minimum-idle=10`** → chaque service gardait **10 connexions ouvertes en
+    permanence**. Or **1 connexion = 1 processus PostgreSQL (~7 Mo)** : 9 services = **90 processus (~630 Mo)**
+    maintenus **même application au repos**, pour un `max_connections` de 100. → `application.yml` (partagé) :
+    pool **5 max / 1 idle** + recyclage. **Vérifié après reset : 8 connexions** (était ~90).
+  - **Cause n°2 : `-Xmx` ne borne que le tas.** Le metaspace, les piles de threads, le code JIT et les buffers
+    directs s'y ajoutent (`project-service` **mesuré à 458 Mo** pour `Xmx=256m`), et **rien ne bornait le
+    conteneur**. → `Xmx` 256→192m, metaspace 192→160m, `-Xss512k`, **JIT C1 seul** (`-XX:TieredStopAtLevel=1` :
+    ~2× moins de CPU — décisif sur une machine 2 cœurs qui porte 9 services), `+ExitOnOutOfMemoryError`.
+  - **`mem_limit` sur les 13 conteneurs** (garde-fous, pas des rations : plafond 448m pour ~300m réels),
+    **768m garantis à PostgreSQL** (il ne doit plus jamais être la victime), **`restart: unless-stopped`**
+    (une panne se répare seule au lieu de rester à terre).
+  - **Résultat mesuré** : `used` **3870 → 2537 Mo**, `swap` **1034 → 121 Mo**, `available` **794 → 2130 Mo**.
+  - ⚠️ **`RABBITMQ_VM_MEMORY_HIGH_WATERMARK` est DÉPRÉCIÉE** — sa seule présence fait **refuser le démarrage**
+    de l'image `rabbitmq:3-management`. Inutile : RabbitMQ lit la limite du cgroup, `mem_limit` suffit.
+  - ⚠️ **Démarrage à froid lent** : 9 JVM qui bootent ensemble sur 2 cœurs **dépassent la période de grâce
+    de 5 min** des healthchecks → les services passent par un état `unhealthy` **transitoire**. Ce n'est pas
+    une panne : attendre. Compter **~30 min** pour une stack complète repartie de zéro.
+  - ⚠️ **Zombie au `docker compose down`** : les conteneurs créés **avant** l'ajout de `init: true` peuvent
+    refuser de s'arrêter (`PID ... is zombie and can not be killed`). → `docker rm -f <conteneur>`.
+
 - **🔴 springdoc / Swagger — le piège n°1 de cette machine.** `SPRINGDOC_ENABLED` est **désactivé par défaut**
   (`docker-compose.yml` : `${SPRINGDOC_ENABLED:-false}`). Son initialisation a été **mesurée à 81 s**
   (`Init duration for springdoc-openapi is: 81445 ms`) et sature le CPU → **dépasse le timeout de 20 s**
