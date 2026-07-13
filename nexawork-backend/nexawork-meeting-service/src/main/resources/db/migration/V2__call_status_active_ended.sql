@@ -5,9 +5,5 @@
 -- jamais été produites → on resserre la contrainte CHECK à ('ACTIVE','ENDED').
 -- ============================================================================
 
--- Reclasse d'éventuels appels résiduels (SCHEDULED/CANCELLED) en ENDED : ce sont
--- des appels inactifs, la contrainte resserrée les rejetterait sinon.
-UPDATE calls SET status = 'ENDED' WHERE status NOT IN ('ACTIVE','ENDED');
-
 ALTER TABLE calls DROP CONSTRAINT IF EXISTS chk_calls_status;
 ALTER TABLE calls ADD CONSTRAINT chk_calls_status CHECK (status IN ('ACTIVE','ENDED'));
