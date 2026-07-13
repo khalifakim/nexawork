@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, ElementRef, EventEmitter, Input, Ou
 import { ActivatedRoute } from '@angular/router';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { IconComponent } from '@shared/ui/icon/icon.component';
+import { LoaderComponent } from '@shared/ui/loader/loader.component';
 import { FilterChipComponent, FilterOption } from '@shared/ui/filter-chip/filter-chip.component';
 import { DueBucket, KanbanColumn, TaskCard } from '@core/models/task.models';
 import { Member } from '@core/models/member.models';
@@ -13,7 +14,7 @@ import { KanbanStore } from './kanban.store';
   selector: 'app-kanban',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IconComponent, FilterChipComponent],
+  imports: [IconComponent, FilterChipComponent, LoaderComponent],
   template: `
     <div class="board-wrap">
       <!-- filter bar -->
@@ -43,6 +44,9 @@ import { KanbanStore } from './kanban.store';
       </div>
 
       <!-- board -->
+      @if (store.loading()) {
+        <app-loader label="Chargement du tableau…" [minHeight]="320" />
+      } @else {
       <div class="board">
         @for (col of store.columns(); track col.id) {
           <div class="col"
@@ -145,6 +149,7 @@ import { KanbanStore } from './kanban.store';
           </div>
         }
       </div>
+      }
     </div>
   `,
   styleUrl: './kanban.component.scss',

@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, Input, computed, inject, signal } f
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { switchMap, tap } from 'rxjs/operators';
 import { IconComponent } from '@shared/ui/icon/icon.component';
+import { LoaderComponent } from '@shared/ui/loader/loader.component';
 import { ApercuDocumentComponent } from '@shared/overlays/apercu-document/apercu-document.component';
 import { FilterChipComponent, FilterOption } from '@shared/ui/filter-chip/filter-chip.component';
 import { DocMenuComponent, DocMenuItem } from '@shared/ui/doc-menu/doc-menu.component';
@@ -17,7 +18,7 @@ import { GED_COLOR, GED_ICON, TASK_FOLDER } from '@core/util/ui.util';
   selector: 'app-ged-view',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IconComponent, ApercuDocumentComponent, FilterChipComponent, DocMenuComponent, NouveauDossierComponent, ImporterFichierComponent],
+  imports: [IconComponent, ApercuDocumentComponent, FilterChipComponent, DocMenuComponent, NouveauDossierComponent, ImporterFichierComponent, LoaderComponent],
   template: `
     <div class="ged">
       <!-- toolbar -->
@@ -69,6 +70,9 @@ import { GED_COLOR, GED_ICON, TASK_FOLDER } from '@core/util/ui.util';
           <span class="cb">@if (!inSystem() && !readonly) { <button class="box" [class.box--on]="allSel()" (click)="toggleAll()">@if (allSel()) { <app-icon name="check" [size]="12" [stroke]="2.6" /> }</button> }</span>
           @for (c of cols(); track c) { <span class="th">{{ c }}</span> }
         </div>
+        @if (loading()) {
+          <app-loader label="Chargement des documents…" [minHeight]="180" />
+        } @else {
         @for (it of shown(); track it.name) {
           <div class="trow" [style.grid-template-columns]="grid()" [class.trow--sel]="isSel(it.name)" (click)="rowClick(it)">
             <span class="cb">@if (!it.system && !inSystem() && !readonly) { <button class="box" [class.box--on]="isSel(it.name)" (click)="toggleSel(it.name); $event.stopPropagation()">@if (isSel(it.name)) { <app-icon name="check" [size]="12" [stroke]="2.6" /> }</button> }</span>
@@ -115,6 +119,7 @@ import { GED_COLOR, GED_ICON, TASK_FOLDER } from '@core/util/ui.util';
           </div>
         } @empty {
           <div class="empty">{{ inSystem() ? "Aucun fichier n'est encore attaché aux tâches de ce projet." : 'Aucun document trouvé' }}</div>
+        }
         }
       </div>
     </div>
@@ -172,11 +177,17 @@ export class GedViewComponent {
   /** Bumpé après une écriture pour recharger le dossier courant. */
   private refresh = signal(0);
   private trigger = computed(() => ({ p: this.path(), r: this.refresh() }));
+  /** Vrai tant que le contenu du dossier courant n'est pas arrivé (loader). */
+  loading = signal(true);
   private current = toSignal(
     toObservable(this.trigger).pipe(
+      tap(() => this.loading.set(true)),
       switchMap(t => this.ged.folderContent(t.p, this.projectId)),
       // Le cadenas « accès restreint » suit le `restricted` calculé par le backend.
-      tap(items => this.gedOverlay.setRestrictedNames(items.filter(i => i.restricted).map(i => i.name))),
+      tap(items => {
+        this.gedOverlay.setRestrictedNames(items.filter(i => i.restricted).map(i => i.name));
+        this.loading.set(false);
+      }),
     ),
     { initialValue: [] as GedItem[] },
   );

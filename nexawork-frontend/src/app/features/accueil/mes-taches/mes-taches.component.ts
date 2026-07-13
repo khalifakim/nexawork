@@ -4,7 +4,8 @@ import { FicheTacheComponent } from '@features/projets/modals/fiche-tache/fiche-
 import { AccueilService } from '@core/services/accueil.service';
 import { SessionService } from '@core/services/session.service';
 import { MyTaskRow as Row, MyTaskSection as Section } from '@core/models/accueil.models';
-import { workspaceSignal } from '@core/util/workspace-signal';
+import { workspaceQuery } from '@core/util/workspace-signal';
+import { LoaderComponent } from '@shared/ui/loader/loader.component';
 
 const PRIO_BG: Record<string, string> = { 'Haute': '#FDECEB', 'Moyenne': '#FBF1E2', 'Basse': '#E6F6EE' };
 
@@ -12,7 +13,7 @@ const PRIO_BG: Record<string, string> = { 'Haute': '#FDECEB', 'Moyenne': '#FBF1E
   selector: 'app-mes-taches',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IconComponent, FicheTacheComponent],
+  imports: [IconComponent, FicheTacheComponent, LoaderComponent],
   template: `
     <div class="wrap">
       <div class="head">
@@ -20,6 +21,9 @@ const PRIO_BG: Record<string, string> = { 'Haute': '#FDECEB', 'Moyenne': '#FBF1E
         <p>Vos tâches prioritaires dont l'échéance est aujourd'hui ou déjà dépassée, tous projets confondus.</p>
       </div>
 
+      @if (loading()) {
+        <app-loader label="Chargement de vos tâches…" />
+      } @else {
       @for (s of sections(); track s.cat) {
         <div class="sec">
           <button class="sec__h" (click)="toggle(s.cat)">
@@ -60,6 +64,7 @@ const PRIO_BG: Record<string, string> = { 'Haute': '#FDECEB', 'Moyenne': '#FBF1E
           <div class="empty__s">Vous n'avez aucune tâche à échéance aujourd'hui ou en retard. Profitez-en !</div>
         </div>
       }
+      }
     </div>
 
     @if (openTask()) {
@@ -77,8 +82,10 @@ export class MesTachesComponent {
   done      = signal<string[]>([]);
   openTask  = signal<any>(null);
 
-  /** Tasks of the active workspace (reload on workspace switch). */
-  sections = workspaceSignal<Section[]>(this.session, () => this.accueil.myTasks(), []);
+  /** Tâches de l'espace actif (rechargées au switch) + état de chargement. */
+  private query = workspaceQuery<Section[]>(this.session, () => this.accueil.myTasks(), []);
+  sections = this.query.value;
+  loading = this.query.loading;
 
   visible(s: Section): Row[] { return this.showAll().includes(s.cat) ? s.tasks : s.tasks.slice(0, 3); }
   toggle(c: string): void    { this.collapsed.update(l => l.includes(c) ? l.filter(x => x !== c) : [...l, c]); }

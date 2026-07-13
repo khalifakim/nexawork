@@ -4,6 +4,7 @@ import { forkJoin } from 'rxjs';
 import { filter, map } from 'rxjs/operators';
 import { toSignal, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { IconComponent } from '@shared/ui/icon/icon.component';
+import { LoaderComponent } from '@shared/ui/loader/loader.component';
 import { ShellBus } from '@layouts/app-shell/shell.bus';
 import { MembersService } from '@core/services/members.service';
 import { ProjectsService } from '@core/services/projects.service';
@@ -24,7 +25,7 @@ interface MemberPick { userId: string; name: string; role?: string; color: strin
   selector: 'app-equipes',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IconComponent, AjouterCollaborateursProjetComponent, CreerEquipeComponent],
+  imports: [IconComponent, AjouterCollaborateursProjetComponent, CreerEquipeComponent, LoaderComponent],
   template: `
     @if (openTeam(); as t) {
       <!-- ===== Détail d'une équipe (inline — reste sur l'onglet) ===== -->
@@ -198,6 +199,9 @@ interface MemberPick { userId: string; name: string; role?: string; color: strin
           }
         </div>
 
+        @if (loading()) {
+          <app-loader label="Chargement des équipes…" [minHeight]="260" />
+        } @else {
         <!-- Cards d'équipes — filtrées par la recherche -->
         <div class="cards">
           @for (t of filteredTeams(); track t.id) {
@@ -287,6 +291,7 @@ interface MemberPick { userId: string; name: string; role?: string; color: strin
             }
           }
         </div>
+        }
       </div>
     }
 

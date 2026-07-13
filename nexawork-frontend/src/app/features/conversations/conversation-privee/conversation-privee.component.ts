@@ -1,8 +1,9 @@
 import { ChangeDetectionStrategy, Component, ElementRef, ViewChild, computed, effect, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop';
-import { map, switchMap } from 'rxjs/operators';
+import { map, switchMap, tap } from 'rxjs/operators';
 import { IconComponent } from '@shared/ui/icon/icon.component';
+import { LoaderComponent } from '@shared/ui/loader/loader.component';
 import { CommentComposerComponent } from '@shared/ui/comment-composer/comment-composer.component';
 import { MentionChipComponent, MentionChipEvent } from '@shared/ui/mention-chip/mention-chip.component';
 import { HighlightComponent } from '@shared/ui/highlight/highlight.component';
@@ -28,6 +29,7 @@ type Msg = ConversationMessage;
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     IconComponent,
+    LoaderComponent,
     CommentComposerComponent,
     MentionChipComponent,
     HighlightComponent,
@@ -76,6 +78,9 @@ type Msg = ConversationMessage;
 
       <div class="body">
         <div class="msgs" #msgsEl>
+          @if (loading()) {
+            <app-loader label="Chargement de la conversation…" [minHeight]="160" />
+          } @else {
           @for (m of visible(); track $index) {
             @if (m.day) {
               <div class="day"><div class="day__l"></div><span>{{ m.day }}</span><div class="day__l"></div></div>
@@ -116,6 +121,7 @@ type Msg = ConversationMessage;
               </div>
             </div>
           }
+          }
         </div>
 
         @if (mediaOpen()) {
@@ -152,6 +158,8 @@ export class ConversationPriveeComponent {
 
   /** Message thread of the active conversation (reloads when the slug changes). */
   msgs = signal<Msg[]>([]);
+  /** Vrai tant que l'historique de la conversation n'est pas chargé. */
+  loading = signal(true);
 
   /** Header search — open flag and query text. */
   searchOpen = signal(false);
@@ -199,10 +207,15 @@ export class ConversationPriveeComponent {
 
   constructor() {
     toObservable(this.slug)
-      .pipe(switchMap(s => this.conversationsSvc.thread(s)), takeUntilDestroyed())
+      .pipe(
+        tap(() => this.loading.set(true)),
+        switchMap(s => this.conversationsSvc.thread(s)),
+        takeUntilDestroyed(),
+      )
       .subscribe(thread => {
         this.msgs.set(thread);
         this.searchQ.set('');
+        this.loading.set(false);
         // À l'ouverture, marquer la conversation comme lue (accusé de lecture).
         this.conversationsSvc.markRead(this.slug());
       });
