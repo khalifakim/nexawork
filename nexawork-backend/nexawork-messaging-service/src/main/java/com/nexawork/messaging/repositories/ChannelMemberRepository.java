@@ -11,6 +11,9 @@ public interface ChannelMemberRepository extends JpaRepository<ChannelMember, UU
 
     List<ChannelMember> findByChannelId(UUID channelId);
 
+    /** Nombre de bénéficiaires explicites d'un canal privé. */
+    long countByChannelId(UUID channelId);
+
     Optional<ChannelMember> findByChannelIdAndUserId(UUID channelId, UUID userId);
 
     boolean existsByChannelIdAndUserId(UUID channelId, UUID userId);

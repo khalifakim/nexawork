@@ -23,6 +23,13 @@ public interface MessageRepository extends JpaRepository<Message, UUID> {
             """)
     List<Message> findChannelFirstPage(@Param("channelId") UUID channelId, Pageable pageable);
 
+    /** Date du dernier message d'un canal (dernière activité) — null si vide. */
+    @Query("""
+            SELECT MAX(m.sentAt) FROM Message m
+            WHERE m.channel.id = :channelId AND m.isDeleted = false
+            """)
+    LocalDateTime findLastActivityAt(@Param("channelId") UUID channelId);
+
     @Query("""
             SELECT m FROM Message m
             WHERE m.channel.id = :channelId AND m.isDeleted = false AND m.sentAt < :before

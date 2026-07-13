@@ -302,6 +302,8 @@ function toChannel(r: ChannelResponse): Channel {
     isPrivate: r.isPrivate,
     canWrite: r.canWrite,
     projectId: r.projectId,
+    memberCount: r.memberCount,
+    lastActivityAt: r.lastActivityAt,
   };
 }
 

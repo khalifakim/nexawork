@@ -16,6 +16,10 @@ export interface Channel {
   canWrite?: boolean;
   /** projectId backend, pour la résolution du nom de projet. */
   projectId?: string;
+  /** Bénéficiaires explicites (canal privé) ; absent = ouvert à tous les membres. */
+  memberCount?: number;
+  /** Date du dernier message (ISO) — absent si le canal est vide. */
+  lastActivityAt?: string;
 }
 
 /** Payload brut d'un canal (Messaging `GET /channels`). */
@@ -31,6 +35,8 @@ export interface ChannelResponse {
   readonly: boolean;
   isPrivate: boolean;
   canWrite: boolean;
+  memberCount?: number;
+  lastActivityAt?: string;
   createdAt: string;
 }
 

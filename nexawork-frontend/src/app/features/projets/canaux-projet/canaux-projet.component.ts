@@ -10,7 +10,7 @@ import { ConfirmDialogComponent } from '@shared/overlays/confirm-dialog/confirm-
 import { Channel } from '@core/models/channel.models';
 
 /** Ligne d'affichage d'un canal de projet (dérivée du Channel réel). */
-interface Chan { id: string; n: string; icon: 'bell' | 'hash'; access: string; locked: boolean; }
+interface Chan { id: string; n: string; icon: 'bell' | 'hash'; access: string; locked: boolean; members: string; last: string; }
 
 @Component({
   selector: 'app-canaux-projet',
@@ -53,8 +53,8 @@ interface Chan { id: string; n: string; icon: 'bell' | 'hash'; access: string; l
               @if (c.locked) { <app-icon class="lock" name="lock" [size]="14" /> }
             </div>
             <span class="muted">{{ c.access }}</span>
-            <span class="muted">—</span>
-            <span class="muted">—</span>
+            <span class="muted">{{ c.members }}</span>
+            <span class="muted">{{ c.last }}</span>
             <div class="acts">
               @if (canManage()) {
                 <button class="act" title="Modifier" (click)="edit(c, $event)">
@@ -134,8 +134,25 @@ export class CanauxProjetComponent {
         icon: c.kind,
         access: this.accessLabel(c),
         locked: !!c.isPrivate,
+        members: c.memberCount != null ? c.memberCount + ' membre' + (c.memberCount > 1 ? 's' : '') : 'Tous les membres',
+        last: this.activityLabel(c.lastActivityAt),
       }));
   });
+
+  /** « il y a X » à partir de la date du dernier message (vide → « Aucun message »). */
+  private activityLabel(iso?: string): string {
+    if (!iso) return 'Aucun message';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '—';
+    const min = Math.floor((Date.now() - d.getTime()) / 60000);
+    if (min < 1) return "À l'instant";
+    if (min < 60) return 'il y a ' + min + ' min';
+    const h = Math.floor(min / 60);
+    if (h < 24) return 'il y a ' + h + ' h';
+    const j = Math.floor(h / 24);
+    if (j < 31) return 'il y a ' + j + ' j';
+    return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+  }
 
   filtered = computed<Chan[]>(() => {
     const q = this.q().toLowerCase().trim();
