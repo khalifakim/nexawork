@@ -102,8 +102,16 @@ export interface ChannelMessage {
 
 /** Visibility restriction of a channel (private = restricted to specific grants). */
 export type ChannelAccessMode = 'open' | 'private';
-export interface ChannelGrant { type: 'user' | 'team'; name: string; }
+/** `id` = userId (membre) ou teamId (équipe) — c'est lui qui part au backend. */
+export interface ChannelGrant { type: 'user' | 'team'; id: string; name: string; }
 export interface ChannelRestriction { mode: ChannelAccessMode; grants: ChannelGrant[]; }
+
+/** Bénéficiaire explicite d'un canal privé (`GET /channels/{id}/access`). */
+export interface ChannelMemberResponse {
+  id: string;
+  userId: string;
+  accessLevel: 'READER' | 'EDITOR';
+}
 
 /** Payload used by the "Nouveau canal" modal. */
 export interface CreateChannelPayload {

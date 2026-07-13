@@ -42,6 +42,13 @@ public final class Events {
             String guestToken, UUID inviterUserId) {
     }
 
+    /** {@code message.mention} — quelqu'un a été mentionné dans un message (§4.7). */
+    public record MessageMentioned(
+            UUID messageId, UUID recipientUserId, UUID authorUserId,
+            UUID organisationId, String excerpt, UUID channelId, String channelName,
+            UUID conversationId) {
+    }
+
     public record MeetingParticipantInvited(
             UUID callId, String topic, UUID organisationId,
             UUID inviterUserId, String inviterDisplayName, UUID recipientUserId) {

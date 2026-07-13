@@ -7,6 +7,7 @@ import { StompClientService } from '@core/ws/stomp-client.service';
 import { Conversation, ConversationMessage, ConversationResponse } from '@core/models/conversation.models';
 import { MessageResponse } from '@core/models/channel.models';
 import { messageBody, messageFiles } from './channels.service';
+import { MentionRef } from '@core/models/mention.models';
 import { CONVERSATIONS_BY_WORKSPACE, CONVERSATION_THREADS, DEFAULT_CONVERSATION_THREAD } from '@core/mock/conversations';
 import { parseRichText } from '@core/util/mention.util';
 import { avatarColorFor, initials, slugName } from '@core/util/ui.util';
@@ -29,7 +30,7 @@ export abstract class ConversationsService {
    * Send a message to the peer identified by the route slug, with optional file
    * attachments (téléversées au File Service puis rattachées, une par message).
    */
-  abstract sendMessage(id: string, content: string, files?: File[]): Observable<void>;
+  abstract sendMessage(id: string, content: string, files?: File[], mentions?: MentionRef[]): Observable<void>;
   /** Marque comme lus les messages reçus de la conversation. */
   abstract markRead(id: string): void;
   /** Signale au pair que je suis (ou non) en train d'écrire (STOMP, volatile). */
@@ -61,7 +62,7 @@ export class ConversationsMockService extends ConversationsService {
     return of(CONVERSATION_THREADS[id] ?? DEFAULT_CONVERSATION_THREAD).pipe(delay(80));
   }
   live(_id: string): Observable<ConversationMessage> { return EMPTY; }
-  sendMessage(_id: string, _content: string, _files?: File[]): Observable<void> { return of(void 0); }
+  sendMessage(_id: string, _content: string, _files?: File[], _mentions?: MentionRef[]): Observable<void> { return of(void 0); }
   markRead(_id: string): void { /* no-op en mock */ }
   sendTyping(_id: string, _typing: boolean): void { /* no-op en mock */ }
   typing(_id: string): Observable<boolean> { return EMPTY; }
@@ -126,20 +127,20 @@ export class ConversationsHttpService extends BaseHttpService implements Convers
     }));
   }
 
-  sendMessage(id: string, content: string, files: File[] = []): Observable<void> {
+  sendMessage(id: string, content: string, files: File[] = [], mentions: MentionRef[] = []): Observable<void> {
     const text = content.trim();
     if (!text && files.length === 0) return of(void 0);
     return this.ensureConversation(id).pipe(switchMap(conv => {
       if (!conv?.uuid) return of(void 0);
       const endpoint = `/conversations/${conv.uuid}/messages`;
       if (files.length === 0) {
-        return this.post$<MessageResponse>('messaging', endpoint, { content: text }).pipe(map(() => void 0));
+        return this.post$<MessageResponse>('messaging', endpoint, { content: text, mentions }).pipe(map(() => void 0));
       }
       // Téléverse tous les fichiers puis envoie UN SEUL message qui les porte tous.
       const workspaceId = this.session.activeWorkspaceId();
       return forkJoin(files.map(f => this.filesSvc.upload('conversation-msg', f, { workspaceId, conversationId: conv.uuid })))
         .pipe(switchMap(stored =>
-          this.post$<MessageResponse>('messaging', endpoint, messageBody(text, stored)).pipe(map(() => void 0))));
+          this.post$<MessageResponse>('messaging', endpoint, messageBody(text, stored, mentions)).pipe(map(() => void 0))));
     }));
   }
 

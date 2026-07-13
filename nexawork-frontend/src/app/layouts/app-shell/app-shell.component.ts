@@ -80,7 +80,7 @@ const SECTION_TITLES: Record<string, string> = {
     }
     @if (bus.createWorkspaceOpen()) { <app-workspace-create (closed)="bus.createWorkspaceOpen.set(false)" /> }
     @if (bus.editChannel(); as ec) { <app-modifier-canal [id]="ec.id" [initialName]="ec.name" [initialKind]="ec.kind" (closed)="bus.editChannel.set(null)" /> }
-    @if (bus.accessChannel(); as ac) { <app-gerer-acces-canal [id]="ac.id" [name]="ac.name" [scope]="ac.scope" (closed)="bus.accessChannel.set(null)" /> }
+    @if (bus.accessChannel(); as ac) { <app-gerer-acces-canal [id]="ac.id" [name]="ac.name" [scope]="ac.scope" [projectId]="ac.projectId" (closed)="bus.accessChannel.set(null)" /> }
     @if (bus.deleteChannel(); as dc) {
       <app-confirm-dialog [danger]="true" title="Supprimer le canal" [subtitle]="'#' + dc.name" icon="trash"
                           confirmLabel="Supprimer" [lines]="deleteLines"

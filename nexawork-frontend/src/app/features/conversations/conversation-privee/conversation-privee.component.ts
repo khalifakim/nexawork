@@ -11,6 +11,7 @@ import { ThreadMediaPanelComponent, SharedMediaItem } from '@shared/overlays/thr
 import { ThreadMentionsPanelComponent, ThreadMention, MentionKind } from '@shared/overlays/thread-mentions-panel/thread-mentions-panel.component';
 import { MembersService } from '@core/services/members.service';
 import { ConversationsService } from '@core/services/conversations.service';
+import { ProjectCatalogService } from '@core/services/project-catalog.service';
 import { Member } from '@core/models/member.models';
 import { ConversationFile, ConversationMessage } from '@core/models/conversation.models';
 import { ShellBus } from '@layouts/app-shell/shell.bus';
@@ -147,6 +148,7 @@ type Msg = ConversationMessage;
   styleUrl: './conversation-privee.component.scss',
 })
 export class ConversationPriveeComponent {
+  private catalog = inject(ProjectCatalogService);
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   bus = inject(ShellBus);
@@ -335,7 +337,9 @@ export class ConversationPriveeComponent {
     this.msgs.update(list => [...list, { me: true, parts: payload.parts, time, read: false, files }]);
     const text = payload.text ?? payload.parts.map(p => p.val).join('');
     const rawFiles = payload.files.map(f => f.file).filter((f): f is File => !!f);
-    this.conversationsSvc.sendMessage(this.slug(), text, rawFiles).subscribe();
+    // Mentions résolues en cibles réelles (cf. canal.component).
+    const mentions = this.catalog.resolveMentions(payload.parts);
+    this.conversationsSvc.sendMessage(this.slug(), text, rawFiles, mentions).subscribe();
   }
 
   onChipOpen(ev: MentionChipEvent): void {

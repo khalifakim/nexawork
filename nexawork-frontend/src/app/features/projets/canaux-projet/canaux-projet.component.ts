@@ -200,7 +200,7 @@ export class CanauxProjetComponent {
   /** Ouvre le modal « Gérer les accès ». */
   access(c: Chan, ev: Event): void {
     ev.stopPropagation();
-    this.bus.openAccessChannel({ id: c.id, name: c.n, scope: 'project' });
+    this.bus.openAccessChannel({ id: c.id, name: c.n, scope: 'project', projectId: this.projectId() ?? undefined });
   }
 
   askDelete(c: Chan, ev: Event): void {

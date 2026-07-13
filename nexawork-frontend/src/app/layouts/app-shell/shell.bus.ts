@@ -1,7 +1,7 @@
 import { Injectable, signal } from '@angular/core';
 
 export interface EditChannelState { id: string; name: string; kind: 'hash' | 'bell'; }
-export interface AccessChannelState { id: string; name: string; scope: 'org' | 'project'; }
+export interface AccessChannelState { id: string; name: string; scope: 'org' | 'project'; projectId?: string; }
 export interface DeleteChannelState { id: string; name: string; }
 /** Ouverture du modal « Nouveau canal » : portée + projet propriétaire le cas échéant. */
 export interface NewChannelState { scope: 'org' | 'project'; projectId?: string; projectName?: string; }

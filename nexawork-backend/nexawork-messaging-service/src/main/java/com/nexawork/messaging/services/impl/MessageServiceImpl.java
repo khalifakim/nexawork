@@ -79,7 +79,8 @@ public class MessageServiceImpl implements MessageService {
                 .build();
         assembler.applyAttachments(message, request, caller.userId());
         message = messageRepository.save(message);
-        assembler.persistMentions(message);
+        List<MessageMention> mentions = assembler.persistMentions(message, request);
+        assembler.notifyMentioned(message, mentions, channel.getId(), channel.getName(), null);
         MessageResponse dto = assembler.toDto(message);
         broadcaster.broadcastChannelMessage(channelId, dto); // temps réel (§7.5)
         return dto;

@@ -51,6 +51,7 @@ import { ChannelAccessMode, ChannelGrant } from '@core/models/channel.models';
           [mode]="mode()"
           [grants]="grants()"
           [scope]="scope"
+          [projectId]="projectId"
           (modeChange)="mode.set($event)"
           (grantsChange)="grants.set($event)" />
       </div>

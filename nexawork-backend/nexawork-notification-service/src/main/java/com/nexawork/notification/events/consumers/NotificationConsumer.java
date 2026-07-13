@@ -110,6 +110,36 @@ public class NotificationConsumer {
                 .build());
     }
 
+    /**
+     * Mention (§4.7) : la personne visée est notifiée, avec un lien direct vers le
+     * canal ou la conversation d'origine.
+     */
+    @RabbitListener(queues = "nexawork.notification.mention")
+    public void onMessageMentioned(Events.MessageMentioned e) {
+        String where = e.channelName() != null ? "#" + e.channelName() : "une conversation";
+        String url = e.channelName() != null
+                ? "/app/canaux/" + slug(e.channelName())
+                : "/app/conversations";
+        creator.create(Command.builder()
+                .recipientUserId(e.recipientUserId())
+                .type(NotificationType.MENTION)
+                .title("Vous avez été mentionné")
+                .body("Vous avez été mentionné dans " + where + " : « " + e.excerpt() + " »")
+                .targetUrl(url)
+                .workspaceId(e.organisationId())
+                .build());
+    }
+
+    /** Nom de canal → segment d'URL (le frontend route les canaux par slug). */
+    private String slug(String name) {
+        return java.text.Normalizer.normalize(name, java.text.Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "")
+                .toLowerCase()
+                .replaceAll("[^a-z0-9\\s-]", "")
+                .trim()
+                .replaceAll("\\s+", "-");
+    }
+
     @RabbitListener(queues = "nexawork.notification.external-guest")
     public void onExternalGuestInvited(Events.ExternalGuestInvited e) {
         String url = mail.getFrontendBaseUrl() + "/guest/" + e.guestToken();

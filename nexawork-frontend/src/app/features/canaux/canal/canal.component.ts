@@ -10,6 +10,7 @@ import { ThreadMediaPanelComponent, SharedMediaItem } from '@shared/overlays/thr
 import { ThreadMentionsPanelComponent, ThreadMention, MentionKind } from '@shared/overlays/thread-mentions-panel/thread-mentions-panel.component';
 import { ShellBus } from '@layouts/app-shell/shell.bus';
 import { ChannelsService } from '@core/services/channels.service';
+import { ProjectCatalogService } from '@core/services/project-catalog.service';
 import { ArchivedProjectsService } from '@core/services/archived-projects.service';
 import { ChannelFile, ChannelMessage } from '@core/models/channel.models';
 import { chipTabFor, RichPart } from '@core/util/mention.util';
@@ -146,6 +147,7 @@ type ChMsg = ChannelMessage;
   styleUrl: './canal.component.scss',
 })
 export class CanalComponent {
+  private catalog = inject(ProjectCatalogService);
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   bus = inject(ShellBus);
@@ -322,7 +324,10 @@ export class CanalComponent {
     this.msgs.update(list => [...list, { author: 'Akim Koné', color: '#F5A623', time, parts: payload.parts, mine: true, files }]);
     const text = payload.text ?? payload.parts.map(p => p.val).join('');
     const rawFiles = payload.files.map(f => f.file).filter((f): f is File => !!f);
-    this.channelsSvc.sendMessage(this.name(), text, rawFiles).subscribe();
+    // Mentions résolues en cibles réelles : sans elles, le backend ne peut
+    // rattacher la mention à personne (« Mentions reçues » resterait vide).
+    const mentions = this.catalog.resolveMentions(payload.parts);
+    this.channelsSvc.sendMessage(this.name(), text, rawFiles, mentions).subscribe();
   }
 
   onChipOpen(ev: MentionChipEvent): void {

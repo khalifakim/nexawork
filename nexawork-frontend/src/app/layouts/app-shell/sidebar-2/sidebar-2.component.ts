@@ -610,7 +610,7 @@ export class Sidebar2Component {
   }
   access(c: Channel): void {
     this.menuId.set(null);
-    this.bus.openAccessChannel({ id: c.id, name: c.name, scope: c.scope });
+    this.bus.openAccessChannel({ id: c.id, name: c.name, scope: c.scope, projectId: c.projectId });
   }
   del(c: Channel): void {
     this.menuId.set(null);

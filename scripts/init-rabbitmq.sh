@@ -68,6 +68,7 @@ declare_queue_binding nexawork.notification.task-commented     task.commented
 declare_queue_binding nexawork.notification.livrable-validated  livrable.validated
 declare_queue_binding nexawork.notification.call-ended          call.ended
 declare_queue_binding nexawork.notification.external-guest      external.guest.invited
+declare_queue_binding nexawork.notification.mention             message.mention
 declare_queue_binding nexawork.notification.meeting-invite      meeting.participant.invited
 
 # ── Queue GED Service (1) — V5.1 §7.4 ─────────────────────────────────────────

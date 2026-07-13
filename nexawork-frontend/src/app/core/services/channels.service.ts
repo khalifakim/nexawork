@@ -6,14 +6,17 @@ import { BaseHttpService } from '@core/http/base-http.service';
 import { FilesHttpService, StoredFile } from '@core/http/files.http.service';
 import { StompClientService } from '@core/ws/stomp-client.service';
 import {
-  Channel, ChannelFile, ChannelMessage, ChannelResponse, ChannelRestriction, CreateChannelPayload,
-  MessagePageResponse, MessageResponse, UpdateChannelPayload,
+  Channel, ChannelAccessMode, ChannelFile, ChannelGrant, ChannelMemberResponse, ChannelMessage,
+  ChannelResponse, ChannelRestriction, CreateChannelPayload, MessagePageResponse, MessageResponse,
+  UpdateChannelPayload,
 } from '@core/models/channel.models';
 import { CHANNELS_BY_WORKSPACE, CHANNEL_THREADS, DEFAULT_CHANNEL_THREAD } from '@core/mock/channels';
 import { parseRichText } from '@core/util/mention.util';
+import { MentionRef } from '@core/models/mention.models';
 import { avatarColorFor } from '@core/util/ui.util';
 import { SessionService } from './session.service';
 import { MembersService } from './members.service';
+import { ProjectsService } from './projects.service';
 import { DataRefreshService } from './data-refresh.service';
 
 /**
@@ -36,7 +39,7 @@ export abstract class ChannelsService {
    * est d'abord téléversé au File Service, puis rattaché à un message (le
    * backend porte une pièce jointe par message).
    */
-  abstract sendMessage(id: string, content: string, files?: File[]): Observable<void>;
+  abstract sendMessage(id: string, content: string, files?: File[], mentions?: MentionRef[]): Observable<void>;
 
   abstract rename(id: string, patch: UpdateChannelPayload): void;
   abstract remove(id: string): void;
@@ -47,7 +50,18 @@ export abstract class ChannelsService {
    */
   abstract create(payload: CreateChannelPayload): Observable<Channel>;
   abstract restrictionOf(id: string): ChannelRestriction;
-  abstract setRestriction(id: string, r: ChannelRestriction, readonly?: boolean): void;
+  /**
+   * Accès **réels** du canal : mode + bénéficiaires explicites, relus du serveur
+   * (`GET /channels/{id}/access`). `restrictionOf` ne connaît que le mode — le
+   * modal « Gérer les accès » doit, lui, afficher les vrais bénéficiaires.
+   */
+  abstract access(id: string): Observable<ChannelRestriction>;
+  /**
+   * Persiste les accès. Les bénéficiaires partent réellement au backend : une
+   * équipe est **déployée en ses membres** (le Messaging ne connaît pas la
+   * composition des projets — il ne stocke que des `userId`).
+   */
+  abstract setRestriction(id: string, r: ChannelRestriction, readonly?: boolean): Observable<void>;
   abstract isPrivate(id: string): boolean;
   abstract isReadonly(id: string): boolean;
   /**
@@ -91,7 +105,7 @@ export class ChannelsMockService extends ChannelsService {
   list(): Observable<Channel[]> { return this.channels$; }
   thread(id: string): Observable<ChannelMessage[]> { return of(CHANNEL_THREADS[id] ?? DEFAULT_CHANNEL_THREAD).pipe(delay(80)); }
   live(_id: string): Observable<ChannelMessage> { return EMPTY; }
-  sendMessage(_id: string, _content: string, _files?: File[]): Observable<void> { return of(void 0); }
+  sendMessage(_id: string, _content: string, _files?: File[], _mentions?: MentionRef[]): Observable<void> { return of(void 0); }
 
   rename(id: string, patch: UpdateChannelPayload): void {
     const wsId = this.session.activeWorkspaceId();
@@ -116,7 +130,8 @@ export class ChannelsMockService extends ChannelsService {
     return of(channel).pipe(delay(80));
   }
   restrictionOf(id: string): ChannelRestriction { return this.restrictions()[id] ?? { mode: 'open', grants: [] }; }
-  setRestriction(id: string, r: ChannelRestriction, readonly?: boolean): void {
+  access(id: string): Observable<ChannelRestriction> { return of(this.restrictionOf(id)).pipe(delay(40)); }
+  setRestriction(id: string, r: ChannelRestriction, readonly?: boolean): Observable<void> {
     this.restrictions.update(map => {
       if (r.mode === 'open') { if (!(id in map)) return map; const { [id]: _, ...rest } = map; return rest; }
       return { ...map, [id]: { mode: 'private', grants: r.grants.map(g => ({ ...g })) } };
@@ -125,6 +140,7 @@ export class ChannelsMockService extends ChannelsService {
       const wsId = this.session.activeWorkspaceId();
       this.perWs.update(map => ({ ...map, [wsId]: (map[wsId] ?? []).map(c => c.id === id ? { ...c, readonly } : c) }));
     }
+    return of(void 0).pipe(delay(40));
   }
   isPrivate(id: string): boolean { return this.restrictionOf(id).mode === 'private'; }
   isReadonly(id: string): boolean {
@@ -136,9 +152,8 @@ export class ChannelsMockService extends ChannelsService {
   hasAccess(id: string): boolean {
     if (!this.isPrivate(id)) return true;
     if (this.session.isAdmin()) return true;
-    const grants = this.restrictionOf(id).grants;
-    const me = 'Akim Koné';
-    return grants.some(g => g.type === 'user' && g.name === me);
+    const meId = this.session.user()?.id;
+    return this.restrictionOf(id).grants.some(g => g.type === 'user' && g.id === meId);
   }
   canWriteInReadonly(id: string, isProjectLead: boolean): boolean {
     const isAdmin = this.session.isAdmin();
@@ -158,6 +173,7 @@ export class ChannelsHttpService extends BaseHttpService implements ChannelsServ
   private readonly stomp = inject(StompClientService);
   private readonly filesSvc = inject(FilesHttpService);
   private readonly refresh = inject(DataRefreshService);
+  private readonly projects = inject(ProjectsService);
 
   /** Snapshot des canaux visibles (par slug) — alimente les méthodes synchrones. */
   private readonly cache = signal<Map<string, Channel>>(new Map());
@@ -200,21 +216,21 @@ export class ChannelsHttpService extends BaseHttpService implements ChannelsServ
     }));
   }
 
-  sendMessage(id: string, content: string, files: File[] = []): Observable<void> {
+  sendMessage(id: string, content: string, files: File[] = [], mentions: MentionRef[] = []): Observable<void> {
     const text = content.trim();
     return this.ensureUuid(id).pipe(switchMap(uuid => {
       if (!uuid) return of(void 0);
       const endpoint = `/channels/${uuid}/messages`;
       if (files.length === 0) {
         return text
-          ? this.post$<MessageResponse>('messaging', endpoint, { content: text }).pipe(map(() => void 0))
+          ? this.post$<MessageResponse>('messaging', endpoint, { content: text, mentions }).pipe(map(() => void 0))
           : of(void 0);
       }
       // Téléverse tous les fichiers puis envoie UN SEUL message qui les porte tous.
       const workspaceId = this.session.activeWorkspaceId();
       return forkJoin(files.map(f => this.filesSvc.upload('channel-msg', f, { workspaceId, channelId: uuid })))
         .pipe(switchMap(stored =>
-          this.post$<MessageResponse>('messaging', endpoint, messageBody(text, stored)).pipe(map(() => void 0))));
+          this.post$<MessageResponse>('messaging', endpoint, messageBody(text, stored, mentions)).pipe(map(() => void 0))));
     }));
   }
 
@@ -235,14 +251,17 @@ export class ChannelsHttpService extends BaseHttpService implements ChannelsServ
     }
   }
   create(payload: CreateChannelPayload): Observable<Channel> {
-    return this.post$<ChannelResponse>('messaging', '/channels', {
-      name: payload.name,
-      icon: payload.kind === 'bell' ? 'BELL' : 'HASH',
-      projectId: payload.projectId,
-      readonly: payload.readonly,
-      isPrivate: payload.restriction.mode === 'private',
-      memberUserIds: [],
-    }).pipe(
+    const isPrivate = payload.restriction.mode === 'private';
+    return this.memberUserIds(payload.restriction.grants, payload.projectId).pipe(
+      switchMap(memberUserIds => this.post$<ChannelResponse>('messaging', '/channels', {
+        name: payload.name,
+        icon: payload.kind === 'bell' ? 'BELL' : 'HASH',
+        projectId: payload.projectId,
+        readonly: payload.readonly,
+        isPrivate,
+        memberUserIds: isPrivate ? memberUserIds : [],
+      })),
+    ).pipe(
       this.refresh.mutating('channels'), // loader + refetch sidebar
       map(toChannel),
       // Le canal est immédiatement connu du cache slug→UUID : la navigation qui
@@ -253,14 +272,62 @@ export class ChannelsHttpService extends BaseHttpService implements ChannelsServ
   restrictionOf(id: string): ChannelRestriction {
     return { mode: this.cache().get(id)?.isPrivate ? 'private' : 'open', grants: [] };
   }
-  setRestriction(id: string, r: ChannelRestriction, readonly?: boolean): void {
-    const uuid = this.uuidOf(id);
-    if (!uuid) return;
-    this.put$<void>('messaging', `/channels/${uuid}/access`, { isPrivate: r.mode === 'private', memberUserIds: [] }).subscribe();
+
+  /** Bénéficiaires réels du canal, noms résolus via l'annuaire. */
+  access(id: string): Observable<ChannelRestriction> {
+    const channel = this.cache().get(id);
+    const uuid = channel?.uuid;
+    const mode: ChannelAccessMode = channel?.isPrivate ? 'private' : 'open';
+    if (!uuid || mode === 'open') return of({ mode, grants: [] });
+    return forkJoin({
+      members: this.get$<ChannelMemberResponse[]>('messaging', `/channels/${uuid}/access`),
+      dir: this.members.directory(),
+    }).pipe(map(({ members, dir }) => {
+      const byId = new Map(dir.map(m => [m.userId, m]));
+      return {
+        mode,
+        // Le backend ne stocke que des utilisateurs : une équipe conviée a été
+        // déployée en ses membres à l'enregistrement, on les relit tels quels.
+        grants: members.map(m => ({
+          type: 'user' as const,
+          id: m.userId,
+          name: byId.get(m.userId)?.name ?? 'Membre',
+        })),
+      };
+    }));
+  }
+
+  setRestriction(id: string, r: ChannelRestriction, readonly?: boolean): Observable<void> {
+    const channel = this.cache().get(id);
+    const uuid = channel?.uuid;
+    if (!uuid) return of(void 0);
+    const isPrivate = r.mode === 'private';
+
+    const calls: Observable<unknown>[] = [
+      this.memberUserIds(r.grants, channel?.projectId).pipe(switchMap(memberUserIds =>
+        this.put$<void>('messaging', `/channels/${uuid}/access`,
+          { isPrivate, memberUserIds: isPrivate ? memberUserIds : [] }))),
+    ];
     if (readonly !== undefined) {
-      const c = this.cache().get(id);
-      this.patch$<ChannelResponse>('messaging', `/channels/${uuid}`, { readonly, icon: c?.kind === 'bell' ? 'BELL' : 'HASH', name: c?.name }).subscribe();
+      calls.push(this.patch$<ChannelResponse>('messaging', `/channels/${uuid}`,
+        { readonly, icon: channel?.kind === 'bell' ? 'BELL' : 'HASH', name: channel?.name }));
     }
+    return forkJoin(calls).pipe(this.refresh.mutating('channels'), map(() => void 0));
+  }
+
+  /**
+   * Grants → `userId[]` envoyés au backend. Une équipe est **déployée en ses
+   * membres** : le Messaging ne connaît pas la composition des projets, il ne
+   * sait stocker que des utilisateurs (`channel_members.user_id`).
+   */
+  private memberUserIds(grants: ChannelGrant[], projectId?: string): Observable<string[]> {
+    const users = grants.filter(g => g.type === 'user').map(g => g.id);
+    const teams = grants.filter(g => g.type === 'team').map(g => g.id);
+    if (teams.length === 0 || !projectId) return of([...new Set(users)]);
+    return this.projects.members(projectId).pipe(map(ms => [...new Set([
+      ...users,
+      ...ms.filter(m => m.teamId && teams.includes(m.teamId)).map(m => m.userId),
+    ])]));
   }
   isPrivate(id: string): boolean { return !!this.cache().get(id)?.isPrivate; }
   isReadonly(id: string): boolean {
@@ -283,15 +350,20 @@ export class ChannelsHttpService extends BaseHttpService implements ChannelsServ
 }
 
 /** Corps d'un message envoyé (contenu + pièces jointes multiples). */
-export interface OutgoingMessageBody { content: string; attachments: { url: string; name: string }[]; }
+export interface OutgoingMessageBody {
+  content: string;
+  attachments: { url: string; name: string }[];
+  /** Cibles des mentions — sans elles le backend ne peut rattacher la mention à personne. */
+  mentions: MentionRef[];
+}
 
 /**
  * Corps d'un message portant N fichiers déjà téléversés : un seul message avec
  * la liste de ses pièces jointes (le backend accepte 0..N par message depuis V2).
  * Réutilisé par canaux et conversations.
  */
-export function messageBody(text: string, stored: StoredFile[]): OutgoingMessageBody {
-  return { content: text, attachments: stored.map(s => ({ url: s.downloadUrl, name: s.fileName })) };
+export function messageBody(text: string, stored: StoredFile[], mentions: MentionRef[] = []): OutgoingMessageBody {
+  return { content: text, attachments: stored.map(s => ({ url: s.downloadUrl, name: s.fileName })), mentions };
 }
 
 /**

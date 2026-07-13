@@ -105,7 +105,7 @@ public class ConversationServiceImpl implements ConversationService {
                 .build();
         assembler.applyAttachments(message, request, caller.userId());
         message = messageRepository.save(message);
-        assembler.persistMentions(message);
+        assembler.notifyMentioned(message, assembler.persistMentions(message, request), null, null, conversationId);
         MessageResponse dto = assembler.toDto(message);
         broadcaster.broadcastConversationMessage(conversationId, dto); // temps réel (§7.5)
         return dto;
