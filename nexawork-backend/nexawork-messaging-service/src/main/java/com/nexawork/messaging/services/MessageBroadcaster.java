@@ -1,6 +1,7 @@
 package com.nexawork.messaging.services;
 
 import com.nexawork.messaging.dtos.responses.MessageResponse;
+import com.nexawork.messaging.dtos.responses.TypingEvent;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
@@ -33,5 +34,13 @@ public class MessageBroadcaster {
     public void broadcastConversationMessage(UUID conversationId, MessageResponse message) {
         messagingTemplate.convertAndSend("/topic/conversations/" + conversationId, message);
         log.debug("Message {} diffusé sur /topic/conversations/{}", message.getId(), conversationId);
+    }
+
+    /**
+     * Diffuse l'indicateur de saisie sur {@code /topic/conversations/{id}/typing}
+     * (événement volatile, jamais persisté).
+     */
+    public void broadcastTyping(UUID conversationId, TypingEvent event) {
+        messagingTemplate.convertAndSend("/topic/conversations/" + conversationId + "/typing", event);
     }
 }

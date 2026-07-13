@@ -1,9 +1,11 @@
 package com.nexawork.messaging.controllers;
 
 import com.nexawork.messaging.dtos.requests.SendMessageRequest;
+import com.nexawork.messaging.dtos.responses.TypingEvent;
 import com.nexawork.messaging.security.StompIdentity;
 import com.nexawork.messaging.security.WebSocketHandshakeInterceptor;
 import com.nexawork.messaging.services.ConversationService;
+import com.nexawork.messaging.services.MessageBroadcaster;
 import com.nexawork.messaging.services.MessageService;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -35,6 +37,7 @@ public class StompMessageController {
 
     MessageService messageService;
     ConversationService conversationService;
+    MessageBroadcaster broadcaster;
 
     @MessageMapping("/channels/{channelId}/send")
     public void sendToChannel(@DestinationVariable UUID channelId,
@@ -48,6 +51,24 @@ public class StompMessageController {
                                    @Payload SendMessageRequest request,
                                    SimpMessageHeaderAccessor accessor) {
         withIdentity(accessor, () -> conversationService.sendMessage(conversationId, request));
+    }
+
+    /**
+     * Indicateur de saisie (« untel est en train d'écrire »). Événement volatile :
+     * on rediffuse simplement aux abonnés du topic, sans persistance. L'auteur est
+     * l'identité STOMP (jamais celle envoyée par le client).
+     */
+    @MessageMapping("/conversations/{conversationId}/typing")
+    public void typing(@DestinationVariable UUID conversationId,
+                       @Payload TypingEvent event,
+                       SimpMessageHeaderAccessor accessor) {
+        Object userId = accessor.getSessionAttributes() != null
+                ? accessor.getSessionAttributes().get(WebSocketHandshakeInterceptor.ATTR_USER_ID) : null;
+        if (userId == null) {
+            return;
+        }
+        broadcaster.broadcastTyping(conversationId,
+                new TypingEvent(UUID.fromString(userId.toString()), event.isTyping()));
     }
 
     /**

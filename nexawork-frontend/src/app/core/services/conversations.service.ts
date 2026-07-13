@@ -1,6 +1,6 @@
 import { Injectable, Signal, inject, signal } from '@angular/core';
 import { EMPTY, Observable, forkJoin, map, of, switchMap } from 'rxjs';
-import { delay } from 'rxjs/operators';
+import { delay, filter } from 'rxjs/operators';
 import { BaseHttpService } from '@core/http/base-http.service';
 import { FilesHttpService } from '@core/http/files.http.service';
 import { StompClientService } from '@core/ws/stomp-client.service';
@@ -32,6 +32,10 @@ export abstract class ConversationsService {
   abstract sendMessage(id: string, content: string, files?: File[]): Observable<void>;
   /** Marque comme lus les messages reçus de la conversation. */
   abstract markRead(id: string): void;
+  /** Signale au pair que je suis (ou non) en train d'écrire (STOMP, volatile). */
+  abstract sendTyping(id: string, typing: boolean): void;
+  /** Flux « le pair est en train d'écrire » (true/false) — temps réel. */
+  abstract typing(id: string): Observable<boolean>;
   /**
    * Ids of conversations the current user has hidden. A conversation deleted
    * by the current user stays visible for the peer; when both sides delete it,
@@ -59,6 +63,8 @@ export class ConversationsMockService extends ConversationsService {
   live(_id: string): Observable<ConversationMessage> { return EMPTY; }
   sendMessage(_id: string, _content: string, _files?: File[]): Observable<void> { return of(void 0); }
   markRead(_id: string): void { /* no-op en mock */ }
+  sendTyping(_id: string, _typing: boolean): void { /* no-op en mock */ }
+  typing(_id: string): Observable<boolean> { return EMPTY; }
   deleteForMe(id: string): void {
     const next = new Set(this._deletedByMe());
     next.add(id);
@@ -132,6 +138,28 @@ export class ConversationsHttpService extends BaseHttpService implements Convers
       return forkJoin(files.map(f => this.filesSvc.upload('conversation-msg', f, { workspaceId, conversationId: conv.uuid })))
         .pipe(switchMap(stored =>
           this.post$<MessageResponse>('messaging', endpoint, messageBody(text, stored)).pipe(map(() => void 0))));
+    }));
+  }
+
+  /**
+   * Publie l'indicateur de saisie sur `/app/conversations/{uuid}/typing`.
+   * Volatile : aucun stockage, simple rediffusion aux abonnés du topic.
+   */
+  sendTyping(id: string, typing: boolean): void {
+    const conv = this.cache().get(id);
+    if (conv?.uuid) this.stomp.publish(`/app/conversations/${conv.uuid}/typing`, { typing });
+  }
+
+  /** Flux « le pair écrit » : ignore mes propres événements. */
+  typing(id: string): Observable<boolean> {
+    return this.resolveConversation(id).pipe(switchMap(conv => {
+      if (!conv?.uuid) return EMPTY;
+      const meId = this.session.user()?.id;
+      return this.stomp.watch(`/topic/conversations/${conv.uuid}/typing`).pipe(
+        map(frame => JSON.parse(frame.body) as { userId: string; typing: boolean }),
+        filter(e => e.userId !== meId),
+        map(e => e.typing),
+      );
     }));
   }
 

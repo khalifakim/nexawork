@@ -165,6 +165,8 @@ function pickPrefixToken(word: string): { tab: MentionTab; query: string } | nul
 export class CommentComposerComponent {
   @Input() placeholder = 'Commentez, mentionnez avec @, @@, @@@ ou #…';
   @Output() submitted = new EventEmitter<{ parts: RichPart[]; files: AttachedFile[]; text: string }>();
+  /** Émis à chaque frappe — alimente l'indicateur « est en train d'écrire ». */
+  @Output() typing = new EventEmitter<void>();
 
   @ViewChild('editable', { static: true }) editable!: ElementRef<HTMLDivElement>;
 
@@ -204,6 +206,7 @@ export class CommentComposerComponent {
   protected onInput(): void {
     this.rerender();
     this.syncMentionPicker();
+    this.typing.emit();
   }
 
   /** Caret moved (click / arrow keys) → re-render so completed mentions become chips. */

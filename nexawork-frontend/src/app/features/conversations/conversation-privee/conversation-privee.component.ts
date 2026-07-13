@@ -135,10 +135,12 @@ type Msg = ConversationMessage;
         }
       </div>
 
-      <div class="typing">{{ peer().name.split(' ')[0] }} est en train d'écrire…</div>
+      @if (peerTyping()) {
+        <div class="typing">{{ peer().name.split(' ')[0] }} est en train d'écrire…</div>
+      }
 
       <div class="composer">
-        <app-comment-composer [placeholder]="'Votre message…'" (submitted)="onSend($event)" />
+        <app-comment-composer [placeholder]="'Votre message…'" (submitted)="onSend($event)" (typing)="onTyping()" />
       </div>
     </div>
   `,
@@ -160,6 +162,30 @@ export class ConversationPriveeComponent {
   msgs = signal<Msg[]>([]);
   /** Vrai tant que l'historique de la conversation n'est pas chargé. */
   loading = signal(true);
+
+  // ── Indicateur « est en train d'écrire » ────────────────────────────────────
+  /** Vrai uniquement quand le pair est EN LIGNE et tape réellement (STOMP). */
+  private typingRaw = signal(false);
+  peerTyping = computed(() => this.typingRaw() && this.peer().online);
+  /** Timer d'expiration : l'indicateur retombe si plus rien n'arrive. */
+  private typingTimer?: ReturnType<typeof setTimeout>;
+  /** Anti-spam : on ne republie « je tape » qu'une fois par fenêtre. */
+  private lastTypingSentAt = 0;
+  private stopTypingTimer?: ReturnType<typeof setTimeout>;
+
+  /** Frappe locale → publie « je tape » (throttlé) puis « j'ai arrêté » après 3 s. */
+  onTyping(): void {
+    const now = Date.now();
+    if (now - this.lastTypingSentAt > 2000) {
+      this.lastTypingSentAt = now;
+      this.conversationsSvc.sendTyping(this.slug(), true);
+    }
+    clearTimeout(this.stopTypingTimer);
+    this.stopTypingTimer = setTimeout(() => {
+      this.lastTypingSentAt = 0;
+      this.conversationsSvc.sendTyping(this.slug(), false);
+    }, 3000);
+  }
 
   /** Header search — open flag and query text. */
   searchOpen = signal(false);
@@ -216,8 +242,24 @@ export class ConversationPriveeComponent {
         this.msgs.set(thread);
         this.searchQ.set('');
         this.loading.set(false);
+        this.typingRaw.set(false); // jamais affiché par défaut à l'ouverture
         // À l'ouverture, marquer la conversation comme lue (accusé de lecture).
         this.conversationsSvc.markRead(this.slug());
+      });
+
+    // Indicateur de saisie du pair (STOMP). Retombe seul après 4 s sans signal.
+    toObservable(this.slug)
+      .pipe(
+        tap(() => this.typingRaw.set(false)),
+        switchMap(s => this.conversationsSvc.typing(s)),
+        takeUntilDestroyed(),
+      )
+      .subscribe(isTyping => {
+        this.typingRaw.set(isTyping);
+        clearTimeout(this.typingTimer);
+        if (isTyping) {
+          this.typingTimer = setTimeout(() => this.typingRaw.set(false), 4000);
+        }
       });
     // Réception temps réel des messages du pair (mes propres messages sont déjà
     // affichés de façon optimiste à l'envoi).
