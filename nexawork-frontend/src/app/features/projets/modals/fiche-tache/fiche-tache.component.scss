@@ -103,3 +103,21 @@
 .att__del { margin-left: auto; border: none; background: transparent; color: var(--nx-text-400); cursor: pointer; display: flex; padding: 2px; border-radius: 6px; }
 .att__del:hover { color: var(--nx-danger, #E0497B); background: var(--nx-surface-2); }
 .drop { cursor: pointer; }
+
+/* Mode édition — bouton crayon / validation */
+.edit { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 11px; border: 1px solid var(--nx-border); border-radius: 8px; background: #fff; color: var(--nx-text-700); font-family: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.edit:hover { background: var(--nx-surface-2); }
+.edit--save { background: var(--nx-indigo); border-color: var(--nx-indigo); color: #fff; box-shadow: var(--nx-shadow-primary); }
+.edit--save:hover { filter: brightness(1.05); }
+.edit--cancel { padding: 0 9px; color: var(--nx-text-500); }
+.edit:disabled { opacity: .6; cursor: default; }
+
+/* Titre / description en lecture (non-édition) */
+.title--ro { padding: 0 0 16px; }
+.title--edit { border-bottom: 2px solid var(--nx-indigo); padding-bottom: 12px; margin-bottom: 4px; }
+.desc--ro { min-height: 20px; padding: 2px 0; font-size: 13.5px; line-height: 1.6; color: var(--nx-text-600); white-space: pre-wrap; }
+
+/* Champs éditables inline (statut, assigné, dates, priorité, estimé) */
+.ed { height: 34px; padding: 0 10px; border: 1px solid var(--nx-border); border-radius: 8px; background: #fff; font-family: inherit; font-size: 13.5px; color: var(--nx-text); outline: none; min-width: 180px; }
+.ed:focus { border-color: var(--nx-indigo); }
+.ed--sel { cursor: pointer; }

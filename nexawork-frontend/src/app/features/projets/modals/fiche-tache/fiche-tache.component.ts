@@ -7,13 +7,23 @@ import { IconComponent } from '@shared/ui/icon/icon.component';
 import { CommentComposerComponent } from '@shared/ui/comment-composer/comment-composer.component';
 import { MentionChipComponent, MentionChipEvent } from '@shared/ui/mention-chip/mention-chip.component';
 import { ShellBus } from '@layouts/app-shell/shell.bus';
-import { TaskCard, TaskComment, AttachedRef } from '@core/models/task.models';
+import { TaskCard, TaskComment, AttachedRef, KanbanColumn, TaskPriority, UpdateTaskPayload } from '@core/models/task.models';
+import { Member } from '@core/models/member.models';
 import { chipTabFor as chipTabForUtil, parseRichText, RichPart } from '@core/util/mention.util';
 import { avatarColorFor } from '@core/util/ui.util';
 import { TasksService } from '@core/services/tasks.service';
+import { MembersService } from '@core/services/members.service';
 import { SessionService } from '@core/services/session.service';
 import { FilesHttpService } from '@core/http/files.http.service';
 import { ToastService } from '@core/services/toast.service';
+import { Observable, of } from 'rxjs';
+
+const PRIORITIES: { value: TaskPriority; label: string; color: string }[] = [
+  { value: 'LOW',    label: 'Basse',   color: '#2BB673' },
+  { value: 'MEDIUM', label: 'Moyenne', color: '#E89A2C' },
+  { value: 'HIGH',   label: 'Haute',   color: '#F5564E' },
+  { value: 'URGENT', label: 'Urgente', color: '#E0497B' },
+];
 
 /** Vue d'affichage d'une sous-tâche. */
 interface SubRow { id: string; title: string; done: boolean; }
@@ -53,39 +63,88 @@ interface CommentRow {
             <span class="id nx-mono">{{ task.taskKey }}</span>
             <span class="created">Créée le {{ fmtDate(task.createdDate) }}</span>
             @if (!readonly) {
-              <button class="del" (click)="deleteTask()"><app-icon name="trash" [size]="14" />Supprimer</button>
+              @if (editMode()) {
+                <button class="edit edit--save" [disabled]="saving()" (click)="saveEdit()" title="Enregistrer les modifications"><app-icon name="check" [size]="15" [stroke]="2.4" />{{ saving() ? 'Enregistrement…' : 'Enregistrer' }}</button>
+                <button class="edit edit--cancel" [disabled]="saving()" (click)="cancelEdit()" title="Annuler"><app-icon name="x" [size]="15" /></button>
+              } @else {
+                <button class="edit" (click)="enterEdit()" title="Modifier la tâche"><app-icon name="edit" [size]="14" />Modifier</button>
+                <button class="del" (click)="deleteTask()"><app-icon name="trash" [size]="14" />Supprimer</button>
+              }
             } @else {
               <span class="ro"><app-icon name="lock" [size]="12" />Lecture seule</span>
             }
           </div>
 
           <div class="lbody">
-            <input class="title" [value]="task.title" [readonly]="readonly"
-                   (blur)="saveTitle($any($event.target).value)" />
+            @if (editMode()) {
+              <input class="title title--edit" [value]="eTitle()" (input)="eTitle.set($any($event.target).value)" placeholder="Nom de la tâche" />
+            } @else {
+              <div class="title title--ro">{{ task.title }}</div>
+            }
 
             <div class="fields">
               <div class="frow"><span class="fl"><app-icon name="taskCheck" [size]="16" />Statut</span>
-                <span class="status" [style.color]="task.tag[1]" [style.background]="statusBg()"><span class="sdot" [style.background]="task.tag[1]"></span>{{ task.tag[0] }}</span></div>
+                @if (editMode()) {
+                  <select class="ed ed--sel" [value]="eStatusId()" (change)="eStatusId.set($any($event.target).value)">
+                    @for (c of columns(); track c.id) { <option [value]="c.id">{{ c.name }}</option> }
+                  </select>
+                } @else {
+                  <span class="status" [style.color]="task.tag[1]" [style.background]="statusBg()"><span class="sdot" [style.background]="task.tag[1]"></span>{{ task.tag[0] }}</span>
+                }
+              </div>
               <div class="frow"><span class="fl"><app-icon name="user" [size]="16" />Assignés</span>
-                @if (task.assigneeId) {
+                @if (editMode()) {
+                  <select class="ed ed--sel" [value]="eAssigneeId()" (change)="eAssigneeId.set($any($event.target).value)">
+                    <option value="">Non assigné</option>
+                    @for (m of directory(); track m.userId) { <option [value]="m.userId">{{ m.name }}</option> }
+                  </select>
+                } @else if (task.assigneeId) {
                   <span class="assignee"><span class="av" [style.background]="assigneeColor()">{{ assigneeInitials() }}</span>{{ assigneeLabel() }}</span>
                 } @else {
                   <span class="fv fv--muted">Non assigné</span>
                 }
               </div>
-              <div class="frow"><span class="fl"><app-icon name="calendar" [size]="16" />Date de début</span><span class="fv" [class.fv--muted]="!task.startDate">{{ task.startDate ? fmtDate(task.startDate) : 'Non définie' }}</span></div>
-              <div class="frow"><span class="fl"><app-icon name="calendar" [size]="16" />Date de fin</span><span class="fv" [class.fv--muted]="!task.dueDate">{{ task.dueDate ? fmtDate(task.dueDate) : 'Non définie' }}</span></div>
+              <div class="frow"><span class="fl"><app-icon name="calendar" [size]="16" />Date de début</span>
+                @if (editMode()) {
+                  <input class="ed" type="date" [value]="eStart()" (change)="eStart.set($any($event.target).value)" />
+                } @else {
+                  <span class="fv" [class.fv--muted]="!task.startDate">{{ task.startDate ? fmtDate(task.startDate) : 'Non définie' }}</span>
+                }
+              </div>
+              <div class="frow"><span class="fl"><app-icon name="calendar" [size]="16" />Date de fin</span>
+                @if (editMode()) {
+                  <input class="ed" type="date" [value]="eDue()" (change)="eDue.set($any($event.target).value)" />
+                } @else {
+                  <span class="fv" [class.fv--muted]="!task.dueDate">{{ task.dueDate ? fmtDate(task.dueDate) : 'Non définie' }}</span>
+                }
+              </div>
               <div class="frow"><span class="fl"><app-icon name="flag" [size]="16" />Priorité</span>
-                <span class="prio" [style.color]="task.prio[1]"><span class="pdot" [style.background]="task.prio[1]"></span>{{ task.prio[0] }}</span></div>
-              <div class="frow"><span class="fl"><app-icon name="clockEst" [size]="16" />Temps estimé</span><span class="fv" [class.fv--muted]="!task.estimate">{{ task.estimate || 'Non défini' }}</span></div>
+                @if (editMode()) {
+                  <select class="ed ed--sel" [value]="ePriority()" (change)="ePriority.set($any($event.target).value)">
+                    @for (p of PRIORITIES; track p.value) { <option [value]="p.value">{{ p.label }}</option> }
+                  </select>
+                } @else {
+                  <span class="prio" [style.color]="task.prio[1]"><span class="pdot" [style.background]="task.prio[1]"></span>{{ task.prio[0] }}</span>
+                }
+              </div>
+              <div class="frow"><span class="fl"><app-icon name="clockEst" [size]="16" />Temps estimé</span>
+                @if (editMode()) {
+                  <input class="ed" [value]="eEstimate()" (input)="eEstimate.set($any($event.target).value)" placeholder="Ex. 3 h, 2 j…" />
+                } @else {
+                  <span class="fv" [class.fv--muted]="!task.estimate">{{ task.estimate || 'Non défini' }}</span>
+                }
+              </div>
             </div>
 
             <div class="sep"></div>
 
             <div class="block">
               <div class="block__t">Description</div>
-              <textarea class="desc" rows="3" [readonly]="readonly"
-                        [value]="task.desc" (blur)="saveDesc($any($event.target).value)"></textarea>
+              @if (editMode()) {
+                <textarea class="desc" rows="3" [value]="eDesc()" (input)="eDesc.set($any($event.target).value)" placeholder="Ajoutez une description…"></textarea>
+              } @else {
+                <div class="desc desc--ro">{{ task.desc || 'Aucune description.' }}</div>
+              }
             </div>
 
             <div class="block">
@@ -215,6 +274,7 @@ export class FicheTacheComponent implements OnChanges {
   private router = inject(Router);
   protected bus = inject(ShellBus);
   private tasksSvc = inject(TasksService);
+  private membersSvc = inject(MembersService);
   private session = inject(SessionService);
   private filesSvc = inject(FilesHttpService);
   private toast = inject(ToastService);
@@ -227,6 +287,23 @@ export class FicheTacheComponent implements OnChanges {
   adding = signal(false);
   draft = signal('');
 
+  // ── Mode édition ────────────────────────────────────────────────────────────
+  readonly PRIORITIES = PRIORITIES;
+  protected editMode = signal(false);
+  protected saving = signal(false);
+  /** Statuts (colonnes) et membres du projet — chargés à l'entrée en édition. */
+  protected columns = signal<KanbanColumn[]>([]);
+  protected directory = signal<Member[]>([]);
+  // Valeurs en cours d'édition.
+  protected eTitle = signal('');
+  protected eDesc = signal('');
+  protected eStatusId = signal('');
+  protected eAssigneeId = signal('');
+  protected eStart = signal('');
+  protected eDue = signal('');
+  protected ePriority = signal<TaskPriority>('MEDIUM');
+  protected eEstimate = signal('');
+
   private loadedTaskId: string | null = null;
 
   statusBg = computed(() => this.tintFromColor(this.task.tag[1]));
@@ -234,8 +311,9 @@ export class FicheTacheComponent implements OnChanges {
   assigneeLabel = computed(() => {
     const id = this.task.assigneeId;
     if (!id) return 'Non assigné';
-    // Résolution du nom (annuaire des membres) = phase I3.
-    return id === this.session.user()?.id ? (this.session.user()?.displayName ?? 'Moi') + ' (moi)' : 'Assigné';
+    if (id === this.session.user()?.id) return (this.session.user()?.displayName ?? 'Moi') + ' (moi)';
+    // Résolution du nom via l'annuaire réel des membres.
+    return this.directory().find(m => m.userId === id)?.name ?? 'Assigné';
   });
   assigneeInitials = computed(() => this.ini(this.assigneeLabel()));
 
@@ -244,6 +322,78 @@ export class FicheTacheComponent implements OnChanges {
       this.comments();
       requestAnimationFrame(() => this.scrollThreadToBottom());
     });
+    // Annuaire chargé une fois — sert à résoudre le nom de l'assigné (affichage + édition).
+    this.membersSvc.directory().subscribe(list => this.directory.set(list));
+  }
+
+  // ── Mode édition ────────────────────────────────────────────────────────────
+  /** Passe la fiche en édition : initialise les champs + charge les statuts du projet. */
+  enterEdit(): void {
+    if (this.readonly) return;
+    this.eTitle.set(this.task.title);
+    this.eDesc.set(this.task.desc ?? '');
+    this.eStatusId.set(this.task.statusId);
+    this.eAssigneeId.set(this.task.assigneeId ?? '');
+    this.eStart.set(this.task.startDate ?? '');
+    this.eDue.set(this.task.dueDate ?? '');
+    this.ePriority.set(this.task.priority);
+    this.eEstimate.set(this.task.estimate ?? '');
+    // Colonnes du projet (sélecteur de statut).
+    this.tasksSvc.loadBoard(this.task.projectId).subscribe(b => this.columns.set(b.columns));
+    this.editMode.set(true);
+  }
+
+  cancelEdit(): void { this.editMode.set(false); }
+
+  /**
+   * Enregistre toutes les modifications : champs de la tâche (updateTask) + statut
+   * (changeStatus si modifié). Toast de confirmation, la fiche reste ouverte.
+   */
+  saveEdit(): void {
+    if (this.readonly || this.saving()) return;
+    const title = this.eTitle().trim();
+    if (!title) { this.toast.show({ message: 'Le nom de la tâche est obligatoire.', icon: 'warning' }); return; }
+    this.saving.set(true);
+
+    const payload: UpdateTaskPayload = {
+      title,
+      description: this.eDesc(),
+      priority: this.ePriority(),
+      startDate: this.eStart() || undefined,
+      dueDate: this.eDue() || undefined,
+      estimate: this.eEstimate() || undefined,
+    };
+    // Assigné : soit un membre, soit retrait explicite.
+    if (this.eAssigneeId()) {
+      payload.assigneeType = 'USER';
+      payload.assigneeId = this.eAssigneeId();
+    } else {
+      payload.clearAssignee = true;
+    }
+
+    const statusChanged = this.eStatusId() && this.eStatusId() !== this.task.statusId;
+    this.tasksSvc.updateTask(this.task.id, payload).subscribe({
+      next: card => {
+        this.task = { ...this.task, ...card };
+        const status$: Observable<TaskCard | null> = statusChanged
+          ? this.tasksSvc.changeStatus(this.task.id, this.eStatusId())
+          : of(null);
+        status$.subscribe({
+          next: fresh => {
+            if (fresh) this.task = { ...this.task, ...fresh };
+            this.finishSave();
+          },
+          error: () => { this.finishSave(); }, // updateTask a réussi ; la FSM a refusé le statut
+        });
+      },
+      error: () => this.saving.set(false),
+    });
+  }
+
+  private finishSave(): void {
+    this.saving.set(false);
+    this.editMode.set(false);
+    this.toast.show({ message: 'Modifications enregistrées avec succès' });
   }
 
   ngOnChanges(): void {
@@ -279,17 +429,6 @@ export class FicheTacheComponent implements OnChanges {
   private scrollThreadToBottom(): void {
     const el = this.threadEl?.nativeElement;
     if (el) el.scrollTop = el.scrollHeight;
-  }
-
-  // ── Édition titre / description ─────────────────────────────────────────────
-  saveTitle(v: string): void {
-    const title = v.trim();
-    if (this.readonly || !title || title === this.task.title) return;
-    this.tasksSvc.updateTask(this.task.id, { title }).subscribe(card => { this.task = { ...this.task, ...card }; });
-  }
-  saveDesc(v: string): void {
-    if (this.readonly || v === this.task.desc) return;
-    this.tasksSvc.updateTask(this.task.id, { description: v }).subscribe(card => { this.task = { ...this.task, ...card }; });
   }
 
   deleteTask(): void {
