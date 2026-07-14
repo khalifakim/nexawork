@@ -175,17 +175,35 @@ export class ChannelsHttpService extends BaseHttpService implements ChannelsServ
   private readonly refresh = inject(DataRefreshService);
   private readonly projects = inject(ProjectsService);
 
-  /** Snapshot des canaux visibles (par slug) — alimente les méthodes synchrones. */
+  /**
+   * Snapshot des canaux visibles — alimente les méthodes synchrones.
+   *
+   * Indexé par **id unique** (`general-184da140`), avec un **repli par slug** : les
+   * liens des notifications ne portent que le nom du canal (`/app/canaux/general`),
+   * et doivent continuer d'aboutir.
+   */
   private readonly cache = signal<Map<string, Channel>>(new Map());
 
   list(): Observable<Channel[]> {
     return this.get$<ChannelResponse[]>('messaging', '/channels').pipe(
       map(rs => rs.map(toChannel)),
-      map(list => { this.cache.set(new Map(list.map(c => [c.id, c]))); return list; }),
+      map(list => {
+        const byId = new Map<string, Channel>();
+        // ⚠️ L'id d'abord, le slug ENSUITE et sans écraser : un canal d'organisation
+        // nommé « général » doit rester prioritaire sur `general`, et le premier
+        // canal de projet homonyme sert de repli.
+        for (const c of list) byId.set(c.id, c);
+        for (const c of list) if (c.slug && !byId.has(c.slug)) byId.set(c.slug, c);
+        this.cache.set(byId);
+        return list;
+      }),
     );
   }
 
-  private uuidOf(slug: string): string | undefined { return this.cache().get(slug)?.uuid; }
+  /** Résout un id d'URL (id unique **ou** slug hérité) en canal connu. */
+  private resolve(id: string): Channel | undefined { return this.cache().get(id); }
+
+  private uuidOf(id: string): string | undefined { return this.resolve(id)?.uuid; }
 
   thread(id: string): Observable<ChannelMessage[]> {
     return this.ensureUuid(id).pipe(switchMap(uuid => {
@@ -264,18 +282,26 @@ export class ChannelsHttpService extends BaseHttpService implements ChannelsServ
     ).pipe(
       this.refresh.mutating('channels'), // loader + refetch sidebar
       map(toChannel),
-      // Le canal est immédiatement connu du cache slug→UUID : la navigation qui
-      // suit passe `channelAccessGuard` sans dépendre du refetch de la sidebar.
-      map(channel => { this.cache.update(m => new Map(m).set(channel.id, channel)); return channel; }),
+      // Le canal est immédiatement connu du cache : la navigation qui suit passe
+      // `channelAccessGuard` sans dépendre du refetch de la sidebar. On indexe
+      // aussi son slug (sans écraser un homonyme déjà connu).
+      map(channel => {
+        this.cache.update(m => {
+          const next = new Map(m).set(channel.id, channel);
+          if (channel.slug && !next.has(channel.slug)) next.set(channel.slug, channel);
+          return next;
+        });
+        return channel;
+      }),
     );
   }
   restrictionOf(id: string): ChannelRestriction {
-    return { mode: this.cache().get(id)?.isPrivate ? 'private' : 'open', grants: [] };
+    return { mode: this.resolve(id)?.isPrivate ? 'private' : 'open', grants: [] };
   }
 
   /** Bénéficiaires réels du canal, noms résolus via l'annuaire. */
   access(id: string): Observable<ChannelRestriction> {
-    const channel = this.cache().get(id);
+    const channel = this.resolve(id);
     const uuid = channel?.uuid;
     const mode: ChannelAccessMode = channel?.isPrivate ? 'private' : 'open';
     if (!uuid || mode === 'open') return of({ mode, grants: [] });
@@ -298,7 +324,7 @@ export class ChannelsHttpService extends BaseHttpService implements ChannelsServ
   }
 
   setRestriction(id: string, r: ChannelRestriction, readonly?: boolean): Observable<void> {
-    const channel = this.cache().get(id);
+    const channel = this.resolve(id);
     const uuid = channel?.uuid;
     if (!uuid) return of(void 0);
     const isPrivate = r.mode === 'private';
@@ -329,16 +355,16 @@ export class ChannelsHttpService extends BaseHttpService implements ChannelsServ
       ...ms.filter(m => m.teamId && teams.includes(m.teamId)).map(m => m.userId),
     ])]));
   }
-  isPrivate(id: string): boolean { return !!this.cache().get(id)?.isPrivate; }
+  isPrivate(id: string): boolean { return !!this.resolve(id)?.isPrivate; }
   isReadonly(id: string): boolean {
-    const c = this.cache().get(id);
+    const c = this.resolve(id);
     return c?.readonly ?? c?.kind === 'bell';
   }
   /** La liste backend ne renvoie que les canaux accessibles (REF F). */
-  hasAccess(id: string): boolean { return this.cache().has(id); }
+  hasAccess(id: string): boolean { return !!this.resolve(id); }
   canWriteInReadonly(id: string, _isProjectLead: boolean): boolean {
     // `canWrite` est déjà calculé côté serveur (REF D) et porté par la liste.
-    return this.cache().get(id)?.canWrite ?? false;
+    return this.resolve(id)?.canWrite ?? false;
   }
 
   /** Résout le slug en UUID ; recharge la liste si le cache est froid (deep-link). */
@@ -382,8 +408,13 @@ export function messageFiles(msg: MessageResponse): ChannelFile[] | undefined {
 
 /** `ChannelResponse` (backend) → `Channel` (view-model, id = slug). */
 function toChannel(r: ChannelResponse): Channel {
+  const slug = slugifyChannel(r.name);
   return {
-    id: slugifyChannel(r.name),
+    // Un canal de PROJET est suffixé par son projet : deux projets ont chacun leur
+    // `#général`, et un id commun les faisait se recouvrir (cache écrasé, clés
+    // dupliquées dans la sidebar, canal inaccessible).
+    id: r.projectId ? `${slug}-${r.projectId.slice(0, 8)}` : slug,
+    slug,
     name: r.name,
     scope: r.channelType === 'PROJECT' ? 'project' : 'org',
     kind: r.icon === 'BELL' ? 'bell' : 'hash',

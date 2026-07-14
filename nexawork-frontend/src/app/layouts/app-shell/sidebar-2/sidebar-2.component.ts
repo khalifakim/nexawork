@@ -163,47 +163,47 @@ import { workspaceQuery, workspaceSignal } from '@core/util/workspace-signal';
           }
         }
 
-        @if (projectChannelName()) {
+        <!-- Un groupe PAR PROJET. Auparavant : un en-tête unique, et le groupe
+             entier disparaissait si le nom du projet n'était pas résolu — ce qui
+             rendait invisibles les #général/#annonces automatiques. -->
+        @if (projectChannelGroups().length) {
           <div class="head head--row"><span>Canaux Projets</span></div>
-          <button class="row row--group" (click)="canauxGrp.set(!canauxGrp())">
-            <app-icon class="row__i" name="projects" [size]="16" /><span>{{ projectChannelName() }}</span>
-            @if (canManageProjectChannels()) {
-              <button class="add" (click)="newProjectChannel(); $event.stopPropagation()" title="Ajouter un canal"><app-icon name="plus" [size]="16" /></button>
-            }
-            <span class="chev2" [style.transform]="canauxGrp() ? '' : 'rotate(-90deg)'"><app-icon name="chevronDown" [size]="15" /></span>
-          </button>
-          @if (canauxGrp()) {
-            @for (c of filteredProject(); track c.id) {
-              <div class="chwrap chwrap--sub" [class.stale]="channelsBusy()">
-                <a class="row row--sub row--ch" [routerLink]="['/app/canaux', c.id]" routerLinkActive="row--on">
-                  <app-icon class="row__i" [name]="c.kind" [size]="16" />
-                  <span>{{ c.name }}</span>
-                  @if (isPrivate(c.id)) { <span class="lock" title="Canal privé"><app-icon name="lock" [size]="13" /></span> }
-                </a>
-                @if (canManageProjectChannels()) {
-                  <button class="dots dots--sub" [class.dots--on]="menuId()===c.id"
-                          (click)="toggleMenu(c.id, $event)" title="Options du canal">⋯</button>
-                  @if (menuId()===c.id) {
-                    <div class="menubd" (click)="menuId.set(null)"></div>
-                    <div class="menu menu--sub" (click)="$event.stopPropagation()">
-                      <button class="menu__i" (click)="edit(c)"><app-icon name="edit" [size]="15" /><span>Modifier</span></button>
-                      <button class="menu__i" (click)="access(c)"><app-icon name="lock" [size]="15" /><span>Gérer les accès</span></button>
-                      <div class="menu__sep"></div>
-                      <button class="menu__i menu__i--danger" (click)="del(c)"><app-icon name="trash" [size]="15" /><span>Supprimer</span></button>
-                    </div>
+          @for (g of projectChannelGroups(); track g.id) {
+            <button class="row row--group" (click)="toggleProjectGroup(g.id)">
+              <app-icon class="row__i" name="projects" [size]="16" /><span>{{ g.name }}</span>
+              @if (canManageProjectChannels()) {
+                <button class="add" (click)="newProjectChannelFor(g); $event.stopPropagation()" title="Ajouter un canal"><app-icon name="plus" [size]="16" /></button>
+              }
+              <span class="chev2" [style.transform]="isProjectGroupOpen(g.id) ? '' : 'rotate(-90deg)'"><app-icon name="chevronDown" [size]="15" /></span>
+            </button>
+            @if (isProjectGroupOpen(g.id)) {
+              @for (c of g.channels; track c.id) {
+                <div class="chwrap chwrap--sub" [class.stale]="channelsBusy()">
+                  <a class="row row--sub row--ch" [routerLink]="['/app/canaux', c.id]" routerLinkActive="row--on">
+                    <app-icon class="row__i" [name]="c.kind" [size]="16" />
+                    <span>{{ c.name }}</span>
+                    @if (isPrivate(c.id)) { <span class="lock" title="Canal privé"><app-icon name="lock" [size]="13" /></span> }
+                  </a>
+                  @if (canManageProjectChannels()) {
+                    <button class="dots dots--sub" [class.dots--on]="menuId()===c.id"
+                            (click)="toggleMenu(c.id, $event)" title="Options du canal">⋯</button>
+                    @if (menuId()===c.id) {
+                      <div class="menubd" (click)="menuId.set(null)"></div>
+                      <div class="menu menu--sub" (click)="$event.stopPropagation()">
+                        <button class="menu__i" (click)="edit(c)"><app-icon name="edit" [size]="15" /><span>Modifier</span></button>
+                        <button class="menu__i" (click)="access(c)"><app-icon name="lock" [size]="15" /><span>Gérer les accès</span></button>
+                        <div class="menu__sep"></div>
+                        <button class="menu__i menu__i--danger" (click)="del(c)"><app-icon name="trash" [size]="15" /><span>Supprimer</span></button>
+                      </div>
+                    }
                   }
-                }
-              </div>
-            } @empty {
-              @if (canalQ().trim() && projectChannels().length > 0) {
-                <div class="chempty">Aucun canal ne correspond à votre recherche.</div>
-              } @else if (canManageProjectChannels()) {
-                <div class="chempty">Aucun canal — utilisez + pour en créer un.</div>
-              } @else {
-                <div class="chempty">Aucun canal projet pour le moment.</div>
+                </div>
               }
             }
           }
+        } @else if (canalQ().trim() && projectChannels().length > 0) {
+          <div class="head head--row"><span>Canaux Projets</span></div>
+          <div class="chempty">Aucun canal ne correspond à votre recherche.</div>
         }
         }
       }
@@ -539,20 +539,45 @@ export class Sidebar2Component {
   orgChannels = computed<Channel[]>(() => this.visibleChannels().filter(c => c.scope === 'org'));
   projectChannels = computed<Channel[]>(() => this.visibleChannels().filter(c => c.scope === 'project'));
   /**
-   * Projet propriétaire du premier canal de projet (en-tête du groupe). Le nom
-   * n'est pas porté par le canal : il est résolu depuis la liste des projets.
+   * Canaux de projet **groupés par projet**.
+   *
+   * 🔴 Auparavant : un seul en-tête, celui du projet du **premier** canal, et le
+   * groupe entier **disparaissait** si ce projet n'était pas retrouvé dans la liste
+   * (chargement pas encore arrivé, projet archivé…). Tous les canaux automatiques
+   * `#général`/`#annonces` devenaient alors **invisibles** — le symptôme signalé.
+   *
+   * Désormais : un groupe **par projet**, et un projet inconnu n'efface plus rien
+   * (libellé de repli). Un canal existant est TOUJOURS affiché.
    */
-  private projectChannelOwner = computed<Project | null>(() => {
-    const pid = this.projectChannels()[0]?.projectId;
-    return pid ? this.rawProjects().find(p => p.id === pid) ?? null : null;
+  projectChannelGroups = computed<Array<{ id: string; name: string; channels: Channel[] }>>(() => {
+    const projects = new Map(this.rawProjects().map(p => [p.id, p.name]));
+    const groups = new Map<string, { id: string; name: string; channels: Channel[] }>();
+    for (const c of this.applyChanFilter(this.projectChannels())) {
+      const pid = c.projectId ?? 'sans-projet';
+      let g = groups.get(pid);
+      if (!g) {
+        g = { id: pid, name: projects.get(pid) ?? 'Projet', channels: [] };
+        groups.set(pid, g);
+      }
+      g.channels.push(c);
+    }
+    return [...groups.values()];
   });
-  projectChannelName = computed<string | null>(() => this.projectChannelOwner()?.name ?? null);
 
-  /** « + » du groupe « Canaux Projets » : le canal naît rattaché à ce projet. */
-  newProjectChannel(): void {
-    const owner = this.projectChannelOwner();
-    if (!owner) return;
-    this.newChannel.emit({ scope: 'project', projectId: owner.id, projectName: owner.name });
+  /** Groupes projet repliés (par défaut tous dépliés — les canaux doivent se voir). */
+  private collapsedProjectGroups = signal<Set<string>>(new Set());
+  isProjectGroupOpen(projectId: string): boolean { return !this.collapsedProjectGroups().has(projectId); }
+  toggleProjectGroup(projectId: string): void {
+    this.collapsedProjectGroups.update(s => {
+      const next = new Set(s);
+      if (next.has(projectId)) { next.delete(projectId); } else { next.add(projectId); }
+      return next;
+    });
+  }
+
+  /** « + » d'un groupe projet : le canal naît rattaché à CE projet. */
+  newProjectChannelFor(g: { id: string; name: string }): void {
+    this.newChannel.emit({ scope: 'project', projectId: g.id, projectName: g.name });
   }
   /**
    * True when the user is allowed to create / edit / delete project channels

@@ -2,7 +2,19 @@ import { RichPart } from '@core/util/mention.util';
 
 /** A channel in the sidebar, grouped by scope (organisation vs project). */
 export interface Channel {
-  id: string;          // slug used in the URL (e.g. 'general')
+  /**
+   * Identifiant d'URL — **unique**. Pour un canal d'organisation : le slug du nom
+   * (`general`). Pour un canal **de projet** : le slug **suffixé du projet**
+   * (`general-184da140`).
+   *
+   * 🔴 Sans ce suffixe, deux projets ayant chacun leur `#général` produisaient le
+   * **même id** : clés dupliquées dans la sidebar, cache écrasé (le second canal
+   * effaçait le premier), et route ambiguë. C'est ce qui rendait les canaux
+   * automatiques d'un projet invisibles ou inaccessibles.
+   */
+  id: string;
+  /** Slug du seul nom (`general`) — les liens de notification l'utilisent. */
+  slug?: string;
   name: string;
   scope: 'org' | 'project';
   kind: 'bell' | 'hash'; // announcement channel (bell) vs standard (#)
