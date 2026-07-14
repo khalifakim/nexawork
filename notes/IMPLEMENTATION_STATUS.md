@@ -487,6 +487,28 @@ Build Angular prod vert, `mvn compile` vert. **Non testé en navigateur.**
 | 57 | Le bouton « Terminer pour tous » **masque la liste des participants** | Notre bouton flottait **par-dessus l'iframe** JaaS. | **Supprimé des deux endroits** (salle + popover du header), sur demande. On s'en remet au « raccrocher » **natif** de Jitsi : quitter suffit. Le comportement voulu était **déjà** celui du serveur — `leave()` ne clôt l'appel qu'au départ du **dernier** participant, donc le modérateur peut partir et revenir sans couper la réunion des autres ; le `CallSweeper` rattrape le cas où le navigateur ne prévient pas. |
 | 58 | Impossible d'inviter **pendant** une réunion | Aucun point d'entrée : le modal d'invitation n'existait qu'à la création. | Le bouton **« Inviter » de Jitsi est détourné** vers **notre** modal (`buttonsWithNotifyClick` + `preventExecution: true` → `toolbarButtonClicked`) : la fenêtre native, qui ignore nos membres et nos invitations par email, ne s'ouvre plus. Le modal `creer-reunion` gagne un **mode `invite`** (réutilisé, pas dupliqué : même sélecteur membres + emails, sans le champ titre). Membres → `inviteParticipants` (→ modal d'appel entrant) ; externes → `inviteGuest` (lien à usage unique par email). |
 
+### Lot du 2026-07-14 (soir, 2) — M5 sort de « perspective » : fichiers partagés en réunion
+**Rebuild requis : `meeting-service`, `frontend`.** ⚠️ **MIGRATION `V4__meeting_files_jaas.sql`.**
+Build Angular prod vert, `mvn compile` vert. **Non testé en navigateur.**
+
+**Décision (2026-07-14, utilisateur)** : **M5 repasse DANS le périmètre livré** (il était en perspective, V5.1 §14.4)
+— le partage de fichiers étant déjà porté par JaaS, autant le livrer. **M6 (enregistrement) reste en perspective**
+(facturé 0,01 $/min, conservation 24 h, carte bancaire requise).
+
+| # | Sujet | Constat (**mesuré**) | Correctif |
+| :-: | :- | :- | :- |
+| 59 | Chat de réunion (M2) | ✅ **Fonctionne déjà** — vérifié : `meeting_messages` contient une ligne réelle. | Rien. `send-groupchat` conservé à `true` dans le JWT : c'est lui qui autorise le chat que M2 persiste. |
+| 60 | **Fichiers partagés (M5)** | La table `meeting_files` existait (V1) **mais aucune entité, aucun endpoint**. Pire : son schéma **ne collait pas** — il exigeait un `file_id` **non nul** vers notre File Service (MinIO), or **JaaS héberge le fichier lui-même** ; NexaWork n'en reçoit que des métadonnées (événement `fileUploaded` de l'IFrame API). | **Migration `V4`** : `file_id` devient nullable, ajout de `jaas_file_id`/`file_name`/`file_size`/`shared_by_name` (`shared_by` nullable — un invité **externe** n'a pas d'UUID). Entité `MeetingFile`, repository, `POST/GET /calls/{id}/files` (réservé aux participants). Front : `fileUploaded` → `captureFile()`. ⚠️ **Le binaire n'appartient pas à NexaWork** : on trace **qui a partagé quoi et quand**, sans inventer un `file_id` qui ne pointerait sur rien, ni promettre un téléchargement qu'on ne peut pas servir. |
+| 61 | Doublons de fichiers | L'événement `fileUploaded` est reçu par **chaque participant** → le fichier serait enregistré autant de fois qu'il y a de personnes dans la salle. | Garde serveur sur `jaasFileId` (l'enregistrement est idempotent). |
+| 62 | 🔴 **La page « Historique discussion » d'une réunion était TOUJOURS vide** | `toThread()` renvoyait **`docs: []` et `messages: []` EN DUR** : le fil du chat et les documents, pourtant **persistés côté serveur**, n'étaient **jamais chargés**. La zone « Documents partagés · 0 » existait, définitivement vide. | La vue charge réellement le chat (`GET /calls/{id}/messages`) **et** les fichiers (`GET /calls/{id}/files`). |
+
+**Coût JaaS (vérifié sur la grille officielle 8x8)** — plan **Developer gratuit : 25 utilisateurs actifs/mois**.
+Gratuit : visio, **chat**, partage d'écran, salle d'attente, **partage de fichiers** (aucune facturation à l'usage).
+Facturé à la minute : **enregistrement 0,01 $**, RTMP 0,01 $, **transcription/CC 0,06 $**, SIP 0,06 $.
+→ Ces quatre drapeaux restent à **`false`** dans le JWT : **aucun frais ne peut être déclenché par accident.**
+Les onglets **sondages** et **CC** ont été retirés (drapeau JWT **et** masquage de l'interface — le drapeau seul
+laisse l'onglet affiché, grisé).
+
 ## 3 · Décisions/gaps (voir plan §5)
 
 **✅ Tranchés**

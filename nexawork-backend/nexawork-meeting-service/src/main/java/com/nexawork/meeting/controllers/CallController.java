@@ -5,6 +5,8 @@ import com.nexawork.meeting.dtos.requests.CreateCallRequest;
 import com.nexawork.meeting.dtos.requests.CreateMeetingMessageRequest;
 import com.nexawork.meeting.dtos.requests.InviteGuestRequest;
 import com.nexawork.meeting.dtos.requests.InviteParticipantsRequest;
+import com.nexawork.meeting.dtos.requests.ShareMeetingFileRequest;
+import com.nexawork.meeting.dtos.responses.MeetingFileResponse;
 import com.nexawork.meeting.dtos.responses.CallResponse;
 import com.nexawork.meeting.dtos.responses.GuestInviteResponse;
 import com.nexawork.meeting.dtos.responses.JaasDiagnosticResponse;
@@ -61,6 +63,20 @@ public class CallController {
     @GetMapping("/{id}/messages")
     public Response<List<MeetingMessageResponse>> messages(@PathVariable UUID id) {
         return Response.<List<MeetingMessageResponse>>ok().setPayload(meetingChatService.list(id));
+    }
+
+    /** Fichiers partagés (M5) — métadonnées captées dans la salle (binaire chez JaaS). */
+    @PostMapping("/{id}/files")
+    @ResponseStatus(HttpStatus.CREATED)
+    public Response<MeetingFileResponse> shareFile(@PathVariable UUID id,
+                                                   @Valid @RequestBody ShareMeetingFileRequest request) {
+        return Response.<MeetingFileResponse>created().setPayload(meetingChatService.shareFile(id, request));
+    }
+
+    /** Fichiers partagés pendant la réunion, consultables après l'appel. */
+    @GetMapping("/{id}/files")
+    public Response<List<MeetingFileResponse>> files(@PathVariable UUID id) {
+        return Response.<List<MeetingFileResponse>>ok().setPayload(meetingChatService.files(id));
     }
 
     /**

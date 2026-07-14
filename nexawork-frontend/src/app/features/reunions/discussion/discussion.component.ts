@@ -1,13 +1,35 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop';
-import { map, switchMap } from 'rxjs/operators';
+import { forkJoin, of } from 'rxjs';
+import { catchError, map, switchMap } from 'rxjs/operators';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 import { MeetingsService } from '@core/services/meetings.service';
-import { MeetingThread } from '@core/models/meeting.models';
+import { MeetingChatService, MeetingFileResponse } from '@core/services/meeting-chat.service';
+import { SessionService } from '@core/services/session.service';
+import { MeetingDoc, MeetingThread } from '@core/models/meeting.models';
+import { avatarColorFor } from '@core/util/ui.util';
 import { ShellBus } from '@layouts/app-shell/shell.bus';
 
 const EMPTY_THREAD: MeetingThread = { id: '', name: '', proj: '', date: '', docs: [], messages: [] };
+
+/** Fichier partagé (M5) → tuile « Documents partagés ». */
+function toMeetingDoc(f: MeetingFileResponse): MeetingDoc {
+  return {
+    name: f.fileName,
+    // Le fichier est hébergé par JaaS et n'est PAS téléchargeable depuis NexaWork :
+    // la vue en garde la trace (qui, quand), sans promettre un accès qu'on n'a pas.
+    meta: f.sharedByName + (f.fileSize ? ' · ' + formatSize(f.fileSize) : ''),
+    color: avatarColorFor(f.fileName),
+    icon: 'file',
+  };
+}
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return bytes + ' o';
+  if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + ' Ko';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' Mo';
+}
 
 @Component({
   selector: 'app-discussion-reunion',
@@ -49,15 +71,37 @@ export class DiscussionReunionComponent {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private meetingsSvc = inject(MeetingsService);
+  private chat = inject(MeetingChatService);
+  private session = inject(SessionService);
   private bus = inject(ShellBus);
 
   private id = toSignal(this.route.paramMap.pipe(map(p => p.get('id') ?? 'r1')), { initialValue: 'r1' });
   thread = signal<MeetingThread>(EMPTY_THREAD);
 
   constructor() {
+    // Le fil (M2) et les documents partagés (M5) sont persistés côté serveur, mais
+    // n'étaient JAMAIS chargés : `toThread()` renvoyait `docs: []`/`messages: []` en
+    // dur. La réunion s'affichait donc toujours vide, quoi qu'on y ait échangé.
     toObservable(this.id)
-      .pipe(switchMap(id => this.meetingsSvc.thread(id)), takeUntilDestroyed())
-      .subscribe(t => {
+      .pipe(
+        switchMap(id => forkJoin({
+          thread: this.meetingsSvc.thread(id),
+          messages: this.chat.messages(id, this.session.user()?.id).pipe(catchError(() => of([]))),
+          files: this.chat.files(id).pipe(catchError(() => of([]))),
+        })),
+        takeUntilDestroyed(),
+      )
+      .subscribe(({ thread, messages, files }) => {
+        const t: MeetingThread = {
+          ...thread,
+          docs: files.map(toMeetingDoc),
+          messages: messages.map(m => ({
+            author: m.authorName,
+            color: avatarColorFor(m.authorName),
+            time: new Date(m.sentAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+            text: m.content,
+          })),
+        };
         this.thread.set(t);
         // Expose the currently-open meeting to the sidebar-2 so it can render
         // the nested "meeting shortcut" under « Historique discussion ».

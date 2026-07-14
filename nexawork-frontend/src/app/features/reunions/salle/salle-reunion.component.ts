@@ -130,6 +130,8 @@ export class SalleReunionComponent implements OnDestroy {
     // M2 — persistance du chat de réunion.
     this.api.addListener('incomingMessage', (p: unknown) => this.chat.capture(this.callId, p, false));
     this.api.addListener('outgoingMessage', (p: unknown) => this.chat.capture(this.callId, p, true));
+    // M5 — trace des fichiers partagés (le binaire reste hébergé par JaaS).
+    this.api.addListener('fileUploaded', (p: unknown) => this.chat.captureFile(this.callId, p));
   }
 
   /**

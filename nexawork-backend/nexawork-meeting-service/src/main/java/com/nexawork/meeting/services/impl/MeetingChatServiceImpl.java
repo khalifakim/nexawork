@@ -3,11 +3,15 @@ package com.nexawork.meeting.services.impl;
 import com.nexawork.commons.exceptions.ForbiddenException;
 import com.nexawork.commons.exceptions.ResourceNotFoundException;
 import com.nexawork.meeting.dtos.requests.CreateMeetingMessageRequest;
+import com.nexawork.meeting.dtos.requests.ShareMeetingFileRequest;
+import com.nexawork.meeting.dtos.responses.MeetingFileResponse;
 import com.nexawork.meeting.dtos.responses.MeetingMessageResponse;
 import com.nexawork.meeting.entities.Call;
+import com.nexawork.meeting.entities.MeetingFile;
 import com.nexawork.meeting.entities.MeetingMessage;
 import com.nexawork.meeting.repositories.CallParticipantRepository;
 import com.nexawork.meeting.repositories.CallRepository;
+import com.nexawork.meeting.repositories.MeetingFileRepository;
 import com.nexawork.meeting.repositories.MeetingMessageRepository;
 import com.nexawork.meeting.security.CallerContext;
 import com.nexawork.meeting.services.MeetingChatService;
@@ -33,6 +37,7 @@ public class MeetingChatServiceImpl implements MeetingChatService {
     CallRepository callRepository;
     CallParticipantRepository participantRepository;
     MeetingMessageRepository messageRepository;
+    MeetingFileRepository fileRepository;
     CallerContext caller;
 
     @Override
@@ -52,6 +57,51 @@ public class MeetingChatServiceImpl implements MeetingChatService {
     public List<MeetingMessageResponse> list(UUID callId) {
         loadAsParticipant(callId);
         return messageRepository.findByCallIdOrderBySentAtAsc(callId).stream().map(this::toDto).toList();
+    }
+
+    /**
+     * Enregistre un fichier partagé dans la salle (M5). Le binaire reste hébergé
+     * par JaaS : on ne persiste que les métadonnées, et {@code fileId} (File
+     * Service) reste nul — inventer un identifiant qui ne pointerait sur rien
+     * serait pire que de ne rien stocker.
+     */
+    @Override
+    public MeetingFileResponse shareFile(UUID callId, ShareMeetingFileRequest request) {
+        Call call = loadAsParticipant(callId);
+        // L'événement `fileUploaded` est reçu par CHAQUE participant : sans cette
+        // garde, un même fichier serait enregistré autant de fois qu'il y a de
+        // personnes dans la salle.
+        return fileRepository.findByCallIdOrderBySharedAtAsc(callId).stream()
+                .filter(f -> request.getJaasFileId().equals(f.getJaasFileId()))
+                .findFirst()
+                .map(this::toDto)
+                .orElseGet(() -> toDto(fileRepository.save(MeetingFile.builder()
+                        .call(call)
+                        .jaasFileId(request.getJaasFileId())
+                        .fileName(request.getFileName())
+                        .fileSize(request.getFileSize())
+                        .sharedBy(caller.userId())
+                        .sharedByName(caller.displayName())
+                        .build())));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<MeetingFileResponse> files(UUID callId) {
+        loadAsParticipant(callId);
+        return fileRepository.findByCallIdOrderBySharedAtAsc(callId).stream().map(this::toDto).toList();
+    }
+
+    private MeetingFileResponse toDto(MeetingFile f) {
+        return MeetingFileResponse.builder()
+                .id(f.getId())
+                .callId(f.getCall().getId())
+                .fileName(f.getFileName())
+                .fileSize(f.getFileSize())
+                .sharedBy(f.getSharedBy())
+                .sharedByName(f.getSharedByName())
+                .sharedAt(f.getSharedAt())
+                .build();
     }
 
     /** Charge l'appel borné au workspace et vérifie que l'appelant en est participant. */
