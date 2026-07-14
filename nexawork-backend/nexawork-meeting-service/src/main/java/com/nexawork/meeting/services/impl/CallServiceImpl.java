@@ -4,6 +4,7 @@ import com.nexawork.commons.exceptions.ConflictException;
 import com.nexawork.commons.exceptions.ResourceNotFoundException;
 import com.nexawork.meeting.dtos.requests.CreateCallRequest;
 import com.nexawork.meeting.dtos.responses.CallResponse;
+import com.nexawork.meeting.dtos.responses.JaasDiagnosticResponse;
 import com.nexawork.commons.exceptions.ForbiddenException;
 import com.nexawork.meeting.entities.Call;
 import com.nexawork.meeting.entities.CallParticipant;
@@ -294,6 +295,33 @@ public class CallServiceImpl implements CallService {
                 endCall(call);
             }
         }
+    }
+
+    /**
+     * Diagnostic JaaS. Réservé aux administrateurs : la clé publique n'est pas un
+     * secret, mais la configuration du tenant n'a pas à circuler auprès de tous.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public JaasDiagnosticResponse jaasDiagnostic() {
+        if (!caller.isWorkspaceAdmin()) {
+            throw new ForbiddenException("Diagnostic réservé aux administrateurs et au propriétaire.");
+        }
+        String appId = jitsiProperties.getAppId();
+        String kid = jitsiProperties.getApiKeyId();
+        return JaasDiagnosticResponse.builder()
+                .appId(appId)
+                .apiKeyId(kid)
+                .kidMatchesAppId(appId != null && kid != null && kid.startsWith(appId + "/"))
+                .keySizeBits(tokenService.keySizeBits())
+                .publicKeyFingerprint(tokenService.publicKeyFingerprint())
+                .publicKeyPem(tokenService.publicKeyPem())
+                .serverTimeUtc(java.time.Instant.now().toString())
+                // Salle factice : le jeton n'ouvre aucune réunion réelle, il sert
+                // uniquement à faire lire ses claims (jwt.io).
+                .sampleToken(tokenService.generateToken("diagnostic-" + generateRoomName(),
+                        caller.userId(), caller.displayName(), null, true, true))
+                .build();
     }
 
     // ─── Helpers ────────────────────────────────────────────────────────────────

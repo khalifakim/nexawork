@@ -52,4 +52,7 @@ public interface CallService {
      * vit dans le SecurityContext du thread de la requête, absent ici).
      */
     void sweepStaleCalls();
+
+    /** Diagnostic de la configuration JaaS (administrateurs — 403 sinon). */
+    com.nexawork.meeting.dtos.responses.JaasDiagnosticResponse jaasDiagnostic();
 }

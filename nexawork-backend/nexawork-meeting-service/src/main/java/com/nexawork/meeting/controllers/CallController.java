@@ -7,6 +7,7 @@ import com.nexawork.meeting.dtos.requests.InviteGuestRequest;
 import com.nexawork.meeting.dtos.requests.InviteParticipantsRequest;
 import com.nexawork.meeting.dtos.responses.CallResponse;
 import com.nexawork.meeting.dtos.responses.GuestInviteResponse;
+import com.nexawork.meeting.dtos.responses.JaasDiagnosticResponse;
 import com.nexawork.meeting.dtos.responses.MeetingMessageResponse;
 import com.nexawork.meeting.services.CallService;
 import com.nexawork.meeting.services.GuestService;
@@ -60,6 +61,20 @@ public class CallController {
     @GetMapping("/{id}/messages")
     public Response<List<MeetingMessageResponse>> messages(@PathVariable UUID id) {
         return Response.<List<MeetingMessageResponse>>ok().setPayload(meetingChatService.list(id));
+    }
+
+    /**
+     * Diagnostic JaaS (administrateurs). Un « Authentication failed » n'indique
+     * jamais sa cause : ce point d'entrée expose de quoi la trancher en une
+     * requête — kid, empreinte et **clé publique** dérivée de notre clé privée
+     * (à comparer avec la console 8x8), heure du serveur (dérive d'horloge →
+     * `nbf`/`exp` rejetés) et un jeton d'exemple décodable.
+     *
+     * <p>Aucun secret n'en sort : la clé privée n'est jamais exposée.</p>
+     */
+    @GetMapping("/jaas-diagnostic")
+    public Response<JaasDiagnosticResponse> jaasDiagnostic() {
+        return Response.<JaasDiagnosticResponse>ok().setPayload(callService.jaasDiagnostic());
     }
 
     @GetMapping

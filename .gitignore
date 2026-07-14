@@ -121,3 +121,6 @@ log/
 **/generated-sources/
 **/generated-test-sources/
 src/main/generated/
+
+# Sauvegardes de .env : elles contiennent les MEMES secrets que .env
+.env.*
