@@ -9,6 +9,8 @@ export interface MentionPickerItem {
   sub?: string;      // secondary line (role, status, owner, members)
   icon?: string;     // optional accent (status color, avatar tint)
   initials?: string;// 2-letter initials (for member rows)
+  /** Photo de profil (personnes) — remplace les initiales quand elle existe. */
+  photoUrl?: string;
   tab: MentionTab;
 }
 
@@ -56,7 +58,11 @@ const TABS: Array<{ key: MentionTab; label: string }> = [
         @for (it of visible(); track it.id; let i = $index) {
           <button class="mp__row" [class.mp__row--on]="i === 0" (click)="pick(it)">
             @if (it.tab === 'personnes') {
-              <span class="mp__av" [style.background]="it.icon">{{ it.initials || it.display[0] }}</span>
+              @if (it.photoUrl) {
+                <img class="mp__av mp__av--img" [src]="it.photoUrl" alt="" />
+              } @else {
+                <span class="mp__av" [style.background]="it.icon">{{ it.initials || it.display[0] }}</span>
+              }
             } @else if (it.tab === 'taches') {
               <span class="mp__tile mp__tile--task" [style.background]="tileBg(it.icon)" [style.color]="it.icon || 'var(--nx-indigo)'">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
@@ -106,6 +112,7 @@ const TABS: Array<{ key: MentionTab; label: string }> = [
     .mp__row { width: 100%; display: flex; align-items: center; gap: 9px; padding: 7px 8px; border: none;
       border-radius: 8px; background: transparent; text-align: left; font-family: inherit; cursor: pointer; color: var(--nx-text); }
     .mp__row--on, .mp__row:hover { background: var(--nx-surface-2); }
+    .mp__av--img { object-fit: cover; display: block; }
     .mp__av { width: 26px; height: 26px; flex: none; border-radius: 50%; color: #fff; font-size: 10px; font-weight: 700;
       display: flex; align-items: center; justify-content: center; }
     .mp__tile { width: 26px; height: 26px; flex: none; border-radius: 7px;
@@ -192,6 +199,7 @@ export class MentionPickerComponent {
       case 'personnes': return this.catalog.members().map(m => ({
         id: m.name, display: m.name, sub: m.role, icon: m.color,
         initials: m.name.split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase(),
+        photoUrl: m.photoUrl, // l'annuaire la porte : on l'affiche au lieu des initiales
         tab: 'personnes',
       }));
       case 'taches': return this.catalog.tasks().map(t => ({

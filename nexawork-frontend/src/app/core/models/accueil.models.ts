@@ -16,6 +16,8 @@ export type MentionTarget =
 export interface ReceivedMention {
   id: string;
   a: string; initials: string; c: string;
+  /** Photo de profil de l'auteur (annuaire) — remplace les initiales. */
+  photoUrl?: string;
   verb: string; snip: string; ctx: string; date: string;
   kind: MentionKind;
   read?: boolean;

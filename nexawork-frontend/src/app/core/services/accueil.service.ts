@@ -167,7 +167,10 @@ function mentionKind(m: MentionResponse): MentionKind {
   return 'Commentaires';
 }
 
-function toMention(m: MentionResponse, byId: Map<string | undefined, { name: string; color: string }>): ReceivedMention {
+function toMention(
+  m: MentionResponse,
+  byId: Map<string | undefined, { name: string; color: string; photoUrl?: string }>,
+): ReceivedMention {
   const author = m.authorUserId ? byId.get(m.authorUserId) : undefined;
   const name = author?.name ?? 'Membre';
   const kind = mentionKind(m);
@@ -175,6 +178,7 @@ function toMention(m: MentionResponse, byId: Map<string | undefined, { name: str
     id: m.id,
     a: name,
     initials: initials(name),
+    photoUrl: author?.photoUrl,
     c: author?.color ?? avatarColorFor(m.authorUserId ?? m.id),
     verb: 'vous a mentionné',
     snip: m.messageContent ?? '',

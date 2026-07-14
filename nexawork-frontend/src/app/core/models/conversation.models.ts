@@ -6,6 +6,8 @@ export interface Conversation {
   name: string;
   color: string;       // avatar tint
   initials: string;
+  /** Photo de profil de l'interlocuteur (annuaire) — remplace les initiales. */
+  photoUrl?: string;
   msg: string;         // last-message preview
   unread: number;
   /** Relative time of the last message (e.g. '2 min', '1 h', '3 h', 'hier'). */

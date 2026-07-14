@@ -222,6 +222,7 @@ function toConversation(c: ConversationResponse, meId: string | undefined, byId:
     name,
     color: peer?.color ?? avatarColorFor(peerId),
     initials: initials(name),
+    photoUrl: peer?.photoUrl,
     msg: '',
     unread: c.isRead ? 0 : 1,
     time: '',

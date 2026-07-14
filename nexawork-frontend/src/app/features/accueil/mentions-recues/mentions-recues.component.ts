@@ -55,7 +55,11 @@ const TAB_ORDER: FilterKey[] = ['Toutes', 'Canaux', 'Discussions', 'Commentaires
               <span class="dot">
                 @if (!isRead(m.id)) { <span class="dot__b"></span> }
               </span>
-              <span class="av" [style.background]="m.c">{{ m.initials }}</span>
+              @if (m.photoUrl) {
+                <img class="av av--img" [src]="m.photoUrl" alt="" />
+              } @else {
+                <span class="av" [style.background]="m.c">{{ m.initials }}</span>
+              }
               <div class="b">
                 <div class="hh"><span class="a">{{ m.a }}</span><span class="v"> {{ m.verb }}</span></div>
                 <div class="snip" [class.snip--read]="isRead(m.id)">« {{ m.snip }} »</div>

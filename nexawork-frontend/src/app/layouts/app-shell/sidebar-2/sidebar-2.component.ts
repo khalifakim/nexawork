@@ -225,7 +225,11 @@ import { workspaceQuery, workspaceSignal } from '@core/util/workspace-signal';
         @for (c of filteredConvos(); track c.id) {
           <div class="convwrap">
             <a class="conv" [routerLink]="['/app/conversations', c.id]" routerLinkActive="conv--on">
-              <span class="conv__av" [style.background]="c.color">{{ c.initials }}</span>
+              @if (c.photoUrl) {
+                <img class="conv__av conv__av--img" [src]="c.photoUrl" alt="" />
+              } @else {
+                <span class="conv__av" [style.background]="c.color">{{ c.initials }}</span>
+              }
               <span class="conv__t"><span class="conv__n">{{ c.name }}</span><span class="conv__m">{{ c.msg }}</span></span>
               <span class="conv__r">
                 <span class="conv__time">{{ c.time }}</span>
@@ -405,6 +409,7 @@ import { workspaceQuery, workspaceSignal } from '@core/util/workspace-signal';
     .conv:hover { background: var(--nx-surface-2); }
     .conv--on { background: rgba(91,95,233,0.10); }
     .conv__av { width: 34px; height: 34px; flex: none; border-radius: 50%; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; }
+    .conv__av--img { object-fit: cover; display: block; }
     .conv__t { flex: 1; min-width: 0; display: flex; flex-direction: column; }
     .conv__n { font-size: 13px; font-weight: 600; color: var(--nx-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .conv__m { font-size: 12px; color: var(--nx-text-400); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

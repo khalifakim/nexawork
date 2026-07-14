@@ -8,6 +8,7 @@ interface BrowseRow {
   label: string;     // primary line (id for tasks/docs/channels, name for persons)
   sub: string;       // secondary line
   initials?: string; // member avatar
+  photoUrl?: string; // photo de profil (remplace les initiales quand elle existe)
   color?: string;    // member avatar / doc tile color
   ext?: string;      // doc extension chip
   status?: string;
@@ -87,7 +88,11 @@ const STATUS_COLOR: Record<string, string> = {
           @for (it of items(); track it.id; let i = $index; let last = $last) {
             <div class="row-item" [class.row-item--last]="last">
               @if (it.tab === 'personnes') {
-                <span class="av" [style.background]="it.color">{{ it.initials }}</span>
+                @if (it.photoUrl) {
+                  <img class="av av--img" [src]="it.photoUrl" alt="" />
+                } @else {
+                  <span class="av" [style.background]="it.color">{{ it.initials }}</span>
+                }
               } @else if (it.tab === 'taches') {
                 <span class="tile" [style.background]="statusBg(it.status)" [style.color]="statusColor(it.status)">
                   <app-icon name="taskCheck" [size]="17" [stroke]="2.2" />
@@ -152,6 +157,7 @@ const STATUS_COLOR: Record<string, string> = {
       border-radius: 10px; cursor: pointer; border-bottom: 1px solid var(--nx-surface-2); }
     .row-item:hover { background: var(--nx-surface-3); }
     .row-item--last { border-bottom: none; }
+    .av--img { object-fit: cover; display: block; }
     .av { width: 40px; height: 40px; border-radius: 50%; color: #fff; font-weight: 700;
       font-size: 14px; flex: none; display: flex; align-items: center; justify-content: center; }
     .tile { width: 36px; height: 36px; border-radius: 9px; flex: none; display: flex;
@@ -225,6 +231,7 @@ export class BrowseMentionsModalComponent {
         return this.catalog.members().map(m => ({
           id: m.name, label: m.name, sub: m.role,
           initials: m.name.split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase(),
+          photoUrl: m.photoUrl,
           color: m.color, role: m.role, tab: 'personnes',
         }));
       case 'taches':

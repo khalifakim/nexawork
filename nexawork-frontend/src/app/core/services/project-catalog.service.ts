@@ -113,6 +113,7 @@ export class ProjectCatalogService {
       id: m.name, uuid: m.userId!, name: m.name,
       role: m.role || 'Membre',
       color: m.color ?? avatarColorFor(m.userId!),
+      photoUrl: m.photoUrl, // l'annuaire la porte → sélecteur de mentions + « Parcourir »
       email: m.email ?? '',
       online: m.online ?? false,
     }));

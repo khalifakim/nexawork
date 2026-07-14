@@ -17,6 +17,8 @@ export interface ProjectMemberRef {
   name: string;
   role: string;
   color: string;         // avatar tint
+  /** Photo de profil — affichée à la place des initiales dans le sélecteur. */
+  photoUrl?: string;
   email: string;
   online?: boolean;
 }

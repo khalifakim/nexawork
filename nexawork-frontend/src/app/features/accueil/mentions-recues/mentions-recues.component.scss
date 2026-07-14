@@ -54,3 +54,6 @@
 
 /* ===== Empty ===== */
 .empty { flex: none; margin-bottom: 32px; background: #fff; border-radius: 14px; border: 1px solid #F0EEE9; padding: 40px; text-align: center; font-size: 13.5px; color: #a8a4af; }
+
+/* Photo de profil de l'auteur de la mention (forme conservée). */
+.av--img { object-fit: cover; display: block; }
