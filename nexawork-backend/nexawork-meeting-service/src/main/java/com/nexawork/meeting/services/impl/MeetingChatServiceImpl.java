@@ -60,26 +60,24 @@ public class MeetingChatServiceImpl implements MeetingChatService {
     }
 
     /**
-     * Enregistre un fichier partagé dans la salle (M5). Le binaire reste hébergé
-     * par JaaS : on ne persiste que les métadonnées, et {@code fileId} (File
-     * Service) reste nul — inventer un identifiant qui ne pointerait sur rien
-     * serait pire que de ne rien stocker.
+     * Enregistre un fichier partagé dans la salle (M5). Le binaire a déjà été
+     * téléversé au **File Service** (contexte {@code meeting-file} → MinIO) :
+     * on ne persiste que sa référence. Le Meeting Service ne manipule aucun octet.
      */
     @Override
     public MeetingFileResponse shareFile(UUID callId, ShareMeetingFileRequest request) {
         Call call = loadAsParticipant(callId);
-        // L'événement `fileUploaded` est reçu par CHAQUE participant : sans cette
-        // garde, un même fichier serait enregistré autant de fois qu'il y a de
-        // personnes dans la salle.
-        return fileRepository.findByCallIdOrderBySharedAtAsc(callId).stream()
-                .filter(f -> request.getJaasFileId().equals(f.getJaasFileId()))
-                .findFirst()
+        // Un même StoredFile ne doit être rattaché qu'une fois à l'appel (rejeu de
+        // la requête, double clic).
+        return fileRepository.findByCallIdAndFileId(callId, request.getFileId())
                 .map(this::toDto)
                 .orElseGet(() -> toDto(fileRepository.save(MeetingFile.builder()
                         .call(call)
-                        .jaasFileId(request.getJaasFileId())
+                        .fileId(request.getFileId())
+                        .downloadUrl(request.getDownloadUrl())
                         .fileName(request.getFileName())
                         .fileSize(request.getFileSize())
+                        .contentType(request.getContentType())
                         .sharedBy(caller.userId())
                         .sharedByName(caller.displayName())
                         .build())));
@@ -96,8 +94,11 @@ public class MeetingChatServiceImpl implements MeetingChatService {
         return MeetingFileResponse.builder()
                 .id(f.getId())
                 .callId(f.getCall().getId())
+                .fileId(f.getFileId())
+                .downloadUrl(f.getDownloadUrl())
                 .fileName(f.getFileName())
                 .fileSize(f.getFileSize())
+                .contentType(f.getContentType())
                 .sharedBy(f.getSharedBy())
                 .sharedByName(f.getSharedByName())
                 .sharedAt(f.getSharedAt())

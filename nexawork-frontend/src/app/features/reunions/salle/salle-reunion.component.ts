@@ -42,6 +42,20 @@ import { CreerReunionComponent } from '@features/reunions/modals/creer-reunion/c
            (leave() côté serveur, CallSweeper en filet). Le modérateur peut donc
            partir et revenir sans terminer la réunion pour les autres. -->
       <div #stage class="stage" [class.stage--ready]="!loading() && !error()"></div>
+
+      <!-- Partage de fichiers NexaWork (M5). Celui de JaaS est désactivé : il
+           téléverse chez 8x8 et ne nous rend jamais le binaire — le fichier ne
+           pourrait ni entrer dans MinIO, ni être retéléchargé après la réunion.
+           Ici : File Service → MinIO, et le fichier reste dans l'historique.
+           Placé en BAS À GAUCHE, hors de la liste des participants (à droite). -->
+      @if (!loading() && !error()) {
+        <input #fileInput type="file" hidden (change)="onFilePicked($event)" />
+        <button class="share" [disabled]="sharing()" (click)="fileInput.click()"
+                title="Partager un fichier avec les participants">
+          <app-icon name="paperclip" [size]="17" />
+          {{ sharing() ? 'Envoi…' : 'Partager un fichier' }}
+        </button>
+      }
     </div>
 
     <!-- Invitation en cours de réunion : ouverte par le bouton « Inviter » de Jitsi,
@@ -61,6 +75,9 @@ import { CreerReunionComponent } from '@features/reunions/modals/creer-reunion/c
     .state button { padding: 9px 18px; border: 1px solid #4B3FD6; border-radius: 9px; background: #5B5FE9; color: #fff; font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
     .spin { width: 34px; height: 34px; border: 3px solid rgba(255,255,255,.2); border-top-color: #6C70F0; border-radius: 50%; animation: nxspin .8s linear infinite; }
     @keyframes nxspin { to { transform: rotate(360deg); } }
+    .share { position: absolute; z-index: 3; left: 14px; bottom: 88px; display: inline-flex; align-items: center; gap: 8px; padding: 9px 15px; border: none; border-radius: 999px; background: rgba(28,25,40,.82); color: #fff; font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; backdrop-filter: blur(6px); box-shadow: 0 4px 14px rgba(0,0,0,.3); }
+    .share:hover:not(:disabled) { background: rgba(91,95,233,.92); }
+    .share:disabled { opacity: .6; cursor: default; }
   `],
 })
 export class SalleReunionComponent implements OnDestroy {
@@ -78,6 +95,7 @@ export class SalleReunionComponent implements OnDestroy {
   isHost = signal(false);
   inviteOpen = signal(false);
   inviting = signal(false);
+  sharing = signal(false);
 
   private api?: JitsiApi;
   private callId = '';
@@ -130,8 +148,6 @@ export class SalleReunionComponent implements OnDestroy {
     // M2 — persistance du chat de réunion.
     this.api.addListener('incomingMessage', (p: unknown) => this.chat.capture(this.callId, p, false));
     this.api.addListener('outgoingMessage', (p: unknown) => this.chat.capture(this.callId, p, true));
-    // M5 — trace des fichiers partagés (le binaire reste hébergé par JaaS).
-    this.api.addListener('fileUploaded', (p: unknown) => this.chat.captureFile(this.callId, p));
   }
 
   /**
@@ -165,6 +181,42 @@ export class SalleReunionComponent implements OnDestroy {
       error: () => {
         this.inviting.set(false);
         this.toast.show({ message: "L'invitation n'a pas pu être envoyée.", icon: 'warning' });
+      },
+    });
+  }
+
+  /**
+   * Partage un fichier avec les participants (M5). Le binaire part au File Service
+   * (→ MinIO, bucket `documents`), puis sa référence est rattachée à l'appel : le
+   * fichier reste **téléchargeable depuis l'historique**, bien après la réunion.
+   *
+   * Le nom est aussi annoncé dans le chat de la salle — sans quoi personne ne
+   * saurait, pendant l'appel, qu'un fichier vient d'être partagé.
+   */
+  onFilePicked(ev: Event): void {
+    const input = ev.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = ''; // permet de repartager le même fichier
+    if (!file || this.sharing()) return;
+
+    const workspaceId = this.session.activeWorkspaceId();
+    if (!workspaceId) return;
+
+    this.sharing.set(true);
+    this.chat.shareFile(this.callId, workspaceId, file).subscribe({
+      next: shared => {
+        this.sharing.set(false);
+        this.toast.show({ message: '« ' + shared.fileName + ' » partagé avec les participants' });
+        try {
+          this.api?.executeCommand('sendChatMessage',
+            'a partagé un fichier : ' + shared.fileName);
+        } catch {
+          /* Le partage est enregistré : l'annonce dans le chat n'est qu'un confort. */
+        }
+      },
+      error: () => {
+        this.sharing.set(false);
+        this.toast.show({ message: "Le fichier n'a pas pu être partagé.", icon: 'warning' });
       },
     });
   }

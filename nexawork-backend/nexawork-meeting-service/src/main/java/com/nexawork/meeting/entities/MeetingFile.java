@@ -20,13 +20,15 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 /**
- * Fichier partagé pendant une réunion (M5, V5.1 §14.4) — capté via l'événement
- * {@code fileUploaded} de l'IFrame API JaaS.
+ * Fichier partagé pendant une réunion (M5, V5.1 §14.4).
  *
- * <p><b>Le binaire n'appartient pas à NexaWork.</b> JaaS héberge le fichier dans
- * la salle ; nous n'en recevons que les métadonnées. {@code fileId} (File Service
- * / MinIO) reste donc nul : on trace ce qui a été partagé, sans prétendre détenir
- * le fichier — et sans inventer un identifiant qui ne pointerait sur rien.</p>
+ * <p><b>Le binaire appartient à NexaWork.</b> Le partage passe par notre propre
+ * bouton dans la salle (et non par celui de JaaS, qui téléverserait chez 8x8 sans
+ * jamais nous laisser le fichier) : le binaire transite par le <b>File Service</b>
+ * et est stocké dans <b>MinIO</b> (bucket {@code nexawork-documents}, contexte
+ * {@code meeting-file}). {@code fileId} pointe donc un vrai {@code StoredFile}, et
+ * le fichier reste <b>téléchargeable</b> depuis l'historique de la réunion, bien
+ * après la fin de l'appel.</p>
  */
 @Entity
 @Table(name = "meeting_files")
@@ -45,15 +47,26 @@ public class MeetingFile {
     @JoinColumn(name = "call_id", nullable = false)
     private Call call;
 
-    /** Identifiant du fichier chez JaaS (le nôtre, {@code fileId}, reste nul). */
-    @Column(name = "jaas_file_id")
-    private String jaasFileId;
+    /** Réf. {@code StoredFile} (File Service / MinIO) — le binaire est à nous. */
+    @Column(name = "file_id")
+    private UUID fileId;
+
+    /** URL de téléchargement stable, servie par le File Service. */
+    @Column(name = "download_url", length = 1024)
+    private String downloadUrl;
 
     @Column(name = "file_name")
     private String fileName;
 
     @Column(name = "file_size")
     private Long fileSize;
+
+    @Column(name = "content_type")
+    private String contentType;
+
+    /** Vestige du partage JaaS (métadonnées seules) — nul désormais. */
+    @Column(name = "jaas_file_id")
+    private String jaasFileId;
 
     /** Auteur interne — nul si le partage vient d'un invité externe (sans compte). */
     @Column(name = "shared_by")

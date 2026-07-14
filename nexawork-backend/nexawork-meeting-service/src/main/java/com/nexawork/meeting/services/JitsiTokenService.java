@@ -158,13 +158,15 @@ public class JitsiTokenService {
         features.put("recording", false);       // M6 — 0,01 $/min, conservation 24 h
         features.put("transcription", false);   // sous-titres « CC » : 0,06 $/min
         features.put("outbound-call", false);   // SIP : 0,06 $/min
-        // Partage de fichiers en réunion. JaaS le REFUSE tant que ce drapeau est
-        // absent du jeton (« Not allowed to upload files. Ask a moderator for
-        // permission rights ») : ce n'est pas un réglage de la console, c'est une
-        // permission portée par le JWT. Accordée à tout participant — l'invité
-        // externe compris, il est déjà passé par l'admission du modérateur.
-        // Aucun surcoût : le partage de fichiers n'est pas facturé à l'usage.
-        features.put("file-upload", true);
+        // Partage de fichiers de JaaS DÉSACTIVÉ (décision du 2026-07-14) : il
+        // téléverse le binaire chez 8x8, qui ne nous le rend jamais — le fichier
+        // ne pourrait donc pas atterrir dans MinIO ni être retéléchargé après la
+        // réunion. NexaWork assure son PROPRE partage (bouton dans la salle →
+        // File Service → bucket `nexawork-documents`, contexte `meeting-file`),
+        // ce qui rend `MeetingFile.fileId` → `StoredFile` réel. Laisser les deux
+        // mécanismes coexister donnerait deux comportements différents pour un
+        // même geste (l'un persistant, l'autre non).
+        features.put("file-upload", false);
         // Chat de groupe : indispensable — c'est lui que M2 persiste (`MeetingMessage`).
         features.put("send-groupchat", true);
         // Sondages désactivés (onglet retiré de la barre du chat, sur demande) : la

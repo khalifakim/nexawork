@@ -86,7 +86,10 @@ export async function openJitsiRoom(
       // ainsi que l'enregistrement et le streaming, facturés à la minute et hors
       // périmètre (V5.1 §14.4). Le drapeau JWT les refuserait de toute façon : autant
       // ne pas afficher un bouton qui ne peut qu'échouer.
-      hiddenToolbarButtons: ['polls', 'closedcaptions', 'recording', 'livestreaming'],
+      // `filesharing` retiré aussi : NexaWork assure son propre partage (le fichier
+      // part au File Service → MinIO, et reste téléchargeable après la réunion).
+      // Le bouton de JaaS téléverserait chez 8x8, hors de notre portée.
+      hiddenToolbarButtons: ['polls', 'closedcaptions', 'recording', 'livestreaming', 'filesharing'],
       // Salle d'attente. Le backend émet déjà `lobby_bypass` (vrai pour les membres
       // authentifiés, faux pour l'invité externe) — mais ce claim ne sert À RIEN
       // tant que le lobby n'est pas ACTIVÉ dans la salle : sans lui, tout le monde

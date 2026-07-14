@@ -28,3 +28,9 @@
 .t { font-size: 11.5px; color: var(--nx-text-300); }
 .x { font-size: 14px; color: #3a373f; line-height: 1.5; }
 .foot { flex: none; padding: 14px 28px; border-top: 1px solid var(--nx-divider); display: flex; align-items: center; justify-content: center; gap: 9px; color: var(--nx-text-400); font-size: 13px; }
+
+/* --- Document partagé : tuile cliquable (téléchargement depuis MinIO, M5) --- */
+.doc { border: none; font-family: inherit; text-align: left; cursor: pointer; }
+.doc:disabled { cursor: default; }
+.doc:hover:not(:disabled) { background: var(--nx-surface-2); }
+.doc__dl { margin-left: auto; color: var(--nx-text-400); display: flex; align-items: center; }

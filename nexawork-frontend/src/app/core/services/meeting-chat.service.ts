@@ -1,6 +1,8 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable, map, of } from 'rxjs';
+import { switchMap } from 'rxjs/operators';
 import { BaseHttpService } from '@core/http/base-http.service';
+import { FilesHttpService } from '@core/http/files.http.service';
 import { environment } from '@environment/environment';
 
 /** Message du chat de réunion — vue d'affichage. */
@@ -25,19 +27,18 @@ interface MeetingMessageResponse {
 export interface MeetingFileResponse {
   id: string;
   callId: string;
+  /** Réf. StoredFile (MinIO) — le binaire appartient à NexaWork. */
+  fileId?: string;
+  /** URL de téléchargement servie par le File Service (exige le jeton). */
+  downloadUrl?: string;
   fileName: string;
   fileSize?: number;
+  contentType?: string;
   sharedBy?: string;
   sharedByName: string;
   sharedAt: string;
 }
 
-/** Métadonnées envoyées au serveur à la réception de `fileUploaded`. */
-interface ShareFilePayload {
-  jaasFileId: string;
-  fileName: string;
-  fileSize?: number;
-}
 
 /**
  * Chat de réunion persistant (M2, F5). Capte les messages échangés dans la salle
@@ -46,6 +47,8 @@ interface ShareFilePayload {
  */
 @Injectable({ providedIn: 'root' })
 export class MeetingChatService extends BaseHttpService {
+  /** `fileApi` et non `files` : `files()` est déjà la méthode qui liste le fil. */
+  private readonly fileApi = inject(FilesHttpService);
 
   /**
    * Enregistre un message capté dans la salle. `payload` provient de l'IFrame
@@ -64,21 +67,24 @@ export class MeetingChatService extends BaseHttpService {
   }
 
   /**
-   * Enregistre un fichier partagé dans la salle (M5), capté via l'événement
-   * `fileUploaded` de l'IFrame API JaaS. **Le binaire reste chez JaaS** : on ne
-   * transmet que les métadonnées — NexaWork ne détient pas le fichier.
+   * Partage un fichier dans la réunion (M5). Deux temps, comme partout ailleurs
+   * dans NexaWork (pièces jointes de tâche, GED) :
+   *   1. le binaire part au **File Service** (contexte `meeting-file`) → **MinIO** ;
+   *   2. sa **référence** est rattachée à l'appel.
    *
-   * L'événement est reçu par CHAQUE participant : le serveur écarte les doublons
-   * sur `jaasFileId` (sinon un fichier serait enregistré autant de fois qu'il y a
-   * de personnes dans la salle).
+   * C'est ce qui rend le fichier **téléchargeable après la réunion** — le partage
+   * natif de JaaS, lui, téléverse chez 8x8 et ne nous rend jamais le binaire.
    */
-  captureFile(callId: string, payload: unknown): void {
-    if (environment.mock.meetings) return;
-    const file = extractFile(payload);
-    if (!file) return;
-    this.post$<MeetingFileResponse>('meeting', `/calls/${callId}/files`, file).subscribe({
-      error: () => {},
-    });
+  shareFile(callId: string, workspaceId: string, file: File): Observable<MeetingFileResponse> {
+    return this.fileApi.upload('meeting-file', file, { workspaceId, meetingId: callId }).pipe(
+      switchMap(stored => this.post$<MeetingFileResponse>('meeting', `/calls/${callId}/files`, {
+        fileId: stored.id,
+        downloadUrl: stored.downloadUrl,
+        fileName: stored.fileName,
+        fileSize: stored.size,
+        contentType: stored.contentType,
+      })),
+    );
   }
 
   /** Fichiers partagés pendant une réunion (relecture après l'appel). */
@@ -100,29 +106,6 @@ export class MeetingChatService extends BaseHttpService {
       }))),
     );
   }
-}
-
-/**
- * Extrait les métadonnées d'un événement `fileUploaded` de l'IFrame API JaaS.
- * Le nom exact des champs varie selon la version du tenant : on accepte les
- * variantes plutôt que de parier sur une seule, et on renonce si l'identifiant
- * manque (sans lui, impossible d'écarter les doublons).
- */
-function extractFile(payload: unknown): ShareFilePayload | null {
-  if (!payload || typeof payload !== 'object') return null;
-  const p = payload as Record<string, unknown>;
-  const raw = (p['file'] && typeof p['file'] === 'object' ? p['file'] : p) as Record<string, unknown>;
-
-  const jaasFileId = (raw['fileId'] ?? raw['id'] ?? p['fileId']) as string | undefined;
-  const fileName = (raw['fileName'] ?? raw['name']) as string | undefined;
-  if (!jaasFileId || !fileName) return null;
-
-  const size = (raw['fileSize'] ?? raw['size']) as number | undefined;
-  return {
-    jaasFileId: String(jaasFileId),
-    fileName: String(fileName),
-    ...(typeof size === 'number' ? { fileSize: size } : {}),
-  };
 }
 
 /** Extrait le texte d'un événement message de l'IFrame API JaaS. */

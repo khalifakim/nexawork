@@ -6,6 +6,7 @@ import { catchError, map, switchMap } from 'rxjs/operators';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 import { MeetingsService } from '@core/services/meetings.service';
 import { MeetingChatService, MeetingFileResponse } from '@core/services/meeting-chat.service';
+import { FilesHttpService } from '@core/http/files.http.service';
 import { SessionService } from '@core/services/session.service';
 import { MeetingDoc, MeetingThread } from '@core/models/meeting.models';
 import { avatarColorFor } from '@core/util/ui.util';
@@ -17,11 +18,11 @@ const EMPTY_THREAD: MeetingThread = { id: '', name: '', proj: '', date: '', docs
 function toMeetingDoc(f: MeetingFileResponse): MeetingDoc {
   return {
     name: f.fileName,
-    // Le fichier est hébergé par JaaS et n'est PAS téléchargeable depuis NexaWork :
-    // la vue en garde la trace (qui, quand), sans promettre un accès qu'on n'a pas.
     meta: f.sharedByName + (f.fileSize ? ' · ' + formatSize(f.fileSize) : ''),
     color: avatarColorFor(f.fileName),
     icon: 'file',
+    // Le binaire est dans MinIO : le fichier se télécharge, même des mois après.
+    url: f.downloadUrl,
   };
 }
 
@@ -48,8 +49,13 @@ function formatSize(bytes: number): string {
         <div class="docs__l">Documents partagés · {{ thread().docs.length }}</div>
         <div class="docs__r">
           @for (d of thread().docs; track d.name) {
-            <div class="doc"><span class="doc__ic" [style.color]="d.color"><app-icon [name]="d.icon" [size]="18" /></span>
-              <div><div class="doc__n">{{ d.name }}</div><div class="doc__s">{{ d.meta }}</div></div></div>
+            <!-- Téléchargeable : le binaire est dans MinIO (M5), pas chez un tiers. -->
+            <button class="doc" [disabled]="!d.url" (click)="download(d)"
+                    [title]="d.url ? 'Télécharger ' + d.name : d.name">
+              <span class="doc__ic" [style.color]="d.color"><app-icon [name]="d.icon" [size]="18" /></span>
+              <div><div class="doc__n">{{ d.name }}</div><div class="doc__s">{{ d.meta }}</div></div>
+              @if (d.url) { <span class="doc__dl"><app-icon name="download" [size]="15" /></span> }
+            </button>
           }
         </div>
       </div>
@@ -72,6 +78,7 @@ export class DiscussionReunionComponent {
   private router = inject(Router);
   private meetingsSvc = inject(MeetingsService);
   private chat = inject(MeetingChatService);
+  private files = inject(FilesHttpService);
   private session = inject(SessionService);
   private bus = inject(ShellBus);
 
@@ -113,4 +120,21 @@ export class DiscussionReunionComponent {
 
   ini(n: string): string { return n.split(/\s+/).map(w => w[0]).join('').slice(0, 2); }
   back(): void { this.router.navigate(['/app/reunions/historique']); }
+
+  /**
+   * Télécharge un fichier partagé. Le passage par un blob est nécessaire : l'URL
+   * du File Service exige le jeton d'authentification, qu'un `<a href>` ne porte
+   * pas — un lien direct renverrait 401.
+   */
+  download(doc: MeetingDoc): void {
+    if (!doc.url) return;
+    this.files.download(doc.url).subscribe(blob => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = doc.name;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+  }
 }
