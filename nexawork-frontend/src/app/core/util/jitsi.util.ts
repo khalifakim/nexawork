@@ -53,7 +53,7 @@ export async function openJitsiRoom(
   jwt: string,
   user?: JitsiUser,
   onError?: (message: string) => void,
-  options?: { enableLobby?: boolean; onInviteClicked?: () => void },
+  options?: { onInviteClicked?: () => void },
 ): Promise<JitsiApi> {
   if (!jitsiUrl || !jwt) throw new Error('Salle vidéo indisponible (configuration JaaS manquante).');
 
@@ -90,12 +90,22 @@ export async function openJitsiRoom(
       // part au File Service → MinIO, et reste téléchargeable après la réunion).
       // Le bouton de JaaS téléverserait chez 8x8, hors de notre portée.
       hiddenToolbarButtons: ['polls', 'closedcaptions', 'recording', 'livestreaming', 'filesharing'],
-      // Salle d'attente. Le backend émet déjà `lobby_bypass` (vrai pour les membres
-      // authentifiés, faux pour l'invité externe) — mais ce claim ne sert À RIEN
-      // tant que le lobby n'est pas ACTIVÉ dans la salle : sans lui, tout le monde
-      // entre directement, y compris l'invité externe. Seul le modérateur l'active
-      // (il est le premier dans la salle, et JaaS n'accepte l'activation que de lui).
-      ...(options?.enableLobby ? { lobby: { autoKnock: true, enableChat: false } } : {}),
+      // 🔴 SALLE D'ATTENTE (lobby) DÉSACTIVÉE — décision imposée par JaaS.
+      //
+      // Le claim `lobby_bypass` sur lequel reposait le contournement **n'existe pas**
+      // dans la spécification JaaS (seuls id/name/email/avatar/moderator/
+      // hidden-from-recorder sont reconnus). Il était donc ignoré : lobby activé ⇒
+      // PERSONNE ne le contournait, et tout membre convié était rejeté
+      // (« conference.connectionError.membersOnly »), seul le modérateur entrait.
+      //
+      // Le lobby de JaaS est du tout-ou-rien : impossible d'y soumettre le seul invité
+      // externe. Entre « les membres entrent directement » (exigence) et « l'externe
+      // patiente » (confort), on garde le premier.
+      //
+      // ⚠️ Aucune perte de sécurité — le lobby n'a JAMAIS été le contrôle d'accès :
+      //   • membre : `join()` exige d'être hôte ou convié (404 sinon) ;
+      //   • invité externe : lien à **usage unique** vérifié en base.
+      // Sans invitation, on n'obtient aucun jeton — donc aucune entrée.
       // Détourne le bouton « Inviter » de Jitsi vers NOTRE modal : `preventExecution`
       // supprime la fenêtre d'invitation native (qui ne connaît ni nos membres, ni
       // nos invitations par email), et le clic nous est notifié via `toolbarButtonClicked`.
@@ -114,15 +124,6 @@ export async function openJitsiRoom(
   // seule ne le déclenche pas côté JaaS. Le modérateur l'arme donc à son entrée —
   // les membres conviés le traversent grâce à `lobby_bypass`, l'invité externe y
   // reste et le modérateur reçoit sa demande d'admission (« knocking »).
-  if (options?.enableLobby) {
-    api.addListener('videoConferenceJoined', () => {
-      try {
-        api.executeCommand('toggleLobby', true);
-      } catch {
-        /* Tenant sans lobby : la réunion reste utilisable, sans salle d'attente. */
-      }
-    });
-  }
 
   if (options?.onInviteClicked) {
     api.addListener('toolbarButtonClicked', (payload: unknown) => {

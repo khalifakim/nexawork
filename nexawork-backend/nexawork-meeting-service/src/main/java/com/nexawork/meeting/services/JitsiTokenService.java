@@ -148,8 +148,19 @@ public class JitsiTokenService {
         user.put("email", email != null ? email : "");
         user.put("avatar", "");
         user.put("moderator", String.valueOf(isModerator)); // "true" / "false" — chaîne (JaaS)
-        // §14.5 : les porteurs de ce claim contournent la salle d'attente (lobby).
-        user.put("lobby_bypass", lobbyBypass);
+        // 🔴 `lobby_bypass` RETIRÉ : **ce claim n'existe pas** dans la spécification JaaS.
+        // Les seuls champs reconnus de `context.user` sont : id, name, email, avatar,
+        // moderator, hidden-from-recorder. Il était donc IGNORÉ — d'où l'échec observé :
+        // lobby activé ⇒ PERSONNE ne le contournait, et tout membre invité était rejeté
+        // (« conference.connectionError.membersOnly »), seul le modérateur entrait.
+        // Le paramètre est conservé dans la signature : il pilote désormais, côté client,
+        // l'activation ou non du lobby (le modérateur ne l'arme que s'il attend un invité
+        // externe). Voir V5.1 §14.5, corrigé.
+        //
+        // ⚠️ Le contrôle d'accès NE REPOSE PAS sur le lobby :
+        //   - membre : `join()` exige d'être hôte ou convié explicitement (404 sinon) ;
+        //   - invité externe : lien à **usage unique** vérifié en base.
+        // Un intrus n'obtient donc aucun jeton, lobby ou pas.
 
         Map<String, Object> features = new HashMap<>();
         // Facturés à la minute par 8x8 et hors périmètre (V5.1 §14.4 : l'enregistrement

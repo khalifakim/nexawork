@@ -189,10 +189,6 @@ export class SalleReunionComponent implements OnDestroy {
         { displayName: me?.displayName, email: me?.email },
         message => this.fail(message),
         {
-          // Seul le modérateur arme la salle d'attente. Elle ne concerne QUE les
-          // invités externes : les membres conviés portent `lobby_bypass` et la
-          // traversent sans rien demander (§14.5).
-          enableLobby: host,
           // Le bouton « Inviter » de Jitsi ouvre NOTRE modal (membres du workspace
           // + emails externes) : l'invitation reste gérée par NexaWork.
           onInviteClicked: () => this.inviteOpen.set(true),

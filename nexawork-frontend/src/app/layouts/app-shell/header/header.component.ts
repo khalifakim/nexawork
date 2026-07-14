@@ -9,6 +9,7 @@ import { SessionService } from '@core/services/session.service';
 import { MeetingsService } from '@core/services/meetings.service';
 import { CallRoom } from '@core/models/meeting.models';
 import { openMeetingWindow } from '@core/util/meeting-window.util';
+import { GENERIC_CALLER, IncomingCallService } from '@core/services/incoming-call.service';
 import { environment } from '@environment/environment';
 import { WorkspaceLoaderService } from '@core/services/workspace-loader.service';
 import { ToastService } from '@core/services/toast.service';
@@ -183,6 +184,7 @@ export class HeaderComponent {
   private router = inject(Router);
   private loader = inject(WorkspaceLoaderService);
   private toast = inject(ToastService);
+  private incomingCall = inject(IncomingCallService);
   private bus = inject(ShellBus);
   private profileSvc = inject(UserProfileService);
   @Output() search = new EventEmitter<void>();
@@ -250,6 +252,23 @@ export class HeaderComponent {
         id: call.id, meetingTitle: call.topic, context: 'Réunion en cours',
         hostUserId: call.hostUserId, // sans lui, le header ignore qui est modérateur
       });
+      // Modal d'appel entrant — FILET indispensable : une trame STOMP ne se
+      // rattrape pas. WebSocket coupée, en reconnexion, ou application ouverte
+      // APRÈS l'invitation → la notification est perdue et le modal n'apparaîtrait
+      // jamais. `/calls/active` ne renvoie que les appels dont on est hôte ou
+      // convié : le voir ici suffit à savoir qu'on est invité. L'hôte est exclu
+      // (on ne s'auto-appelle pas).
+      if (call.hostUserId !== this.session.user()?.id) {
+        // `/calls/active` ne porte pas le nom de l'invitant (le Meeting Service ne
+        // résout pas les noms) : on ne l'invente pas. La notification STOMP, elle,
+        // le porte — et si elle arrive, `offer()` n'écrase pas un modal déjà à
+        // l'écran pour le même appel.
+        this.incomingCall.offer({
+          callId: call.id,
+          topic: call.topic || 'Réunion',
+          caller: GENERIC_CALLER,
+        });
+      }
     } else if (!call && current) {
       this.session.endCall();
     }
