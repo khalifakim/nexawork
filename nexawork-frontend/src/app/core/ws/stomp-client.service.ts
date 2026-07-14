@@ -5,11 +5,16 @@ import { Store } from '@ngrx/store';
 import { selectToken } from '@store/auth/auth.selectors';
 import { environment } from '@environment/environment';
 
+/** Au-delà, les trames les plus anciennes sont abandonnées (saisie = volatile). */
+const MAX_PENDING_FRAMES = 20;
+
 /** Une connexion STOMP vers un endpoint (messagerie ou notifications). */
 class StompConnection {
   private client?: Client;
   private readonly streams = new Map<string, Subject<IMessage>>();
   private readonly subs = new Map<string, StompSubscription>();
+  /** Trames émises avant l'établissement de la connexion — rejouées à `onConnect`. */
+  private readonly pending: { destination: string; body: string }[] = [];
 
   constructor(
     private readonly url: string,
@@ -29,9 +34,22 @@ class StompConnection {
     return subject.asObservable();
   }
 
+  /**
+   * Publie une trame. La connexion s'établit de façon **asynchrone** : publier
+   * avant qu'elle soit prête levait « There is no underlying STOMP connection »
+   * (typiquement `sendTyping` dès la première frappe). On met alors la trame en
+   * attente et on la rejoue à la connexion.
+   */
   publish(destination: string, body: unknown): void {
     this.ensureConnected();
-    this.client?.publish({ destination, body: JSON.stringify(body) });
+    const frame = { destination, body: JSON.stringify(body) };
+    if (this.client?.connected) {
+      this.client.publish(frame);
+      return;
+    }
+    // File bornée : la saisie est volatile, inutile de rejouer un historique.
+    this.pending.push(frame);
+    if (this.pending.length > MAX_PENDING_FRAMES) this.pending.shift();
   }
 
   get connected(): boolean { return !!this.client?.connected; }
@@ -50,7 +68,16 @@ class StompConnection {
       onConnect: () => {
         // Réapplique tous les abonnements en attente / perdus à la (re)connexion.
         for (const dest of this.streams.keys()) this.subscribeIfPossible(dest);
+        // Rejoue les trames émises avant que la connexion soit prête.
+        const queued = this.pending.splice(0, this.pending.length);
+        for (const frame of queued) this.client?.publish(frame);
         this.onConnected?.(this);
+      },
+      onWebSocketClose: () => {
+        // Les abonnements meurent avec la socket : sans cette purge, `subscribeIfPossible`
+        // les croyait encore actifs à la reconnexion et ne les réarmait jamais
+        // — le fil restait muet jusqu'au rechargement de la page.
+        this.subs.clear();
       },
     });
     this.client.activate();

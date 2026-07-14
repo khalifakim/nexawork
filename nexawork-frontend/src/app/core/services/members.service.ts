@@ -1,7 +1,8 @@
 import { Injectable, inject } from '@angular/core';
-import { Observable, map, of, timer } from 'rxjs';
-import { catchError, delay, shareReplay, switchMap } from 'rxjs/operators';
+import { BehaviorSubject, Observable, map, of, timer } from 'rxjs';
+import { catchError, delay, switchMap } from 'rxjs/operators';
 import { BaseHttpService } from '@core/http/base-http.service';
+import { StompClientService } from '@core/ws/stomp-client.service';
 import { Member, MemberResponse } from '@core/models/member.models';
 import { ME, slugName, avatarColorFor } from '@core/util/ui.util';
 import { MEMBERS_BY_WORKSPACE } from '@core/mock/members';
@@ -59,6 +60,7 @@ const PRESENCE_POLL_MS = 20_000;
 @Injectable()
 export class MembersHttpService extends BaseHttpService implements MembersService {
   private readonly session = inject(SessionService);
+  private readonly stomp = inject(StompClientService);
 
   /**
    * Présence Redis (`GET /presence/online`), tenue par le Notification Service :
@@ -68,19 +70,29 @@ export class MembersHttpService extends BaseHttpService implements MembersServic
    * rechargement. Un échec (jeton pas encore posé, service indisponible) vaut
    * « personne en ligne » et ne casse aucune vue.
    */
-  private readonly presence$ = timer(0, PRESENCE_POLL_MS).pipe(
-    switchMap(() => this.get$<string[]>('notification', '/presence/online').pipe(catchError(() => of<string[]>([])))),
-    map(ids => new Set(ids)),
-    shareReplay({ bufferSize: 1, refCount: false }),
-  );
-
-  /** Dernière présence connue — sert à teinter l'annuaire, qui doit rester « complétable ». */
-  private lastPresence = new Set<string>();
+  private readonly presenceSet = new BehaviorSubject<Set<string>>(new Set<string>());
+  private readonly presence$ = this.presenceSet.asObservable();
 
   constructor() {
     super();
-    this.presence$.subscribe(on => (this.lastPresence = on));
+    // Référence périodique (rattrape un événement manqué, amorce l'état initial).
+    timer(0, PRESENCE_POLL_MS).pipe(
+      switchMap(() => this.get$<string[]>('notification', '/presence/online').pipe(catchError(() => of<string[]>([])))),
+    ).subscribe(ids => this.presenceSet.next(new Set(ids)));
+
+    // Temps réel : connexion / déconnexion diffusées par le Notification Service.
+    // Sans cela, une déconnexion n'apparaissait qu'au prochain sondage (20 s) —
+    // voire seulement après un rechargement de page.
+    this.stomp.watchNotifications('/topic/presence').subscribe(frame => {
+      const e = JSON.parse(frame.body) as { userId: string; online: boolean };
+      const next = new Set(this.presenceSet.value);
+      if (e.online) next.add(e.userId); else next.delete(e.userId);
+      this.presenceSet.next(next);
+    });
   }
+
+  /** Dernière présence connue — sert à teinter l'annuaire, qui doit rester « complétable ». */
+  private get lastPresence(): Set<string> { return this.presenceSet.value; }
 
   /** Membres actifs du workspace courant (annuaire), triés par nom, présence incluse. */
   directory(): Observable<Member[]> {

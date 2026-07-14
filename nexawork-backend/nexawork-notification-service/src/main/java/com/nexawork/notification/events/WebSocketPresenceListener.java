@@ -6,6 +6,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.event.EventListener;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.messaging.SessionConnectedEvent;
@@ -26,13 +27,27 @@ import java.util.UUID;
 public class WebSocketPresenceListener {
 
     PresenceService presenceService;
+    SimpMessagingTemplate messagingTemplate;
+
+    /** Changement de présence diffusé à tous : chacun voit l'autre passer en ligne / hors ligne. */
+    public record PresenceEvent(UUID userId, boolean online) {
+    }
 
     @EventListener
     public void onConnected(SessionConnectedEvent event) {
         userIdOf(event.getUser()).ifPresent(id -> {
             presenceService.markOnline(id);
+            broadcast(id, true);
             log.debug("WS connect : {} en ligne", id);
         });
+    }
+
+    /**
+     * Sans cette diffusion, les autres clients n'apprenaient le changement qu'au
+     * prochain sondage (jusqu'à 20 s) — ou au rechargement de la page.
+     */
+    private void broadcast(UUID userId, boolean online) {
+        messagingTemplate.convertAndSend("/topic/presence", new PresenceEvent(userId, online));
     }
 
     @EventListener
@@ -41,6 +56,7 @@ public class WebSocketPresenceListener {
         Principal user = accessor.getUser();
         userIdOf(user).ifPresent(id -> {
             presenceService.markOffline(id);
+            broadcast(id, false);
             log.debug("WS disconnect : {}", id);
         });
     }
