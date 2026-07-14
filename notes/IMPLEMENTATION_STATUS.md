@@ -509,6 +509,22 @@ Facturé à la minute : **enregistrement 0,01 $**, RTMP 0,01 $, **transcription/
 Les onglets **sondages** et **CC** ont été retirés (drapeau JWT **et** masquage de l'interface — le drapeau seul
 laisse l'onglet affiché, grisé).
 
+### Lot du 2026-07-14 (nuit) — l'invité externe partage et voit les fichiers comme un membre
+**Rebuild requis : `meeting-service`, `api-gateway`, `frontend`.** ⚠️ **`nexawork-config-repo/nexawork-meeting.yml`
+modifié** → recréer `config-server` **puis** `meeting-service`. Aucune migration (V5 suffit).
+Build Angular prod vert, `mvn compile` vert. **Non testé en navigateur.**
+
+| # | Sujet | Difficulté (**réelle**) | Solution |
+| :-: | :- | :- | :- |
+| 63 | L'invité externe ne voyait **ni ne partageait** aucun fichier | Il **n'a pas de compte**, donc **pas de JWT** — or **toutes** les routes du File Service exigent une identité (`CallerContext.userId()` lève sinon). Il ne peut donc **pas** téléverser ni télécharger lui-même. | Le **Meeting Service relaie** : routes **publiques** `GET/POST /guest/{token}/files` et `GET /guest/{token}/files/{id}/download`, authentifiées par le **token d'invitation**. Un `RestClient` interne (modèle du GED → Project) appelle le File Service en **forgeant les en-têtes d'identité** sur le réseau interne. |
+| 64 | Quelle identité forger ? | Le File Service exige un `userId` ; l'invité n'en a pas. | On emprunte celle de **l'hôte de la réunion** (c'est lui qui, en invitant, engage sa responsabilité) — **on n'invente aucun utilisateur**. La **paternité réelle** du partage est conservée à part : `MeetingFile.sharedBy` reste **NUL** et `sharedByName` porte le nom de l'invité. |
+| 65 | 🔴 Le token d'invité est **à usage unique** | `access()` marque `used = true` à l'entrée dans la salle. Réutiliser cette garde aurait **refusé tous les appels suivants** : l'invité n'aurait jamais pu lister ni partager un fichier. | `resolveGuest()` **n'exige pas** un token vierge (il a justement servi à entrer) ; la garde qui compte est que **la réunion soit encore ACTIVE**. Un token périmé ne donne donc accès à rien. |
+| 66 | 🔴 Piège de liste blanche (**déjà payé une fois**) | La Gateway déclarait `/guest/*` — or l'`AntPathMatcher` `*` ne matche **qu'un seul segment**. `/guest/{token}/files` serait parti en **401**, exactement comme `/invitations/{token}/accept` en I1. | Ajout explicite de `/guest/*/files` et `/guest/*/files/*/download`. |
+| 67 | Un fichier d'une **autre** réunion | Le token ne doit pas devenir un passe-partout. | `requireFileOfCall()` : le fichier doit appartenir à **la réunion de l'invité** — 404 sinon. |
+
+**Résultat** : l'invité externe a **le même panneau** que les membres (liste des fichiers, **qui** a partagé, taille,
+téléchargement, bouton de partage) et les fichiers qu'il envoie atterrissent **dans MinIO** comme les autres.
+
 ## 3 · Décisions/gaps (voir plan §5)
 
 **✅ Tranchés**

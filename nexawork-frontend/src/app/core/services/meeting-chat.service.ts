@@ -3,6 +3,7 @@ import { Observable, map, of } from 'rxjs';
 import { switchMap } from 'rxjs/operators';
 import { BaseHttpService } from '@core/http/base-http.service';
 import { FilesHttpService } from '@core/http/files.http.service';
+import { api } from '@core/http/api.config';
 import { environment } from '@environment/environment';
 
 /** Message du chat de réunion — vue d'affichage. */
@@ -91,6 +92,30 @@ export class MeetingChatService extends BaseHttpService {
   files(callId: string): Observable<MeetingFileResponse[]> {
     if (environment.mock.meetings) return of([]);
     return this.get$<MeetingFileResponse[]>('meeting', `/calls/${callId}/files`);
+  }
+
+  // ── Invité externe (M5) ───────────────────────────────────────────────────
+  // Il voit et partage exactement comme un membre, mais il n'a **pas de JWT** :
+  // c'est son token d'invitation qui l'authentifie, et le Meeting Service relaie
+  // les octets vers/depuis le File Service pour son compte (routes publiques).
+
+  guestFiles(token: string): Observable<MeetingFileResponse[]> {
+    return this.get$<MeetingFileResponse[]>('meeting', `/guest/${token}/files`);
+  }
+
+  guestShareFile(token: string, file: File): Observable<MeetingFileResponse> {
+    const form = new FormData();
+    form.append('file', file);
+    return this.http
+      .post<{ payload: MeetingFileResponse }>(api('meeting', `/guest/${token}/files`), form)
+      .pipe(map(r => r.payload));
+  }
+
+  /** Le téléchargement passe par le Meeting Service : l'URL du File Service exigerait un JWT. */
+  guestDownload(token: string, meetingFileId: string): Observable<Blob> {
+    return this.http.get(api('meeting', `/guest/${token}/files/${meetingFileId}/download`), {
+      responseType: 'blob',
+    });
   }
 
   /** Fil complet du chat d'une réunion (relecture après l'appel). */

@@ -43,6 +43,12 @@ public class PublicPathMatcher {
             // L'invité n'a pas de compte : il présente son token à usage unique,
             // validé côté service. Page publique /guest/{token} côté front.
             "/nexawork-meeting-api-v1/api/v1/guest/*",
+            // ⚠️ `*` ne matche QU'UN SEUL segment (AntPathMatcher) : sans ces lignes,
+            // /guest/{token}/files partirait en 401 — le même piège que
+            // /invitations/{token}/accept, déjà payé une fois.
+            // Fichiers partagés (M5) : l'invité voit et partage comme un membre.
+            "/nexawork-meeting-api-v1/api/v1/guest/*/files",
+            "/nexawork-meeting-api-v1/api/v1/guest/*/files/*/download",
 
             // ─── Handshake WebSocket STOMP (messaging + notifications) ───
             // Le navigateur ne peut PAS poser d'en-tête Authorization sur un

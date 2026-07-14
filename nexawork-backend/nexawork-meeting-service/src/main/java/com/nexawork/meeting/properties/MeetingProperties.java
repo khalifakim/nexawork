@@ -25,4 +25,9 @@ public class MeetingProperties {
 
     /** Plafond dur : aucun appel ne reste ACTIVE au-delà, quoi qu'il arrive. */
     private int maxDurationHours = 12;
+
+    /** File Service — relais des fichiers de l'invité externe (il n'a pas de JWT). */
+    private String fileServiceUrl = "http://localhost:8086/nexawork-file-api-v1";
+
+    private int fileCallTimeoutMs = 20000;
 }
