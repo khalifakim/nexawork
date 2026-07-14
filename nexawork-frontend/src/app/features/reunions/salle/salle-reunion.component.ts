@@ -5,7 +5,8 @@ import { ActivatedRoute } from '@angular/router';
 import { Observable, forkJoin } from 'rxjs';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 import { MeetingsService } from '@core/services/meetings.service';
-import { MeetingChatService } from '@core/services/meeting-chat.service';
+import { MeetingChatService, MeetingFileResponse } from '@core/services/meeting-chat.service';
+import { FilesHttpService } from '@core/http/files.http.service';
 import { SessionService } from '@core/services/session.service';
 import { ToastService } from '@core/services/toast.service';
 import { CallRoom } from '@core/models/meeting.models';
@@ -50,11 +51,45 @@ import { CreerReunionComponent } from '@features/reunions/modals/creer-reunion/c
            Placé en BAS À GAUCHE, hors de la liste des participants (à droite). -->
       @if (!loading() && !error()) {
         <input #fileInput type="file" hidden (change)="onFilePicked($event)" />
-        <button class="share" [disabled]="sharing()" (click)="fileInput.click()"
-                title="Partager un fichier avec les participants">
-          <app-icon name="paperclip" [size]="17" />
-          {{ sharing() ? 'Envoi…' : 'Partager un fichier' }}
-        </button>
+
+        <div class="files">
+          <button class="files__tab" [class.files__tab--on]="panelOpen()" (click)="togglePanel()"
+                  title="Fichiers partagés pendant la réunion">
+            <app-icon name="paperclip" [size]="17" />
+            Fichiers
+            @if (files().length) { <span class="files__n">{{ files().length }}</span> }
+          </button>
+
+          @if (panelOpen()) {
+            <div class="panel">
+              <div class="panel__hd">
+                <span>Fichiers partagés</span>
+                <button class="panel__x" (click)="panelOpen.set(false)"><app-icon name="x" [size]="15" /></button>
+              </div>
+
+              <div class="panel__list">
+                @for (f of files(); track f.id) {
+                  <button class="fitem" (click)="download(f)" [title]="'Télécharger ' + f.fileName">
+                    <span class="fitem__ic"><app-icon name="file" [size]="16" /></span>
+                    <span class="fitem__tx">
+                      <span class="fitem__n">{{ f.fileName }}</span>
+                      <!-- Qui a partagé, et quand : l'information demandée. -->
+                      <span class="fitem__m">{{ f.sharedByName }} · {{ size(f.fileSize) }}</span>
+                    </span>
+                    <span class="fitem__dl"><app-icon name="download" [size]="15" /></span>
+                  </button>
+                } @empty {
+                  <div class="panel__empty">Aucun fichier partagé pour l'instant.</div>
+                }
+              </div>
+
+              <button class="panel__add" [disabled]="sharing()" (click)="fileInput.click()">
+                @if (sharing()) { <span class="spin spin--s"></span>Envoi… }
+                @else { <app-icon name="upload" [size]="16" />Partager un fichier }
+              </button>
+            </div>
+          }
+        </div>
       }
     </div>
 
@@ -75,9 +110,28 @@ import { CreerReunionComponent } from '@features/reunions/modals/creer-reunion/c
     .state button { padding: 9px 18px; border: 1px solid #4B3FD6; border-radius: 9px; background: #5B5FE9; color: #fff; font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
     .spin { width: 34px; height: 34px; border: 3px solid rgba(255,255,255,.2); border-top-color: #6C70F0; border-radius: 50%; animation: nxspin .8s linear infinite; }
     @keyframes nxspin { to { transform: rotate(360deg); } }
-    .share { position: absolute; z-index: 3; left: 14px; bottom: 88px; display: inline-flex; align-items: center; gap: 8px; padding: 9px 15px; border: none; border-radius: 999px; background: rgba(28,25,40,.82); color: #fff; font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; backdrop-filter: blur(6px); box-shadow: 0 4px 14px rgba(0,0,0,.3); }
-    .share:hover:not(:disabled) { background: rgba(91,95,233,.92); }
-    .share:disabled { opacity: .6; cursor: default; }
+    /* Fichiers partagés — en bas à GAUCHE, hors de la liste des participants (à droite). */
+    .files { position: absolute; z-index: 3; left: 14px; bottom: 88px; display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+    .files__tab { display: inline-flex; align-items: center; gap: 8px; padding: 9px 15px; border: none; border-radius: 999px; background: rgba(28,25,40,.82); color: #fff; font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; backdrop-filter: blur(6px); box-shadow: 0 4px 14px rgba(0,0,0,.3); }
+    .files__tab:hover, .files__tab--on { background: rgba(91,95,233,.92); }
+    .files__n { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: #fff; color: #4B3FD6; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+    .panel { order: -1; width: 310px; max-height: 46vh; display: flex; flex-direction: column; border-radius: 14px; background: rgba(24,21,34,.94); backdrop-filter: blur(10px); box-shadow: 0 16px 44px rgba(0,0,0,.45); overflow: hidden; }
+    .panel__hd { flex: none; display: flex; align-items: center; justify-content: space-between; padding: 12px 12px 10px 15px; color: #fff; font-size: 13px; font-weight: 700; border-bottom: 1px solid rgba(255,255,255,.09); }
+    .panel__x { width: 24px; height: 24px; border: none; border-radius: 7px; background: transparent; color: rgba(255,255,255,.6); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    .panel__x:hover { background: rgba(255,255,255,.1); color: #fff; }
+    .panel__list { flex: 1; overflow-y: auto; padding: 6px; }
+    .panel__empty { padding: 20px 12px; text-align: center; font-size: 12.5px; color: rgba(255,255,255,.45); }
+    .fitem { width: 100%; display: flex; align-items: center; gap: 10px; padding: 9px 10px; border: none; border-radius: 9px; background: transparent; color: #fff; font-family: inherit; text-align: left; cursor: pointer; }
+    .fitem:hover { background: rgba(255,255,255,.08); }
+    .fitem__ic { width: 30px; height: 30px; flex: none; border-radius: 8px; background: rgba(108,112,240,.24); color: #A9ACFF; display: flex; align-items: center; justify-content: center; }
+    .fitem__tx { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .fitem__n { font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .fitem__m { font-size: 11px; color: rgba(255,255,255,.55); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .fitem__dl { flex: none; color: rgba(255,255,255,.5); display: flex; }
+    .panel__add { flex: none; display: flex; align-items: center; justify-content: center; gap: 8px; margin: 6px; padding: 10px; border: none; border-radius: 10px; background: #5B5FE9; color: #fff; font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+    .panel__add:hover:not(:disabled) { background: #4B3FD6; }
+    .panel__add:disabled { opacity: .6; cursor: default; }
+    .spin--s { width: 15px; height: 15px; border-width: 2px; }
   `],
 })
 export class SalleReunionComponent implements OnDestroy {
@@ -86,6 +140,7 @@ export class SalleReunionComponent implements OnDestroy {
   private route = inject(ActivatedRoute);
   private meetings = inject(MeetingsService);
   private chat = inject(MeetingChatService);
+  private filesApi = inject(FilesHttpService);
   private session = inject(SessionService);
   private toast = inject(ToastService);
 
@@ -96,6 +151,15 @@ export class SalleReunionComponent implements OnDestroy {
   inviteOpen = signal(false);
   inviting = signal(false);
   sharing = signal(false);
+  panelOpen = signal(false);
+  /** Fichiers partagés dans l'appel — vus par TOUS les participants. */
+  files = signal<MeetingFileResponse[]>([]);
+  /**
+   * Le Meeting Service n'a pas de WebSocket : sans sondage, un participant ne
+   * verrait jamais le fichier qu'un AUTRE vient de partager (seul l'expéditeur
+   * rafraîchit sa propre liste). 6 s — la salle est un contexte court.
+   */
+  private filesPoll?: ReturnType<typeof setInterval>;
 
   private api?: JitsiApi;
   private callId = '';
@@ -148,6 +212,10 @@ export class SalleReunionComponent implements OnDestroy {
     // M2 — persistance du chat de réunion.
     this.api.addListener('incomingMessage', (p: unknown) => this.chat.capture(this.callId, p, false));
     this.api.addListener('outgoingMessage', (p: unknown) => this.chat.capture(this.callId, p, true));
+
+    // M5 — les fichiers partagés par les AUTRES doivent apparaître sans recharger.
+    this.refreshFiles();
+    this.filesPoll = setInterval(() => this.refreshFiles(), 6000);
   }
 
   /**
@@ -206,8 +274,12 @@ export class SalleReunionComponent implements OnDestroy {
     this.chat.shareFile(this.callId, workspaceId, file).subscribe({
       next: shared => {
         this.sharing.set(false);
+        this.panelOpen.set(true);
+        this.refreshFiles(); // affichage immédiat, sans attendre le prochain sondage
         this.toast.show({ message: '« ' + shared.fileName + ' » partagé avec les participants' });
         try {
+          // Annonce dans le chat : les autres sont prévenus tout de suite, sans
+          // avoir à ouvrir le panneau.
           this.api?.executeCommand('sendChatMessage',
             'a partagé un fichier : ' + shared.fileName);
         } catch {
@@ -221,11 +293,51 @@ export class SalleReunionComponent implements OnDestroy {
     });
   }
 
+  togglePanel(): void {
+    const open = !this.panelOpen();
+    this.panelOpen.set(open);
+    if (open) this.refreshFiles();
+  }
+
+  /** Recharge la liste (un autre participant a pu partager entre-temps). */
+  private refreshFiles(): void {
+    this.chat.files(this.callId).subscribe({
+      next: list => this.files.set(list),
+      error: () => { /* réseau : le prochain cycle réessaiera */ },
+    });
+  }
+
+  /**
+   * Télécharge le fichier. Passage par un blob : l'URL du File Service exige le
+   * jeton, qu'un `<a href>` ne porte pas (401).
+   */
+  download(f: MeetingFileResponse): void {
+    if (!f.downloadUrl) return;
+    this.filesApi.download(f.downloadUrl).subscribe(blob => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = f.fileName;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+  }
+
+  size(bytes?: number): string {
+    if (!bytes) return '—';
+    if (bytes < 1024) return bytes + ' o';
+    if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + ' Ko';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' Mo';
+  }
+
   /** Fermeture de l'onglet/fenêtre : on quitte l'appel, sinon il reste ACTIVE. */
   @HostListener('window:pagehide')
   onPageHide(): void { this.leave(); }
 
-  ngOnDestroy(): void { this.leave(); }
+  ngOnDestroy(): void {
+    clearInterval(this.filesPoll); // sinon le sondage survit à la fermeture de la salle
+    this.leave();
+  }
 
   private leave(): void {
     if (this.left || !this.callId) return;
