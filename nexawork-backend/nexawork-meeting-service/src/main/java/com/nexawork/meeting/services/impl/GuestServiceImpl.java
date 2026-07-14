@@ -80,23 +80,38 @@ public class GuestServiceImpl implements GuestService {
                 .guestToken(token).guestLink(link).build();
     }
 
+    /**
+     * Ouvre la salle à l'invité externe.
+     *
+     * <p>🔴 Le lien n'est <b>plus</b> refusé parce qu'il a « déjà servi ». Il l'était,
+     * et cela rendait l'invité prisonnier d'un aller simple : <b>quitter la réunion,
+     * recharger la page, ou perdre le réseau une seconde</b> suffisait à le laisser
+     * dehors définitivement — alors même que la réunion continuait sans lui.
+     *
+     * <p>La garde qui compte est la <b>durée de vie de la réunion</b> : le lien
+     * n'ouvre que <i>cet</i> appel, et <b>uniquement tant qu'il est ACTIVE</b>. Une
+     * fois l'appel terminé (départ du dernier participant, clôture par l'hôte, ou
+     * balayage automatique), le lien ne vaut plus rien.
+     *
+     * <p>{@code used} reste renseigné : il trace la <b>première</b> entrée de
+     * l'invité (utile à l'historique), il ne bloque plus les suivantes.</p>
+     */
     @Override
     public GuestAccessResponse access(String guestToken) {
         ExternalGuest guest = guestRepository.findByGuestToken(guestToken)
                 .orElseThrow(() -> new ResourceNotFoundException("Lien d'invité invalide."));
-        if (Boolean.TRUE.equals(guest.getUsed())) {
-            throw new ConflictException("Ce lien d'invitation a déjà été utilisé.");
-        }
         Call call = guest.getCall();
         if (call.getStatus() != CallStatus.ACTIVE) {
-            throw new ConflictException("La réunion n'est pas active.");
+            throw new ConflictException("La réunion est terminée.");
         }
 
         // Token JaaS non modérateur pour l'invité (id null → "guest").
         String token = tokenService.generateToken(call.getRoomName(), null,
                 guest.getDisplayName(), guest.getEmail(), false);
-        guest.setUsed(true);
-        guestRepository.save(guest);
+        if (!Boolean.TRUE.equals(guest.getUsed())) {
+            guest.setUsed(true);
+            guestRepository.save(guest);
+        }
 
         String jitsiUrl = jitsiProperties.getUrl() + "/" + jitsiProperties.getAppId()
                 + "/" + call.getRoomName() + "?jwt=" + token;
