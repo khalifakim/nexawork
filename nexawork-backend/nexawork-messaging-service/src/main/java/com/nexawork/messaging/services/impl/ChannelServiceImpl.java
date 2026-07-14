@@ -49,9 +49,13 @@ public class ChannelServiceImpl implements ChannelService {
     @Override
     @Transactional(readOnly = true)
     public List<ChannelResponse> listChannels(UUID projectId) {
+        // Sans `projectId`, l'appelant (la sidebar) veut TOUS ses canaux — d'organisation
+        // ET de projet. Ne renvoyer que les GLOBAL_ORG rendait les canaux de projet
+        // (dont les #général/#annonces créés automatiquement) littéralement invisibles :
+        // ils existaient bien en base, mais n'atteignaient jamais le frontend.
         List<Channel> channels = projectId != null
                 ? channelRepository.findByProjectId(projectId)
-                : channelRepository.findByOrganisationIdAndChannelType(caller.organisationId(), ChannelType.GLOBAL_ORG);
+                : channelRepository.findByOrganisationId(caller.organisationId());
         // REF F : ne retourne que les canaux visibles par l'appelant.
         return channels.stream().filter(guard::canView).map(this::toDto).toList();
     }

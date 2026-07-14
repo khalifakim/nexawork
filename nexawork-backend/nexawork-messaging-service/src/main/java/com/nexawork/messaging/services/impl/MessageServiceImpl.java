@@ -3,6 +3,7 @@ package com.nexawork.messaging.services.impl;
 import com.nexawork.commons.exceptions.ForbiddenException;
 import com.nexawork.commons.exceptions.ResourceNotFoundException;
 import com.nexawork.messaging.dtos.requests.SendMessageRequest;
+import com.nexawork.messaging.dtos.responses.ChannelActivityEvent;
 import com.nexawork.messaging.dtos.responses.MessagePageResponse;
 import com.nexawork.messaging.dtos.responses.MessageResponse;
 import com.nexawork.messaging.dtos.responses.ThreadAttachmentResponse;
@@ -13,6 +14,7 @@ import com.nexawork.messaging.entities.MessageAttachment;
 import com.nexawork.messaging.entities.MessageMention;
 import com.nexawork.messaging.entities.enums.MentionType;
 import com.nexawork.messaging.entities.enums.MessageType;
+import com.nexawork.messaging.repositories.ChannelMemberRepository;
 import com.nexawork.messaging.repositories.MessageMentionRepository;
 import com.nexawork.messaging.repositories.MessageRepository;
 import com.nexawork.messaging.security.CallerContext;
@@ -44,6 +46,7 @@ public class MessageServiceImpl implements MessageService {
 
     MessageRepository messageRepository;
     MessageMentionRepository mentionRepository;
+    ChannelMemberRepository channelMemberRepository;
     ChannelAccessGuard channelGuard;
     MessageAssembler assembler;
     MessageBroadcaster broadcaster;
@@ -83,6 +86,22 @@ public class MessageServiceImpl implements MessageService {
         assembler.notifyMentioned(message, mentions, channel.getId(), channel.getName(), null);
         MessageResponse dto = assembler.toDto(message);
         broadcaster.broadcastChannelMessage(channelId, dto); // temps réel (§7.5)
+
+        // Signale l'activité à ceux qui n'ont PAS le canal ouvert : sans cela, seul
+        // un abonné du topic du canal apprend qu'un message est arrivé.
+        broadcaster.broadcastChannelActivity(
+                channel.getOrganisationId(),
+                Boolean.TRUE.equals(channel.getIsPrivate()),
+                channelMemberRepository.findByChannelId(channelId).stream()
+                        .map(m -> m.getUserId()).toList(),
+                ChannelActivityEvent.builder()
+                        .messageId(message.getId())
+                        .channelId(channel.getId())
+                        .channelName(channel.getName())
+                        .authorUserId(message.getSenderUserId())
+                        .authorDisplayName(caller.displayName())
+                        .excerpt(assembler.excerptOf(message.getContent()))
+                        .build());
         return dto;
     }
 

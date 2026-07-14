@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { Observable, Subject } from 'rxjs';
+import { Observable, Subject, merge } from 'rxjs';
 import { Client, IMessage, StompSubscription } from '@stomp/stompjs';
 import { Store } from '@ngrx/store';
 import { selectToken } from '@store/auth/auth.selectors';
@@ -154,6 +154,20 @@ export class StompClientService {
   /** Publie un message sur une destination applicative (`/app/...`). */
   publish(destination: string, body: unknown): void {
     this.messagingConn().publish(destination, body);
+  }
+
+  /**
+   * Activité des canaux — « quelqu'un a publié dans #… », pour ceux qui n'ont pas
+   * le canal ouvert. Deux sources, imposées par REF F côté serveur : le topic du
+   * workspace (canaux publics) et la file personnelle (canaux privés, dont on est
+   * membre). Sans le second, un message de canal privé fuiterait vers tout le
+   * workspace ; sans le premier, #général ne notifierait personne.
+   */
+  watchChannelActivity(organisationId: string): Observable<IMessage> {
+    return merge(
+      this.messagingConn().watch(`/topic/org/${organisationId}/channel-activity`),
+      this.messagingConn().watch('/user/queue/channel-activity'),
+    );
   }
 
   // ── Notifications (file personnelle + présence) ─────────────────────────────

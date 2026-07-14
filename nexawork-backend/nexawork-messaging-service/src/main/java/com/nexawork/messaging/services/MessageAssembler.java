@@ -133,6 +133,11 @@ public class MessageAssembler {
         }
     }
 
+    /** Extrait affiché sous la notification — exposé aux appelants (activité de canal). */
+    public String excerptOf(String content) {
+        return excerpt(content);
+    }
+
     /** Extrait affiché sous la notification (le contenu peut être long). */
     private String excerpt(String content) {
         if (content == null) {

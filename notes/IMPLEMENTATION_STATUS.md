@@ -456,6 +456,25 @@ Build Angular prod vert, `mvn compile` vert. **Non testé en navigateur.**
 | 47 | Les notifications « anciennes » semblaient perdues | **Elles étaient bien persistées** (déjà vérifié en #42), mais le frontend appelait `GET /notifications` **sans paramètre** → taille de page serveur par défaut = **20**. Au-delà, les plus anciennes étaient **tronquées**. | Le client demande explicitement `size=100` (maximum admis par le serveur). |
 | 48 | Impossible de **supprimer** une notification | Le backend n'exposait que `markRead` et `hide` (masquage) ; **aucun DELETE**. Et le menu de la cloche n'offrait **aucune action** par notification. | **`DELETE /notifications/{id}`** (garde `requireMine` : 404 si inconnue, 403 si celle d'un autre) + bouton **corbeille** sur chaque ligne du menu, révélé au survol. La ligne n'est retirée qu'**après** confirmation du serveur ; `stopPropagation` empêche le clic d'ouvrir la notification (la navigation annulerait le DELETE — même piège qu'en #40). |
 
+### Lot du 2026-07-14 (après-midi) — canaux invisibles, accès aux appels, lobby, temps réel des canaux
+**Rebuild requis : `messaging-service`, `meeting-service`, `frontend`.** Aucune migration.
+Build Angular prod vert, `mvn compile` vert. **Non testé en navigateur.**
+
+| # | Symptôme | Cause racine (**mesurée**) | Correctif |
+| :-: | :- | :- | :- |
+| 49 | 🔴 **Les canaux `#général`/`#annonces` d'un projet ne s'affichent jamais** | **Mon diagnostic précédent (#3, #11 : « faux problème, c'est la sidebar ») était FAUX.** Les canaux **sont bien créés** (vérifié en base : 4 canaux `is_system=true` sur les 2 projets), mais **l'API ne les renvoie pas** : `listChannels(null)` — l'appel de la sidebar, sans `projectId` — ne retournait **que les `GLOBAL_ORG`**. Mesuré : `GET /channels` renvoyait **1 seul canal** sur 5. Les canaux de projet n'atteignaient donc **jamais** le frontend. | Sans `projectId`, l'endpoint renvoie **tous** les canaux du workspace (`findByOrganisationId`), le guard REF F filtrant ensuite la visibilité. Les droits sont **hérités du projet** (canal public de projet = visible de ses membres — `canView`). |
+| 50 | 🔴 **Un membre NON convié peut rejoindre un appel** | `join()` créait un participant **à la volée** pour quiconque connaissait l'identifiant (`orElseGet`). Mesuré : `POST /calls/{id}/join` répondait **200** pour un membre non convié. Il ne *voyait* pas l'appel (`/calls/active` renvoie bien `[]` ✅) mais pouvait y entrer en forgeant la requête. | `join()` exige d'être **hôte ou convié explicitement** → **404** (et non 403 : ne pas révéler l'existence de la réunion, comme `loadInOrg`). |
+| 51 | Invité externe : la **salle d'attente ne s'active jamais** | Le backend émet bien `lobby_bypass` (vrai pour les membres, faux pour l'invité), **mais ce claim ne sert à rien tant que le lobby n'est pas ACTIVÉ dans la salle** — et il ne l'était nulle part. Sans lobby, **tout le monde entre directement**, y compris l'invité externe. | Le **modérateur** arme le lobby (`toggleLobby` à `videoConferenceJoined` — la config seule ne suffit pas côté JaaS). Les membres conviés le traversent grâce à `lobby_bypass` ; l'invité externe y reste et le modérateur reçoit sa demande d'admission. |
+| 52 | Accès d'un intrus au lien d'invité | *(Vérifié — déjà correct.)* Le lien porte un **token à usage unique** vérifié en base (`ExternalGuest`), refusé s'il est déjà utilisé ou si l'appel n'est pas actif. Quelqu'un qui n'a pas été invité **n'a pas de token** : aucun accès. | Rien à corriger. |
+| 53 | Aucune notification quand quelqu'un **publie dans un canal** | Le message était bien diffusé en temps réel (`/topic/channels/{id}`), **mais seulement aux abonnés du canal ouvert**. `MESSAGE_RECEIVED` n'était **jamais produit** : seules les *mentions* déclenchaient une notification. Qui n'avait pas le canal à l'écran n'apprenait rien. | Nouvel événement **`ChannelActivityEvent`** diffusé en STOMP, **routé selon REF F** : canal **privé** → file personnelle de chaque membre ; canal **public** → topic du workspace. Sans cette distinction, l'extrait d'un message privé **fuiterait** vers tout le workspace. Le front l'affiche dans la cloche (auteur + canal), et le clic **ouvre le canal ancré sur le message**. |
+
+> ⚠️ **L'activité de canal n'est PAS persistée** (contrairement aux mentions/tâches/réunions). Le Messaging
+> **ne connaît pas les membres d'un canal public** — la composition des projets appartient au Project Service —
+> il ne peut donc pas dresser la liste des destinataires qu'exigerait une notification en base, une par
+> personne. C'est un **signal volatile** : on ne l'invente pas. Une notification persistée par destinataire
+> supposerait que le Messaging interroge le Project Service (appel inter-services, aujourd'hui absent de
+> l'architecture). **À trancher si la persistance de ces notifications devient une exigence.**
+
 ## 3 · Décisions/gaps (voir plan §5)
 
 **✅ Tranchés**

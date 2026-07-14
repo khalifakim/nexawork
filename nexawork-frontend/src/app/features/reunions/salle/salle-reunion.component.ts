@@ -92,7 +92,8 @@ export class SalleReunionComponent implements OnDestroy {
   }
 
   private async openRoom(room: CallRoom): Promise<void> {
-    this.isHost.set(!!room.hostUserId && room.hostUserId === this.session.user()?.id);
+    const host = !!room.hostUserId && room.hostUserId === this.session.user()?.id;
+    this.isHost.set(host);
     const me = this.session.user();
     try {
       this.api = await openJitsiRoom(
@@ -101,6 +102,10 @@ export class SalleReunionComponent implements OnDestroy {
         // ressaisit pas.
         { displayName: me?.displayName, email: me?.email },
         message => this.fail(message),
+        // Seul le modérateur arme la salle d'attente. Elle ne concerne QUE les
+        // invités externes : les membres conviés portent `lobby_bypass` et la
+        // traversent sans rien demander (§14.5).
+        { enableLobby: host },
       );
     } catch (e) {
       this.fail(e instanceof Error ? e.message : "Le service de visioconférence n'a pas pu être chargé.");

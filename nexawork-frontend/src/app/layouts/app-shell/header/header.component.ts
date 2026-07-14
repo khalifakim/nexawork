@@ -360,6 +360,8 @@ export class HeaderComponent {
   /** Marque lue localement (retour immédiat) puis persiste côté serveur. */
   markRead(id: string): void {
     this.readIds.update(l => l.includes(id) ? l : [...l, id]);
+    // Activité de canal : signal volatile, sans existence en base (cf. removeNotif).
+    if (id.startsWith('ch-')) return;
     this.notifsSvc.markRead(id).subscribe({ error: () => {} });
   }
   /**
@@ -370,6 +372,13 @@ export class HeaderComponent {
    */
   removeNotif(n: Notif, ev: Event): void {
     ev.stopPropagation();
+    // Les activités de canal (`ch-…`) sont des signaux temps réel VOLATILES : elles
+    // n'existent pas en base, un DELETE serveur répondrait 404. On les écarte
+    // localement.
+    if (n.id.startsWith('ch-')) {
+      this.removedIds.update(l => [...l, n.id]);
+      return;
+    }
     this.notifsSvc.remove(n.id).subscribe({
       next: () => this.removedIds.update(l => [...l, n.id]),
       error: () => this.toast.show({ message: 'Impossible de supprimer la notification.', icon: 'warning' }),

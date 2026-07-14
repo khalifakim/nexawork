@@ -53,6 +53,7 @@ export async function openJitsiRoom(
   jwt: string,
   user?: JitsiUser,
   onError?: (message: string) => void,
+  options?: { enableLobby?: boolean },
 ): Promise<JitsiApi> {
   if (!jitsiUrl || !jwt) throw new Error('Salle vidéo indisponible (configuration JaaS manquante).');
 
@@ -75,6 +76,12 @@ export async function openJitsiRoom(
       // tenant JaaS peut tourner sur une version antérieure.
       prejoinConfig: { enabled: false },
       prejoinPageEnabled: false,
+      // Salle d'attente. Le backend émet déjà `lobby_bypass` (vrai pour les membres
+      // authentifiés, faux pour l'invité externe) — mais ce claim ne sert À RIEN
+      // tant que le lobby n'est pas ACTIVÉ dans la salle : sans lui, tout le monde
+      // entre directement, y compris l'invité externe. Seul le modérateur l'active
+      // (il est le premier dans la salle, et JaaS n'accepte l'activation que de lui).
+      ...(options?.enableLobby ? { lobby: { autoKnock: true, enableChat: false } } : {}),
     },
     // L'utilisateur est DÉJÀ authentifié sur NexaWork : son nom est porté par le
     // JWT (`context.user.name`) et repris ici, il n'a donc rien à ressaisir.
@@ -82,6 +89,20 @@ export async function openJitsiRoom(
       ? { userInfo: { displayName: user.displayName, email: user.email } }
       : {}),
   });
+
+  // Le lobby s'active par COMMANDE, une fois la conférence rejointe : la config
+  // seule ne le déclenche pas côté JaaS. Le modérateur l'arme donc à son entrée —
+  // les membres conviés le traversent grâce à `lobby_bypass`, l'invité externe y
+  // reste et le modérateur reçoit sa demande d'admission (« knocking »).
+  if (options?.enableLobby) {
+    api.addListener('videoConferenceJoined', () => {
+      try {
+        api.executeCommand('toggleLobby', true);
+      } catch {
+        /* Tenant sans lobby : la réunion reste utilisable, sans salle d'attente. */
+      }
+    });
+  }
 
   if (onError) {
     // JaaS refusant le jeton émet `errorOccurred` : sans écoute, l'utilisateur ne

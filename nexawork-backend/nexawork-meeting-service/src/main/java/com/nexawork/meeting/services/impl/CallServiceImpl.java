@@ -105,18 +105,26 @@ public class CallServiceImpl implements CallService {
                             "ALREADY_IN_CALL : vous êtes déjà dans un appel (" + p.getCall().getId() + ").");
                 });
 
+        boolean isHost = call.getHostUserId().equals(me);
+
+        // Seuls l'hôte et les membres CONVIÉS entrent. Auparavant, un participant
+        // était créé à la volée pour quiconque connaissait l'identifiant de l'appel
+        // (`orElseGet`) : un membre du workspace non convié — qui ne voit pourtant
+        // pas l'appel dans `activeCalls()` — pouvait le rejoindre en forgeant la
+        // requête. Mesuré : `join` répondait 200. On répond 404 (et non 403) pour
+        // ne pas révéler l'existence de la réunion, comme le fait déjà `loadInOrg`.
         CallParticipant participant = participantRepository.findByCallIdAndUserId(callId, me)
-                .orElseGet(() -> CallParticipant.builder()
-                        .call(call).userId(me).invitedExplicitly(false).build());
+                .orElseThrow(() -> new ResourceNotFoundException("Appel introuvable."));
+        if (!isHost && !Boolean.TRUE.equals(participant.getInvitedExplicitly())) {
+            throw new ResourceNotFoundException("Appel introuvable.");
+        }
         participant.setJoinedAt(LocalDateTime.now());
         participant.setLeftAt(null);
         participantRepository.save(participant);
 
-        boolean isHost = call.getHostUserId().equals(me);
-        // Tout membre AUTHENTIFIÉ du workspace entre directement dans la salle : il
-        // s'est déjà authentifié sur la plateforme, lui réclamer une seconde
-        // validation manuelle n'apporte aucune sécurité (l'appel n'est de toute
-        // façon visible que de son hôte et de ses conviés — cf. activeCalls()).
+        // Tout membre CONVIÉ entre directement dans la salle (façon WhatsApp) : il
+        // s'est déjà authentifié sur la plateforme et a été invité explicitement,
+        // une validation manuelle du modérateur n'apporterait rien.
         // Seul l'INVITÉ EXTERNE, qui n'a pas de compte, passe par la salle
         // d'attente (GuestService : lobbyBypass = false).
         String token = tokenService.generateToken(call.getRoomName(), me,

@@ -1,5 +1,6 @@
 package com.nexawork.messaging.services;
 
+import com.nexawork.messaging.dtos.responses.ChannelActivityEvent;
 import com.nexawork.messaging.dtos.responses.MessageResponse;
 import com.nexawork.messaging.dtos.responses.TypingEvent;
 import lombok.AccessLevel;
@@ -28,6 +29,28 @@ public class MessageBroadcaster {
     public void broadcastChannelMessage(UUID channelId, MessageResponse message) {
         messagingTemplate.convertAndSend("/topic/channels/" + channelId, message);
         log.debug("Message {} diffusé sur /topic/channels/{}", message.getId(), channelId);
+    }
+
+    /**
+     * Signale l'activité d'un canal à ceux qui ne l'ont PAS ouvert (cloche du
+     * frontend). Le routage respecte REF F — sans quoi l'extrait d'un message de
+     * canal privé fuiterait vers tout le workspace :
+     * <ul>
+     *   <li><b>canal privé</b> → file personnelle de chaque membre du canal ;</li>
+     *   <li><b>canal public</b> → topic du workspace (visible de tous ses membres).</li>
+     * </ul>
+     * L'auteur est exclu côté client (il sait ce qu'il vient d'écrire).
+     */
+    public void broadcastChannelActivity(UUID organisationId, boolean isPrivate,
+                                         java.util.List<UUID> channelMemberIds,
+                                         ChannelActivityEvent event) {
+        if (isPrivate) {
+            for (UUID userId : channelMemberIds) {
+                messagingTemplate.convertAndSendToUser(userId.toString(), "/queue/channel-activity", event);
+            }
+            return;
+        }
+        messagingTemplate.convertAndSend("/topic/org/" + organisationId + "/channel-activity", event);
     }
 
     /** Diffuse un message de conversation sur {@code /topic/conversations/{conversationId}}. */
