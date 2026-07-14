@@ -152,19 +152,24 @@ public class JitsiTokenService {
         user.put("lobby_bypass", lobbyBypass);
 
         Map<String, Object> features = new HashMap<>();
-        features.put("livestreaming", false);
-        features.put("recording", false);
-        features.put("transcription", false);
-        features.put("outbound-call", false);
+        // Facturés à la minute par 8x8 et hors périmètre (V5.1 §14.4 : l'enregistrement
+        // est une PERSPECTIVE, M6). Laissés à `false` — les activer engagerait des frais.
+        features.put("livestreaming", false);   // RTMP : 0,01 $/min
+        features.put("recording", false);       // M6 — 0,01 $/min, conservation 24 h
+        features.put("transcription", false);   // sous-titres « CC » : 0,06 $/min
+        features.put("outbound-call", false);   // SIP : 0,06 $/min
         // Partage de fichiers en réunion. JaaS le REFUSE tant que ce drapeau est
         // absent du jeton (« Not allowed to upload files. Ask a moderator for
         // permission rights ») : ce n'est pas un réglage de la console, c'est une
         // permission portée par le JWT. Accordée à tout participant — l'invité
         // externe compris, il est déjà passé par l'admission du modérateur.
+        // Aucun surcoût : le partage de fichiers n'est pas facturé à l'usage.
         features.put("file-upload", true);
-        // Sondages et messages de groupe : idem, refusés sans drapeau explicite.
+        // Chat de groupe : indispensable — c'est lui que M2 persiste (`MeetingMessage`).
         features.put("send-groupchat", true);
-        features.put("create-polls", true);
+        // Sondages désactivés (onglet retiré de la barre du chat, sur demande) : la
+        // fonctionnalité n'est pas utilisée par NexaWork.
+        features.put("create-polls", false);
 
         Map<String, Object> context = new HashMap<>();
         context.put("user", user);

@@ -76,6 +76,17 @@ export async function openJitsiRoom(
       // tenant JaaS peut tourner sur une version antérieure.
       prejoinConfig: { enabled: false },
       prejoinPageEnabled: false,
+      // Onglets « sondages » et « CC » (sous-titres) retirés du panneau de chat.
+      // Le drapeau JWT (`create-polls`/`transcription` à false) en interdit l'USAGE,
+      // mais l'onglet resterait affiché — il faut aussi le masquer côté interface.
+      // La transcription est facturée par 8x8 (0,06 $/min) : on ne l'expose pas.
+      disablePolls: true,
+      transcription: { enabled: false },
+      // Boutons correspondants retirés de la barre d'outils (sondages, sous-titres) —
+      // ainsi que l'enregistrement et le streaming, facturés à la minute et hors
+      // périmètre (V5.1 §14.4). Le drapeau JWT les refuserait de toute façon : autant
+      // ne pas afficher un bouton qui ne peut qu'échouer.
+      hiddenToolbarButtons: ['polls', 'closedcaptions', 'recording', 'livestreaming'],
       // Salle d'attente. Le backend émet déjà `lobby_bypass` (vrai pour les membres
       // authentifiés, faux pour l'invité externe) — mais ce claim ne sert À RIEN
       // tant que le lobby n'est pas ACTIVÉ dans la salle : sans lui, tout le monde
