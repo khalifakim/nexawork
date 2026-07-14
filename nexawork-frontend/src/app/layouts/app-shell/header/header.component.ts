@@ -105,16 +105,11 @@ const ACTIVE_CALL_POLL_MS = 15_000;
                 <div style="font-size:16px;font-weight:700;margin-bottom:3px">{{ call.meetingTitle }}</div>
                 <div style="font-size:12.5px;color:rgba(255,255,255,.8)">{{ call.context }}</div>
               </div>
+              <!-- Pas de « terminer pour tous » ici : quitter suffit. L'appel se clôt
+                   de lui-même au départ du DERNIER participant, et le modérateur peut
+                   donc partir puis revenir sans couper la réunion des autres. -->
               <div style="padding:12px 18px 18px;display:flex;gap:10px">
                 <button class="call__ignore" (click)="hangup()" title="Quitter l'appel"><app-icon name="x" [size]="17" /></button>
-                <!-- Clôture pour TOUS, sans ouvrir la salle. Réservée au créateur de
-                     l'appel : les autres ne peuvent que le quitter. -->
-                @if (isCallHost()) {
-                  <button class="call__end" [disabled]="endingCall()" (click)="endCallForAll()"
-                          title="Terminer l'appel pour tous les participants">
-                    <app-icon name="phoneOff" [size]="17" />
-                  </button>
-                }
                 <button class="call__join" (click)="focusCall()"><app-icon name="video" [size]="17" [stroke]="2" />Rejoindre la salle</button>
               </div>
             </div>
@@ -260,13 +255,6 @@ export class HeaderComponent {
     }
   });
 
-  /** Seul le créateur de l'appel peut le terminer pour tout le monde. */
-  isCallHost = computed(() => {
-    const call = this.ongoingCall();
-    const me = this.session.user()?.id;
-    return !!call?.hostUserId && !!me && call.hostUserId === me;
-  });
-  endingCall = signal(false);
 
   /** Tick tous les 1 s pour rafraîchir le chronomètre du popover. */
   private nowTick = signal(Date.now());
@@ -289,29 +277,6 @@ export class HeaderComponent {
     this.session.endCall();
     if (!environment.mock.meetings) this.meetingsSvc.leave(call.id).subscribe({ error: () => {} });
     this.toast.show({ message: 'Vous avez quitté « ' + call.meetingTitle + ' »' });
-  }
-
-  /**
-   * Termine l'appel pour TOUS, sans ouvrir la salle (modérateur uniquement). Le
-   * serveur fait foi : `end` clôt l'appel, et le sondage `GET /calls/active` fait
-   * disparaître la bannière chez tous les participants au cycle suivant.
-   */
-  endCallForAll(): void {
-    const call = this.ongoingCall();
-    if (!call || this.endingCall()) return;
-    this.endingCall.set(true);
-    this.meetingsSvc.end(call.id).subscribe({
-      next: () => {
-        this.endingCall.set(false);
-        this.close();
-        this.session.endCall();
-        this.toast.show({ message: '« ' + call.meetingTitle + ' » terminée pour tous les participants' });
-      },
-      error: () => {
-        this.endingCall.set(false);
-        this.toast.show({ message: "La réunion n'a pas pu être terminée.", icon: 'warning' });
-      },
-    });
   }
 
   /** Rejoindre / revenir à la salle — elle vit dans sa propre fenêtre. */

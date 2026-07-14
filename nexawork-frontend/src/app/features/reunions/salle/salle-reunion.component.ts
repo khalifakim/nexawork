@@ -2,12 +2,15 @@ import {
   ChangeDetectionStrategy, Component, ElementRef, HostListener, OnDestroy, ViewChild, inject, signal,
 } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
+import { Observable, forkJoin } from 'rxjs';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 import { MeetingsService } from '@core/services/meetings.service';
 import { MeetingChatService } from '@core/services/meeting-chat.service';
 import { SessionService } from '@core/services/session.service';
+import { ToastService } from '@core/services/toast.service';
 import { CallRoom } from '@core/models/meeting.models';
 import { JitsiApi, openJitsiRoom } from '@core/util/jitsi.util';
+import { CreerReunionComponent } from '@features/reunions/modals/creer-reunion/creer-reunion.component';
 
 /**
  * Salle de réunion (M4) — ouverte dans une **fenêtre dédiée**, au-dessus de
@@ -21,7 +24,7 @@ import { JitsiApi, openJitsiRoom } from '@core/util/jitsi.util';
   selector: 'app-salle-reunion',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IconComponent],
+  imports: [IconComponent, CreerReunionComponent],
   template: `
     <div class="room">
       @if (error()) {
@@ -33,18 +36,20 @@ import { JitsiApi, openJitsiRoom } from '@core/util/jitsi.util';
       } @else if (loading()) {
         <div class="state"><span class="spin"></span><p>Connexion à la salle…</p></div>
       }
+      <!-- Aucun bouton NexaWork par-dessus l'iframe : il recouvrait la liste des
+           participants de Jitsi. On s'en remet au « raccrocher » natif — quitter la
+           salle suffit, l'appel se clôt tout seul au départ du DERNIER participant
+           (leave() côté serveur, CallSweeper en filet). Le modérateur peut donc
+           partir et revenir sans terminer la réunion pour les autres. -->
       <div #stage class="stage" [class.stage--ready]="!loading() && !error()"></div>
-
-      <!-- Clôture pour TOUS : réservée au créateur de l'appel (modérateur). Le
-           bouton « raccrocher » de JaaS ne fait que quitter la salle. -->
-      @if (isHost() && !loading() && !error()) {
-        <button class="endall" [disabled]="ending()" (click)="endForAll()"
-                title="Terminer la réunion pour tous les participants">
-          <app-icon name="phoneOff" [size]="18" />
-          {{ ending() ? 'Fin…' : 'Terminer pour tous' }}
-        </button>
-      }
     </div>
+
+    <!-- Invitation en cours de réunion : ouverte par le bouton « Inviter » de Jitsi,
+         dont l'action native est supprimée (elle ignore nos membres et nos emails). -->
+    @if (inviteOpen()) {
+      <app-creer-reunion mode="invite" [busy]="inviting()"
+                         (created)="onInvite($event)" (closed)="inviteOpen.set(false)" />
+    }
   `,
   styles: [`
     :host { display: block; height: 100vh; }
@@ -56,9 +61,6 @@ import { JitsiApi, openJitsiRoom } from '@core/util/jitsi.util';
     .state button { padding: 9px 18px; border: 1px solid #4B3FD6; border-radius: 9px; background: #5B5FE9; color: #fff; font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
     .spin { width: 34px; height: 34px; border: 3px solid rgba(255,255,255,.2); border-top-color: #6C70F0; border-radius: 50%; animation: nxspin .8s linear infinite; }
     @keyframes nxspin { to { transform: rotate(360deg); } }
-    .endall { position: absolute; z-index: 3; top: 14px; right: 14px; display: inline-flex; align-items: center; gap: 8px; padding: 9px 15px; border: none; border-radius: 999px; background: #E0393E; color: #fff; font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,.35); }
-    .endall:hover:not(:disabled) { background: #C92E33; }
-    .endall:disabled { opacity: .6; cursor: default; }
   `],
 })
 export class SalleReunionComponent implements OnDestroy {
@@ -68,12 +70,14 @@ export class SalleReunionComponent implements OnDestroy {
   private meetings = inject(MeetingsService);
   private chat = inject(MeetingChatService);
   private session = inject(SessionService);
+  private toast = inject(ToastService);
 
   loading = signal(true);
   error = signal<string | null>(null);
-  /** Le créateur de l'appel est modérateur : lui seul peut le clore pour tous. */
+  /** Le créateur de l'appel est modérateur (il arme le lobby, il peut inviter). */
   isHost = signal(false);
-  ending = signal(false);
+  inviteOpen = signal(false);
+  inviting = signal(false);
 
   private api?: JitsiApi;
   private callId = '';
@@ -102,10 +106,15 @@ export class SalleReunionComponent implements OnDestroy {
         // ressaisit pas.
         { displayName: me?.displayName, email: me?.email },
         message => this.fail(message),
-        // Seul le modérateur arme la salle d'attente. Elle ne concerne QUE les
-        // invités externes : les membres conviés portent `lobby_bypass` et la
-        // traversent sans rien demander (§14.5).
-        { enableLobby: host },
+        {
+          // Seul le modérateur arme la salle d'attente. Elle ne concerne QUE les
+          // invités externes : les membres conviés portent `lobby_bypass` et la
+          // traversent sans rien demander (§14.5).
+          enableLobby: host,
+          // Le bouton « Inviter » de Jitsi ouvre NOTRE modal (membres du workspace
+          // + emails externes) : l'invitation reste gérée par NexaWork.
+          onInviteClicked: () => this.inviteOpen.set(true),
+        },
       );
     } catch (e) {
       this.fail(e instanceof Error ? e.message : "Le service de visioconférence n'a pas pu être chargé.");
@@ -124,27 +133,36 @@ export class SalleReunionComponent implements OnDestroy {
   }
 
   /**
-   * Clôt la réunion pour TOUS (modérateur uniquement). Deux gestes complémentaires :
-   * - `endConference` chasse les participants de la salle JaaS ;
-   * - `end` (serveur) fait foi sur l'état de l'appel — sans lui, l'appel resterait
-   *   ACTIVE en base et la bannière « Appel en cours » persisterait chez les autres.
-   * Le serveur est appelé même si la commande JaaS échoue : il est la source de vérité.
+   * Convie de nouveaux participants à la réunion EN COURS : membres du workspace
+   * (notifiés → modal d'appel entrant) et invités externes (lien à usage unique
+   * envoyé par email). Les deux appels sont indépendants — l'échec de l'un ne doit
+   * pas annuler l'autre.
    */
-  endForAll(): void {
-    if (this.ending()) return;
-    this.ending.set(true);
-    try {
-      this.api?.executeCommand('endConference');
-    } catch {
-      /* JaaS peut refuser la commande : le serveur clôt quand même l'appel. */
+  onInvite(sel: { memberIds: string[]; emails: string[] }): void {
+    if (this.inviting()) return;
+    this.inviting.set(true);
+
+    const calls: Observable<unknown>[] = [];
+    if (sel.memberIds.length) {
+      calls.push(this.meetings.inviteParticipants(this.callId, sel.memberIds));
     }
-    this.left = true; // `end` couvre déjà le départ : pas de `leave` redondant.
-    this.meetings.end(this.callId).subscribe({
-      next: () => this.close(),
+    for (const email of sel.emails) {
+      // Le nom affiché de l'invité n'est pas connu ici : la partie locale de son
+      // adresse en tient lieu (il pourra le corriger dans la salle).
+      calls.push(this.meetings.inviteGuest(this.callId, email, email.split('@')[0]));
+    }
+    if (!calls.length) { this.inviting.set(false); this.inviteOpen.set(false); return; }
+
+    forkJoin(calls).subscribe({
+      next: () => {
+        this.inviting.set(false);
+        this.inviteOpen.set(false);
+        const n = sel.memberIds.length + sel.emails.length;
+        this.toast.show({ message: n > 1 ? n + ' invitations envoyées' : 'Invitation envoyée' });
+      },
       error: () => {
-        this.ending.set(false);
-        this.left = false;
-        this.fail("La réunion n'a pas pu être terminée.");
+        this.inviting.set(false);
+        this.toast.show({ message: "L'invitation n'a pas pu être envoyée.", icon: 'warning' });
       },
     });
   }

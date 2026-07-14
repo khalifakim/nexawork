@@ -475,6 +475,18 @@ Build Angular prod vert, `mvn compile` vert. **Non testé en navigateur.**
 > supposerait que le Messaging interroge le Project Service (appel inter-services, aujourd'hui absent de
 > l'architecture). **À trancher si la persistance de ces notifications devient une exigence.**
 
+### Lot du 2026-07-14 (soir) — partage de fichiers JaaS, sortie naturelle, invitation en cours d'appel
+**Rebuild requis : `meeting-service`, `frontend`.** Aucune migration.
+Build Angular prod vert, `mvn compile` vert. **Non testé en navigateur.**
+
+| # | Symptôme | Cause racine (**mesurée**) | Correctif |
+| :-: | :- | :- | :- |
+| 54 | 🔴 **Un `docker compose build` ne suffit PAS** — le correctif du routage des notifs (#39) était en ligne dans l'**image**, mais **pas en service** | Le conteneur `notification-service` tournait **encore l'image de 06h21** : l'image avait bien été reconstruite, mais le conteneur **jamais recréé**. Vérifié en comparant `docker inspect <conteneur>.Image` au `docker images` : **deux SHA différents**. Idem `project-service`. | **`docker compose up -d --no-deps --force-recreate <service>` est obligatoire après un build.** ⚠️ **Nouvelle commande de contrôle à réflexe** (à ajouter aux pièges) : comparer le SHA de l'image du conteneur à celui de l'image locale — un build « réussi » peut n'être utilisé par personne. |
+| 55 | Notifications de réunion **déjà en base** mal routées | Les 9 notifications existantes portaient un `target_url` **vide** (ou `/app/reunions/{id}`, **route inexistante**). Le correctif du consumer ne vaut que pour les notifications **futures**. | **Réparation en base** (`UPDATE`) : les 9 pointent désormais sur `/app/reunions/historique/{callId}`. Vérifié : plus aucune URL de réunion invalide. |
+| 56 | Chat Jitsi : **« Not allowed to upload files. Ask a moderator for permission rights »** | Le partage de fichiers **est** pris en charge par JaaS, mais il s'agit d'une **permission portée par le JWT**, pas d'un réglage de console : sans le drapeau `file-upload` dans `context.features`, JaaS refuse. Notre jeton ne déclarait que `livestreaming`/`recording`/`transcription`/`outbound-call` — tous à `false`. | `features.file-upload = true` (+ `send-groupchat`, `create-polls`, refusés pour la même raison). Accordé à **tout participant**, invité externe compris — il est déjà passé par l'admission du modérateur. |
+| 57 | Le bouton « Terminer pour tous » **masque la liste des participants** | Notre bouton flottait **par-dessus l'iframe** JaaS. | **Supprimé des deux endroits** (salle + popover du header), sur demande. On s'en remet au « raccrocher » **natif** de Jitsi : quitter suffit. Le comportement voulu était **déjà** celui du serveur — `leave()` ne clôt l'appel qu'au départ du **dernier** participant, donc le modérateur peut partir et revenir sans couper la réunion des autres ; le `CallSweeper` rattrape le cas où le navigateur ne prévient pas. |
+| 58 | Impossible d'inviter **pendant** une réunion | Aucun point d'entrée : le modal d'invitation n'existait qu'à la création. | Le bouton **« Inviter » de Jitsi est détourné** vers **notre** modal (`buttonsWithNotifyClick` + `preventExecution: true` → `toolbarButtonClicked`) : la fenêtre native, qui ignore nos membres et nos invitations par email, ne s'ouvre plus. Le modal `creer-reunion` gagne un **mode `invite`** (réutilisé, pas dupliqué : même sélecteur membres + emails, sans le champ titre). Membres → `inviteParticipants` (→ modal d'appel entrant) ; externes → `inviteGuest` (lien à usage unique par email). |
+
 ## 3 · Décisions/gaps (voir plan §5)
 
 **✅ Tranchés**

@@ -156,6 +156,15 @@ public class JitsiTokenService {
         features.put("recording", false);
         features.put("transcription", false);
         features.put("outbound-call", false);
+        // Partage de fichiers en réunion. JaaS le REFUSE tant que ce drapeau est
+        // absent du jeton (« Not allowed to upload files. Ask a moderator for
+        // permission rights ») : ce n'est pas un réglage de la console, c'est une
+        // permission portée par le JWT. Accordée à tout participant — l'invité
+        // externe compris, il est déjà passé par l'admission du modérateur.
+        features.put("file-upload", true);
+        // Sondages et messages de groupe : idem, refusés sans drapeau explicite.
+        features.put("send-groupchat", true);
+        features.put("create-polls", true);
 
         Map<String, Object> context = new HashMap<>();
         context.put("user", user);

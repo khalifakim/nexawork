@@ -20,19 +20,21 @@ interface Person { id: string; n: string; c: string; role: string; email: string
       <div class="card" (click)="$event.stopPropagation()">
         <!-- Header -->
         <div class="hd">
-          <span class="hd__ic"><app-icon name="video" [size]="20" [stroke]="1.8" /></span>
+          <span class="hd__ic"><app-icon [name]="mode === 'invite' ? 'userPlus' : 'video'" [size]="20" [stroke]="1.8" /></span>
           <div class="hd__t">
-            <div class="hd__title">Nouvelle réunion</div>
+            <div class="hd__title">{{ mode === 'invite' ? 'Inviter des participants' : 'Nouvelle réunion' }}</div>
             <div class="hd__sub">Invitez des membres ou des participants externes</div>
           </div>
           <button class="x" (click)="closed.emit()"><app-icon name="x" [size]="18" /></button>
         </div>
 
-        <!-- Titre -->
-        <div class="titlewrap">
-          <input class="titlein" [class.titlein--on]="title().trim()" [value]="title()"
-                 (input)="title.set($any($event.target).value)" placeholder="Titre de la réunion…" autofocus />
-        </div>
+        <!-- Titre : seulement à la création (une réunion en cours a déjà le sien). -->
+        @if (mode === 'create') {
+          <div class="titlewrap">
+            <input class="titlein" [class.titlein--on]="title().trim()" [value]="title()"
+                   (input)="title.set($any($event.target).value)" placeholder="Titre de la réunion…" autofocus />
+          </div>
+        }
 
         <!-- Onglets -->
         <div class="tabs">
@@ -115,7 +117,9 @@ interface Person { id: string; n: string; c: string; role: string; email: string
             <button class="ft__cancel" (click)="closed.emit()">Annuler</button>
             <button class="ft__ok" [disabled]="!canCreate()" (click)="create()">
               @if (busy) {
-                <span class="ft__spin"></span>Création…
+                <span class="ft__spin"></span>{{ mode === 'invite' ? 'Envoi…' : 'Création…' }}
+              } @else if (mode === 'invite') {
+                <app-icon name="userPlus" [size]="16" [stroke]="1.9" />Inviter
               } @else {
                 <app-icon name="video" [size]="16" [stroke]="1.9" />Créer la réunion
               }
@@ -184,6 +188,13 @@ interface Person { id: string; n: string; c: string; role: string; email: string
 export class CreerReunionComponent {
   /** Création en cours : le bouton passe en « Création… » (l'appel dure ~1-2 s). */
   @Input() busy = false;
+  /**
+   * `create` : nouvelle réunion (titre requis).
+   * `invite` : convier des participants à une réunion DÉJÀ en cours — même
+   * sélecteur (membres + emails externes), sans titre. Réutilisé plutôt que
+   * dupliqué : c'est exactement le même travail de sélection.
+   */
+  @Input() mode: 'create' | 'invite' = 'create';
   @Output() closed = new EventEmitter<void>();
   @Output() created = new EventEmitter<{ title: string; memberIds: string[]; emails: string[] }>();
 
@@ -209,7 +220,10 @@ export class CreerReunionComponent {
       .map(m => ({ id: m.userId!, n: m.name, c: m.color, role: m.role, email: m.email ?? '' }));
   });
   totalInvites = computed(() => this.internal().length + this.external().length);
-  canCreate = computed(() => this.title().trim().length > 0 && !this.busy);
+  /** Création : un titre suffit. Invitation : il faut au moins un invité. */
+  canCreate = computed(() => !this.busy && (
+    this.mode === 'invite' ? this.totalInvites() > 0 : this.title().trim().length > 0
+  ));
 
   /** RFC-lite : local@domaine.tld — suffisant côté UI, la vraie validation reste serveur. */
   private static EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;

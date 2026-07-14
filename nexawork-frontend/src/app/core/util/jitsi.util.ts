@@ -53,7 +53,7 @@ export async function openJitsiRoom(
   jwt: string,
   user?: JitsiUser,
   onError?: (message: string) => void,
-  options?: { enableLobby?: boolean },
+  options?: { enableLobby?: boolean; onInviteClicked?: () => void },
 ): Promise<JitsiApi> {
   if (!jitsiUrl || !jwt) throw new Error('Salle vidéo indisponible (configuration JaaS manquante).');
 
@@ -82,6 +82,12 @@ export async function openJitsiRoom(
       // entre directement, y compris l'invité externe. Seul le modérateur l'active
       // (il est le premier dans la salle, et JaaS n'accepte l'activation que de lui).
       ...(options?.enableLobby ? { lobby: { autoKnock: true, enableChat: false } } : {}),
+      // Détourne le bouton « Inviter » de Jitsi vers NOTRE modal : `preventExecution`
+      // supprime la fenêtre d'invitation native (qui ne connaît ni nos membres, ni
+      // nos invitations par email), et le clic nous est notifié via `toolbarButtonClicked`.
+      ...(options?.onInviteClicked
+        ? { buttonsWithNotifyClick: [{ key: 'invite', preventExecution: true }] }
+        : {}),
     },
     // L'utilisateur est DÉJÀ authentifié sur NexaWork : son nom est porté par le
     // JWT (`context.user.name`) et repris ici, il n'a donc rien à ressaisir.
@@ -101,6 +107,13 @@ export async function openJitsiRoom(
       } catch {
         /* Tenant sans lobby : la réunion reste utilisable, sans salle d'attente. */
       }
+    });
+  }
+
+  if (options?.onInviteClicked) {
+    api.addListener('toolbarButtonClicked', (payload: unknown) => {
+      const key = (payload as { key?: string } | undefined)?.key;
+      if (key === 'invite') options.onInviteClicked!();
     });
   }
 
