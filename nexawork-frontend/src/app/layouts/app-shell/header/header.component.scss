@@ -82,6 +82,9 @@
 .call__head { background: linear-gradient(160deg,#1F9159,#15623B); color: #fff; padding: 16px 18px; }
 .call__ignore { flex: none; width: 44px; height: 42px; border: 1px solid var(--nx-border); border-radius: 10px; background: #fff; color: var(--nx-text-500); cursor: pointer; display: flex; align-items: center; justify-content: center; }
 .call__join { flex: 1; height: 42px; border: none; border-radius: 10px; background: var(--nx-success); color: #fff; font-family: inherit; font-size: 14px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.call__end { flex: none; width: 44px; height: 42px; border: none; border-radius: 10px; background: #E0393E; color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.call__end:hover:not(:disabled) { background: #C92E33; }
+.call__end:disabled { opacity: .6; cursor: default; }
 .stack { width: 34px; height: 34px; border-radius: 50%; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; border: 2px solid #fff; }
 
 .nm__head { padding: 15px 18px 12px; border-bottom: 1px solid var(--nx-border-card); }

@@ -92,9 +92,18 @@ public class NotificationConsumer {
                 .type(NotificationType.CALL_ENDED)
                 .title("Réunion terminée")
                 .body("La réunion « " + (e.topic() != null ? e.topic() : "") + " » est terminée — Durée : " + minutes + " min.")
+                // Sans targetUrl, le frontend retombait sur un routage par CATÉGORIE
+                // d'icône (CALL_ENDED est classé « message ») et ouvrait… les
+                // conversations. La réunion s'ouvre sur sa page d'historique.
+                .targetUrl(meetingUrl(e.callId()))
                 .workspaceId(e.organisationId())
                 .payload(Map.of("callId", e.callId().toString()))
                 .build());
+    }
+
+    /** Page de la réunion (fil de discussion) — seule route existante pour un appel. */
+    private String meetingUrl(java.util.UUID callId) {
+        return "/app/reunions/historique/" + callId;
     }
 
     @RabbitListener(queues = "nexawork.notification.meeting-invite")
@@ -104,7 +113,9 @@ public class NotificationConsumer {
                 .type(NotificationType.MEETING_INVITED)
                 .title("Réunion en cours")
                 .body(e.inviterDisplayName() + " vous invite à la réunion « " + e.topic() + " » — Rejoindre.")
-                .targetUrl("/app/reunions/" + e.callId())
+                // `/app/reunions/{id}` N'EXISTE PAS comme route (seul
+                // `/app/reunions/historique/{id}` est déclaré) : le clic ne menait nulle part.
+                .targetUrl(meetingUrl(e.callId()))
                 .workspaceId(e.organisationId())
                 // Le frontend ouvre un modal d'appel entrant (façon Teams) sur
                 // réception : il lui faut le sujet et l'appelant SANS avoir à

@@ -53,14 +53,24 @@ export class UserProfileService {
     this._profile.update(p => ({ ...p, ...patch }));
     if (environment.mock.auth) return;
 
-    const isHostedUrl = (v: string | null | undefined) => !!v && !v.startsWith('data:');
     const cur = this._profile();
+    const photo = cur.photoDataUrl;
+    const isHostedUrl = !!photo && !photo.startsWith('data:');
+
+    // `PATCH /users/me/profile` ignore les champs NULS (payload atomique) : envoyer
+    // `null` ne retirerait donc rien. Pour EFFACER la photo, il faut une valeur
+    // non nulle — la chaîne vide. Un `data:` n'est jamais envoyé : c'est un aperçu
+    // local, `uploadPhoto()` se charge de la vraie persistance (File Service).
+    const photoPatch =
+      isHostedUrl ? { photoUrl: photo! }
+      : photo == null ? { photoUrl: '' }   // retrait explicite
+      : {};                                // data: en cours d'upload → on n'y touche pas
+
     this.auth.updateProfile({
       firstName: cur.firstName,
       lastName: cur.lastName,
       jobTitle: cur.role,
-      // N'envoie la photo que si c'est une vraie URL hébergée (pas un data:).
-      ...(isHostedUrl(cur.photoDataUrl) ? { photoUrl: cur.photoDataUrl! } : {}),
+      ...photoPatch,
     }).subscribe();
   }
 

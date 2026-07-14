@@ -73,12 +73,24 @@ export class ParamProfilComponent {
 
   displayName = computed(() => `${this.firstName()} ${this.lastName()}`.trim() || 'Akim Koné');
 
+  /**
+   * La photo compte comme une modification du formulaire à part entière.
+   *
+   * Comparer `photoUrl()` à `p().photoDataUrl` ne pouvait PAS marcher : `uploadPhoto()`
+   * met à jour le profil **immédiatement** (aperçu instantané), si bien que les deux
+   * valeurs devenaient égales au même instant et que `dirty` ne basculait jamais. Et
+   * après l'upload, `p()` porte l'URL hébergée alors que la vue garde la data URL —
+   * la comparaison serait alors vraie *en permanence*. On suit donc l'intention de
+   * l'utilisateur, pas l'égalité des valeurs.
+   */
+  private photoTouched = signal(false);
+
   dirty = computed(() => {
     const cur = this.p();
-    return this.firstName() !== cur.firstName
+    return this.photoTouched()
+      || this.firstName() !== cur.firstName
       || this.lastName() !== cur.lastName
-      || this.role() !== cur.role
-      || this.photoUrl() !== cur.photoDataUrl;
+      || this.role() !== cur.role;
   });
 
   onPick(ev: Event): void {
@@ -95,6 +107,7 @@ export class ParamProfilComponent {
     reader.onload = () => {
       const dataUrl = reader.result as string;
       this.photoUrl.set(dataUrl);
+      this.photoTouched.set(true);
       // Persistance réelle : upload File Service (avatar) → photoUrl du profil.
       this.profileSvc.uploadPhoto(file, dataUrl);
     };
@@ -102,7 +115,10 @@ export class ParamProfilComponent {
     input.value = '';
   }
 
-  removePhoto(): void { this.photoUrl.set(null); }
+  removePhoto(): void {
+    this.photoUrl.set(null);
+    this.photoTouched.set(true);
+  }
 
   save(): void {
     this.profileSvc.update({
@@ -111,6 +127,7 @@ export class ParamProfilComponent {
       role: this.role().trim(),
       photoDataUrl: this.photoUrl(),
     });
+    this.photoTouched.set(false);
     this.toast.show({ message: 'Profil mis à jour' });
   }
 }

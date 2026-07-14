@@ -164,7 +164,11 @@ public class JitsiTokenService {
         long nowSeconds = System.currentTimeMillis() / 1000;
 
         return Jwts.builder()
-                .header().add("kid", jitsiProperties.getApiKeyId()).and()
+                // `typ` est OBLIGATOIRE pour JaaS (« Invalid typ » sinon, à l'ouverture
+                // de la salle — la signature, elle, était déjà acceptée). JJWT ne le pose
+                // PAS de lui-même dès qu'on personnalise l'en-tête (le nôtre ne portait
+                // que `kid` et `alg`) : il faut donc l'ajouter explicitement.
+                .header().add("kid", jitsiProperties.getApiKeyId()).add("typ", "JWT").and()
                 .issuer("chat")                          // valeur fixe JaaS
                 .subject(jitsiProperties.getAppId())     // Tenant ID
                 // `single` et non `add` : JJWT sérialise une audience multiple en

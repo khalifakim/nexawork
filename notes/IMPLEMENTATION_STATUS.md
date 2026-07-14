@@ -426,6 +426,24 @@ prématurée détruirait.
 bel et bien été commitée (localement, jamais poussée) avant d'être retirée. Corrigé : **`.env.*`** et
 **`.secrets/`** sont désormais ignorés.
 
+### Lot du 2026-07-14 (matin, 2) — « Invalid typ », routage des notifs, historique, profil
+**Rebuild requis : `meeting-service`, `notification-service`, `frontend`.** Aucune migration.
+Builds Angular dev + prod verts, `mvn compile` vert. **Non testé en navigateur.**
+
+| # | Symptôme | Cause racine (**mesurée**) | Correctif |
+| :-: | :- | :- | :- |
+| 38 | Salle : **« Invalid typ »** puis fermeture — *après* avoir affiché le nom et le bouton | 🎉 **La signature était acceptée** (la rotation de clé a bien réglé #33). Erreur suivante : **l'en-tête du JWT ne portait que `kid` et `alg`** — pas de **`typ`**, que JaaS exige. JJWT ne pose **pas** `typ: JWT` de lui-même dès qu'on personnalise l'en-tête. | `.header().add("kid", …).add("typ", "JWT")`. |
+| 39 | Clic sur une notification de réunion → ouvre les **conversations** | **`CALL_ENDED` n'avait aucune `targetUrl`** (`null`, vérifié dans la réponse de l'API). Le frontend retombe alors sur un routage par **catégorie d'icône**, où `CALL_ENDED` est classé `message` → conversations. Et `MEETING_INVITED` pointait sur **`/app/reunions/{id}`, une route qui n'existe pas** (seule `/app/reunions/historique/{id}` est déclarée). | Les deux pointent sur `/app/reunions/historique/{callId}` → la réunion s'ouvre sur son fil. |
+| 40 | « Supprimer/Masquer » **ne fait rien** ET **ouvre la réunion** | Les deux symptômes n'en font qu'un : la **ligne entière est cliquable** (`(click)="open(m.id)"`) et le menu ⋯ vit **dedans**. Le clic finissait par la faire **naviguer** → la navigation **détruit le composant**, ce qui **annule la requête HTTP en vol**. La suppression ne « ratait » pas : elle n'avait jamais eu le temps de partir. | `stopPropagation` sur chaque action **et** verrou `actionClick` dans `open()`. Le verrou est indispensable *en plus* : les actions ferment le menu, donc tester `menu() !== null` dans `open()` serait déjà trop tard. |
+| 41 | Historique **vide** pendant le chargement | `workspaceSignal` n'expose aucun état de chargement → liste vide, indiscernable d'un historique réellement vide. | Bascule sur **`workspaceQuery`** (qui expose déjà `loading` — il existait, il n'était pas utilisé ici) + **squelette** de 3 lignes et compteur « Chargement… ». |
+| 42 | « Les anciennes notifications disparaissent d'une session à l'autre » | **Aucun bug.** Vérifié en base **et** via l'API : les notifications sont **persistées** (PostgreSQL, table `notifications`) et `GET /notifications` les renvoie bien (11 en base, toutes `read`, aucune `is_hidden`). Le filtre du header est sur « Tout » par défaut. L'impression venait vraisemblablement de l'**affichage vide pendant le chargement** (#41). | Rien à corriger. ⚠️ **Divergence relevée au passage** : `list()` filtre par destinataire **mais pas par workspace**, alors que l'entité porte `workspace_id` — les notifications d'un espace restent visibles depuis un autre. **4 des 8 consumers ne posent même pas `workspaceId`** (1 ligne à `NULL` en base) : filtrer aujourd'hui les ferait disparaître. **À traiter à part.** |
+| 43 | Pas de bouton « terminer pour tous » **hors de la salle** | Le bouton n'existait que dans la salle : il fallait ouvrir la réunion pour la clore. | Bouton **combiné rouge** dans le popover « Appel en cours » du header, à côté de la fermeture, **visible du seul créateur**. `OngoingCall.hostUserId` ajouté (le header ignorait qui était modérateur). |
+| 44 | Profil : « Enregistrer » **reste désactivé** après ajout/retrait de photo | `dirty()` comparait `photoUrl()` à `p().photoDataUrl`, **ce qui ne pouvait pas marcher** : `uploadPhoto()` met à jour le profil **immédiatement** (aperçu instantané) → les deux valeurs deviennent égales au même instant. Après l'upload, pire : `p()` porte l'URL hébergée et la vue la data URL → la comparaison serait vraie *en permanence*. | Signal **`photoTouched`** : on suit l'**intention** de l'utilisateur, pas l'égalité des valeurs. Le **retrait persiste** désormais aussi : `PATCH /users/me/profile` **ignore les champs nuls** (payload atomique) — envoyer `null` n'effaçait rien → on envoie la **chaîne vide**. |
+
+> 🐛 **Piège de template payé ici** : un **backtick** dans un commentaire HTML **à l'intérieur d'un template
+> literal TypeScript** termine la chaîne → cascade d'erreurs TS incompréhensibles (`TS18004`, `NG1002`…) très
+> loin de la vraie ligne. **Jamais de backtick dans un commentaire de template.**
+
 ## 3 · Décisions/gaps (voir plan §5)
 
 **✅ Tranchés**

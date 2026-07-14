@@ -30,6 +30,11 @@ export interface OngoingCall {
   context: string;
   /** Timestamp d'entrée dans l'appel — sert au chronomètre. */
   startedAt: number;
+  /**
+   * Créateur de l'appel = modérateur. Le popover du header n'offre « Terminer
+   * pour tous » qu'à lui : les autres ne peuvent que quitter.
+   */
+  hostUserId?: string;
 }
 
 /**
