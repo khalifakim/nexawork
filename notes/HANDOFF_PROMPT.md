@@ -28,27 +28,27 @@ mémoire de master). **Réponds toujours en français.**
 
 ---
 
-## 🔴 ÉTAT À LA REPRISE — À FAIRE EN PREMIER
+## 🟢 ÉTAT À LA REPRISE — le lot 4 est DÉPLOYÉ, il reste à le TESTER
 
-**Un lot de correctifs est écrit, compilé et commité, mais PAS ENCORE DANS LES IMAGES.**
-L'utilisateur construit lui-même (décision prise : les builds bloquaient l'agent 10-20 min par tour).
+**Lot 4 (JaaS `aud`, email invité, temps réel, nom de l'auteur) : construit, déployé et vérifié dans les jars
+le 2026-07-14.** Stack au repos mesurée saine (8 connexions PostgreSQL, aucune erreur récente).
+**Il n'y a aucun build en attente.** Détail complet en §2bis d'`IMPLEMENTATION_STATUS.md` (points #22 à #30).
 
-```bash
-docker compose build meeting-service
-docker compose build messaging-service
-docker compose build notification-service
-docker compose build frontend
-docker compose up -d --no-deps --force-recreate meeting-service messaging-service notification-service frontend
-```
+**Ce qu'il reste : la validation en navigateur — rien de ce lot n'a encore été exercé.** Voir « EN ATTENTE DE
+VÉRIFICATION » plus bas. Priorités : la **salle JaaS s'ouvre-t-elle vraiment** (autoriser les popups), le
+**temps réel** (exige **deux comptes connectés**), l'**email d'invité externe**.
 
-**Vérifie ensuite que le build a réellement pris** (voir le piège n°1 ci-dessous) :
+> ⚠️ **Leçon du lot 4** : `api-gateway` faisait partie du lot (il pose `X-User-Name`) mais **manquait à la
+> liste de rebuild** annoncée. **Un correctif transverse — Gateway, `commons` — touche des services qu'on
+> n'a pas en tête : dresser la liste depuis les fichiers modifiés, pas de mémoire.**
+
+**Modèle de vérification d'un build** (piège n°1 — à refaire à chaque lot, avec le **vrai** chemin de la classe :
+`git log --stat` donne le package exact ; un chemin faux rend `0` et fait croire à un échec) :
 ```bash
 docker run --rm --entrypoint sh nexawork-meeting-service -c \
   "unzip -p /app/app.jar BOOT-INF/classes/com/nexawork/meeting/security/GatewayIdentityFilter.class | strings | grep -c X-User-Name"
 # doit afficher 1 — si 0, le build a échoué EN SILENCE
 ```
-
-**Rien de ce lot n'est validé en navigateur.** Demande à l'utilisateur de tester après déploiement.
 
 ---
 

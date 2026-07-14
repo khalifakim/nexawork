@@ -356,6 +356,30 @@ Aucun backend neuf (endpoints `/statuses`, `/transitions`, `/workflow`, `/overvi
 | 20 | Canal privé : **les bénéficiaires n'atteignaient jamais le serveur** | `create()` **et** `setRestriction()` envoyaient tous deux `memberUserIds: []`, et `ChannelGrant` ne portait qu'un **nom** (pas d'id). Le picker était en outre **entièrement mock** (5 personnes + 3 équipes en dur). Le modal « Gérer les accès » laissait croire à un partage inexistant, et rouvrait toujours **une liste vide**. | `ChannelGrant` porte un **id réel** ; le picker liste les **membres réels** et les **équipes réelles du projet** ; les bénéficiaires partent vraiment. Une **équipe est déployée en ses membres** (le Messaging ne stocke que des `userId` — il ignore la composition des projets). Le modal **relit** les accès existants (`GET /channels/{id}/access`). |
 | 21 | `GET /tasks/{id}` → **500** sur un id non-UUID | `MethodArgumentTypeMismatchException` n'était pas mappée dans `GlobalControllerExceptionHandler` (**commons**) : une erreur d'appelant sortait en **panne serveur** (`Invalid UUID string: 1PT-1`). | Mappée en **400**. ⚠️ La classe étant partagée, le mapping n'est effectif que dans les services **reconstruits** (`project-service`, `messaging`, `notification` ici) ; les autres l'auront à leur prochain build. |
 
+### Lot du 2026-07-14 — JaaS, email invité, temps réel, nom de l'auteur — ✅ **déployé** (vérifié dans les jars, **non retesté en navigateur**)
+Commits `8ceaae5`, `139aecb`, `4f6de6f`.
+**Images reconstruites** : `api-gateway`, `meeting-service`, `messaging-service`, `notification-service`, `frontend`.
+⚠️ **`api-gateway` faisait partie du lot** (il pose `X-User-Name`) — il manquait à la liste de rebuild annoncée dans le handoff.
+Aucune migration.
+
+**Vérification bytecode (piège n°1) — faite le 2026-07-14, tout vert :**
+- `meeting/security/GatewayIdentityFilter.class` → `X-User-Name` présent ✅
+- `meeting/services/JitsiTokenService.class` → `.audience().single(…)` présent ✅
+- `messaging/security/GatewayIdentityFilter.class` → `X-User-Name` présent ✅
+- `gateway/security/JwtAuthenticationFilter.class` → `X-User-Name` présent ✅
+
+| # | Symptôme | Cause racine | Correctif |
+| :-: | :- | :- | :- |
+| 22 | Jitsi refuse le jeton : **« Invalid 'aud' value. It should be 'jitsi' »** | JJWT sérialise `.audience().add("jitsi")` en **tableau** `["jitsi"]`, or JaaS exige la **chaîne** `"jitsi"`. | `.audience().single("jitsi")` (`JitsiTokenService`). |
+| 23 | **L'email d'invité externe n'arrivait jamais** (le lien était pourtant bien généré) | `config-repo/nexawork-notification.yml` n'avait **pas** le `mail.smtp.ssl.trust` que `nexawork-auth.yml` possède → le **proxy TLS intercepteur** faisait échouer le handshake (« Could not convert socket to TLS »). Même cause racine que les emails Auth (I1d). | `mail.smtp.ssl.trust: ${SMTP_SSL_TRUST:*}` ajouté. ⚠️ **À retirer en prod** (sans proxy). |
+| 24 | **L'appel restait `ACTIVE` indéfiniment** → 409 sur toute création suivante | `leave()` ne faisait que marquer le départ du participant : **plus personne dans la salle n'y clôturait l'appel**. | `leave()` **clôt** l'appel quand plus aucun participant n'est présent (`end()` partage le même code). |
+| 25 | Clic sur la bannière « Appel en cours » **sans effet** | `window.open` échoue **en silence** quand le popup est bloqué. | Détection du retour `null` → **toast** invitant à autoriser les popups. |
+| 26 | **Nom de l'auteur jamais affiché** (notifications, `caller.displayName()` retombait sur « Utilisateur ») | Le JWT porte bien `displayName`, mais la **Gateway ne le propageait à aucun service** — d'où le ⚠️ du point #19 (« on ne l'invente pas »). | En-tête **`X-User-Name`** posé par la Gateway (**URL-encodé** : un en-tête HTTP n'est pas sûr en UTF-8 — « Moussa Bâ » arriverait mutilé) + lu par les **6 `GatewayIdentityFilter`**. |
+| 27 | `There is no underlying STOMP connection` | `publish()` émettait alors que la connexion s'établit de façon **asynchrone**. | Les trames émises trop tôt sont **mises en attente** et rejouées à `onConnect`. |
+| 28 | **🔑 Vraie cause du « pas de temps réel »** : le fil devenait muet jusqu'au rechargement de la page | `subscribeIfPossible()` refusait de réabonner une destination déjà présente dans `subs`. Or **les abonnements meurent avec la socket** : après une coupure ils n'étaient **jamais** réarmés. | `subs` est **vidée à `onWebSocketClose`** → réabonnement effectif à la reconnexion. |
+| 29 | Présence : passage « hors ligne » avec jusqu'à 20 s de retard | Seul un **sondage de 20 s** alimentait la présence. | Le Notification Service **diffuse** connexions/déconnexions sur **`/topic/presence`** ; le sondage ne sert plus que de **rattrapage**. |
+| 30 | Notification de mention : ni auteur, ni ancrage sur le message | Cf. #26 (nom absent) ; le lien ouvrait le canal **sans y défiler**. | La notification porte le **nom de l'auteur** et un lien **ancré** (`?message=<uuid>`) : la vue ouvre le canal/la conversation, **y défile** et **encadre** le message. |
+
 ## 3 · Décisions/gaps (voir plan §5)
 
 **✅ Tranchés**
