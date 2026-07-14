@@ -85,7 +85,14 @@ type ChMsg = ChannelMessage;
                  [class.msg--focus]="m.id && m.id === focusMessageId()"
                  [attr.data-mid]="m.id">
               @if (!m.mine) {
-                <span class="av" [style.background]="m.color" style="cursor:pointer" (click)="bus.openProfile(m.author)">{{ ini(m.author) }}</span>
+                <!-- Photo si l'annuaire en connaît une, initiales sinon. La forme
+                     (carré arrondi) est celle du design : on n'y touche pas. -->
+                <span class="av" [style.background]="m.authorPhotoUrl ? 'transparent' : m.color"
+                      style="cursor:pointer" (click)="bus.openProfile(m.author)">
+                  @if (m.authorPhotoUrl) {
+                    <img class="av__i" [src]="m.authorPhotoUrl" alt="" />
+                  } @else { {{ ini(m.author) }} }
+                </span>
               }
               <div class="b" [class.b--me]="m.mine">
                 <div class="h">

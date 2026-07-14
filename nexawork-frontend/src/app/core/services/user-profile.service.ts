@@ -3,7 +3,7 @@ import { switchMap } from 'rxjs/operators';
 import { of } from 'rxjs';
 import { AuthService } from './auth.service';
 import { SessionService } from './session.service';
-import { FilesHttpService } from '@core/http/files.http.service';
+import { FilesHttpService, avatarUrl } from '@core/http/files.http.service';
 import { environment } from '@environment/environment';
 
 /** Profil éditable de l'utilisateur connecté (Paramètres ▸ Profil). */
@@ -49,7 +49,17 @@ export class UserProfileService {
    * (data URL) est affichée localement — sa persistance MinIO passera par le
    * File Service (avatar). Met à jour le signal de manière optimiste.
    */
-  update(patch: Partial<UserProfile>): void {
+  /**
+   * Sauvegarde le profil. `removePhoto` doit être **explicite** : c'est la seule
+   * façon d'effacer la photo côté serveur.
+   *
+   * 🔴 Auparavant, une photo locale absente valait « retrait » et envoyait
+   * `photoUrl: ''`. Or la vue du profil initialise son signal photo **avant** que
+   * le profil ne soit chargé : n'importe quel enregistrement (changer son nom, sa
+   * fonction…) **effaçait donc la photo en base**, silencieusement. C'est ce qui
+   * vidait `users.photo_url`.
+   */
+  update(patch: Partial<UserProfile>, opts?: { removePhoto?: boolean }): void {
     this._profile.update(p => ({ ...p, ...patch }));
     if (environment.mock.auth) return;
 
@@ -57,14 +67,13 @@ export class UserProfileService {
     const photo = cur.photoDataUrl;
     const isHostedUrl = !!photo && !photo.startsWith('data:');
 
-    // `PATCH /users/me/profile` ignore les champs NULS (payload atomique) : envoyer
-    // `null` ne retirerait donc rien. Pour EFFACER la photo, il faut une valeur
-    // non nulle — la chaîne vide. Un `data:` n'est jamais envoyé : c'est un aperçu
-    // local, `uploadPhoto()` se charge de la vraie persistance (File Service).
+    // `PATCH /users/me/profile` IGNORE les champs nuls (payload atomique) : pour
+    // EFFACER, il faut une valeur non nulle — la chaîne vide. Un `data:` n'est
+    // jamais envoyé : c'est un aperçu local, `uploadPhoto()` fait la persistance.
     const photoPatch =
-      isHostedUrl ? { photoUrl: photo! }
-      : photo == null ? { photoUrl: '' }   // retrait explicite
-      : {};                                // data: en cours d'upload → on n'y touche pas
+      opts?.removePhoto ? { photoUrl: '' }        // retrait EXPLICITE, jamais déduit
+      : isHostedUrl ? { photoUrl: photo! }
+      : {};                                       // rien à dire sur la photo
 
     this.auth.updateProfile({
       firstName: cur.firstName,
@@ -95,7 +104,9 @@ export class UserProfileService {
           firstName: cur.firstName,
           lastName: cur.lastName,
           jobTitle: cur.role,
-          photoUrl: stored.downloadUrl,
+          // URL **publique** (`/avatar`), pas `/download` : un `<img src>` ne porte
+          // pas le jeton, et la route protégée renvoyait 401 → avatar cassé.
+          photoUrl: avatarUrl(stored.id),
         });
       }),
     ).subscribe({

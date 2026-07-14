@@ -146,6 +146,10 @@ function toMember(r: MemberResponse): Member {
     color: avatarColorFor(r.userId),
     role: r.jobTitle?.trim() || ORG_ROLE_LABEL[r.orgRole],
     email: r.email,
+    // La photo de profil était **purement ignorée** ici : le backend la renvoyait
+    // (`MemberResponse.photoUrl`), mais elle n'atteignait aucune vue. C'est ce qui
+    // rendait l'affichage des avatars impossible dans TOUTE l'application.
+    photoUrl: r.photoUrl || undefined,
     online: false,       // renseigné par `online()` via la présence
     projects: [],        // « projets d'un membre » : pas d'endpoint dédié (perspective)
   };

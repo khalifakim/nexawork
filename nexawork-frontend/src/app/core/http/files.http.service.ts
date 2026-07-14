@@ -75,3 +75,15 @@ export class FilesHttpService {
     return this.http.get(`${environment.apiUrl}${downloadUrl}`, { responseType: 'blob' });
   }
 }
+
+/**
+ * URL d'affichage d'une photo de profil — **publique**, destinée à un `<img src>`.
+ *
+ * Un navigateur ne joint **aucun en-tête `Authorization`** à une balise `<img>` :
+ * pointer sur la route protégée `/download` renvoyait un **401**, d'où l'avatar
+ * cassé partout. Cette route-ci est en liste blanche de la Gateway et ne sert que
+ * les objets du bucket des avatars (404 pour tout autre fichier).
+ */
+export function avatarUrl(fileId: string): string {
+  return `${API.file}/files/${fileId}/avatar`;
+}

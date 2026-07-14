@@ -50,6 +50,13 @@ public class PublicPathMatcher {
             "/nexawork-meeting-api-v1/api/v1/guest/*/files",
             "/nexawork-meeting-api-v1/api/v1/guest/*/files/*/download",
 
+            // ─── Photos de profil (File Service) ───
+            // Un avatar s'affiche via <img src>, et le navigateur n'y joint AUCUN
+            // en-tête Authorization : la route protégée renvoyait 401 → image cassée
+            // partout. Le service ne sert par cette route QUE les objets du bucket
+            // des avatars (404 sinon) — aucun document n'est exposé.
+            "/nexawork-file-api-v1/api/v1/files/*/avatar",
+
             // ─── Handshake WebSocket STOMP (messaging + notifications) ───
             // Le navigateur ne peut PAS poser d'en-tête Authorization sur un
             // WebSocket natif : le handshake HTTP doit donc être public. L'identité

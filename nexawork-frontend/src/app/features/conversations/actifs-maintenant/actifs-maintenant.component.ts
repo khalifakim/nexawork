@@ -22,7 +22,7 @@ import { ShellBus } from '@layouts/app-shell/shell.bus';
         @for (m of filteredOnline(); track m.name; let i = $index) {
           <div class="row" [class.row--first]="i===0">
             <span style="display:flex;align-items:center;gap:13px;flex:1;cursor:pointer" (click)="bus.openProfile(m.name)">
-              <app-avatar [name]="m.name" [color]="m.color" [size]="36" [online]="true" />
+              <app-avatar [name]="m.name" [color]="m.color" [size]="36" [online]="true" [photoUrl]="m.photoUrl" />
               <span class="b"><span class="n">{{ m.name }}</span><span class="r">{{ m.role }}</span></span>
             </span>
             <button class="chat" (click)="chat(m.name)">

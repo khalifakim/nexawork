@@ -398,12 +398,19 @@ function toChannel(r: ChannelResponse): Channel {
 }
 
 /** `MessageResponse` → `ChannelMessage` (author résolu depuis l'annuaire). */
-function toChannelMessage(msg: MessageResponse, meId: string | undefined, byId: Map<string | undefined, { name: string }>): ChannelMessage {
-  const author = byId.get(msg.senderUserId)?.name ?? 'Membre';
+function toChannelMessage(
+  msg: MessageResponse,
+  meId: string | undefined,
+  byId: Map<string | undefined, { name: string; photoUrl?: string }>,
+): ChannelMessage {
+  const sender = byId.get(msg.senderUserId);
   const files = messageFiles(msg);
   return {
     id: msg.id,
-    author,
+    author: sender?.name ?? 'Membre',
+    // L'annuaire porte la photo : la reprendre ici la rend disponible partout où
+    // un message est affiché (canaux ET conversations).
+    authorPhotoUrl: sender?.photoUrl,
     color: avatarColorFor(msg.senderUserId),
     time: formatTime(msg.sentAt),
     parts: parseRichText(msg.content),

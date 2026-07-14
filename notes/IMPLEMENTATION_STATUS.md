@@ -525,6 +525,23 @@ Build Angular prod vert, `mvn compile` vert. **Non testé en navigateur.**
 **Résultat** : l'invité externe a **le même panneau** que les membres (liste des fichiers, **qui** a partagé, taille,
 téléchargement, bouton de partage) et les fichiers qu'il envoie atterrissent **dans MinIO** comme les autres.
 
+### Lot du 2026-07-14 (nuit, 2) — photo de profil : toute la chaîne était cassée
+**Rebuild requis : `file-service`, `api-gateway`, `frontend`.** Aucune migration.
+Build Angular prod vert, `mvn compile` vert. **Non testé en navigateur.**
+
+**Trois défauts distincts, chacun suffisant à tout casser :**
+
+| # | Défaut | Constat (**mesuré**) | Correctif |
+| :-: | :- | :- | :- |
+| 68 | 🔴 **L'avatar est un `<img src>` vers une route PROTÉGÉE** | Un navigateur **ne joint aucun en-tête `Authorization`** à une balise `<img>`. `photoUrl` pointait sur `/files/{id}/download` (JWT requis) → **401** → image cassée. C'est le « on distingue qu'une image est présente, mais son affichage est anormal ». | Nouvelle route **publique** `GET /files/{id}/avatar` (liste blanche Gateway), servie **`inline`** (et non `attachment`, qui ferait *télécharger* l'image). ⚠️ **Elle ne sert QUE les avatars** : garde sur le **bucket** (`nexawork-users`) — un id de document GED ou de pièce jointe est refusé en **404**, sans révéler son existence. Une photo de profil n'est de toute façon pas un secret (visible de tout le workspace). |
+| 69 | 🔴 **`users.photo_url` était VIDE en base** — alors que le binaire était bien dans MinIO | Vérifié : `nexawork-users/users/{userId}/avatar-….png` **existe**, mais `photo_url = ''`. Cause : `update()` traitait une photo locale **absente** comme un **retrait** et envoyait `photoUrl: ''`. Or la vue Profil initialise son signal photo **avant** que `GET /users/me` ne réponde → **n'importe quel enregistrement** (changer son nom, sa fonction…) **effaçait la photo**, silencieusement. | Le retrait devient **explicite** (`removePhoto`), jamais déduit. Et la vue **se réaligne** sur le profil quand il arrive (sans écraser une saisie en cours) — c'est aussi ce qui faisait « disparaître » la photo au rechargement. |
+| 70 | 🔴 **`photoUrl` n'était JAMAIS repris de la réponse serveur** | `toMember()` (annuaire) ignorait purement le champ, pourtant présent dans `MemberResponse`. Aucune vue ne pouvait donc afficher de photo, **même corrigée** — et `Member`/`WorkspaceMemberAdmin` ne portaient pas le champ. | `photoUrl` ajouté aux **view-models** et repris dans les **deux mappings** (annuaire + membres admin). |
+
+**Vues câblées** (la photo s'affiche, initiales en repli) : conversations (en-tête d'interlocuteur), **canaux** (auteur de chaque message), **commentaires** de tâche, **membres** (Paramètres), **fiche profil**, « actifs maintenant », nouveau message, et l'avatar du header.
+Le **design est conservé** : la forme existante (cercle ou carré arrondi) est gardée, l'image la remplit (`object-fit: cover`).
+
+`AvatarDirectoryService` (neuf) centralise la résolution `userId → photo/nom` pour les vues qui ne connaissent qu'un UUID (le Messaging et le Project Service ne résolvent ni noms ni photos).
+
 ## 3 · Décisions/gaps (voir plan §5)
 
 **✅ Tranchés**

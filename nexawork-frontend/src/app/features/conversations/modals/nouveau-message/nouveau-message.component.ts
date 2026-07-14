@@ -24,7 +24,7 @@ import { slugName } from '@core/util/ui.util';
         <div class="list">
           @for (m of sugg(); track m.name) {
             <button class="row" (click)="open(m.name)">
-              <app-avatar [name]="m.name" [color]="m.color" [size]="38" [online]="m.online" />
+              <app-avatar [name]="m.name" [color]="m.color" [size]="38" [online]="m.online" [photoUrl]="m.photoUrl" />
               <div class="b"><div class="n">{{ m.name }}</div><div class="r">{{ m.role }}{{ m.online ? ' · En ligne' : '' }}</div></div>
               <app-icon class="ar" name="chevronRight" [size]="16" />
             </button>

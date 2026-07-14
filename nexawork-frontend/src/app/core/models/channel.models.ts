@@ -95,6 +95,8 @@ export interface ChannelMessage {
   /** UUID backend — sert à cibler un message (mention : « ouvrir et encadrer »). */
   id?: string;
   author: string;
+  /** Photo de profil de l'auteur — résolue depuis l'annuaire (absente → initiales). */
+  authorPhotoUrl?: string;
   color: string;
   time: string;
   parts: RichPart[];

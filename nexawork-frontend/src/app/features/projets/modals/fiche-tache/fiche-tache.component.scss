@@ -129,3 +129,7 @@
 .ed--err { border-color: var(--nx-danger); }
 .ederr { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; color: var(--nx-danger); max-width: 300px; line-height: 1.4; }
 .ederr app-icon { flex: none; }
+
+/* Photo de profil dans l'avatar d'un commentaire (forme conservée). */
+.av { overflow: hidden; }
+.av__i { width: 100%; height: 100%; object-fit: cover; display: block; }

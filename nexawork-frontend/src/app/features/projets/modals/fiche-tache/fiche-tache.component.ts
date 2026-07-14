@@ -34,6 +34,8 @@ interface CommentRow {
   id: string;
   authorUserId: string;
   author: string; color: string; time: string;
+  /** Photo de profil de l'auteur (annuaire) — absente → initiales. */
+  authorPhotoUrl?: string;
   parts: RichPart[];
   files: AttachedRef[];
   mine: boolean;
@@ -212,7 +214,11 @@ interface CommentRow {
           <div class="thread" #threadEl>
             @for (c of comments(); track c.id) {
               <div class="cm" [class.cm--mine]="c.mine">
-                <span class="av" [style.background]="c.color">{{ ini(c.author) }}</span>
+                <span class="av" [style.background]="c.authorPhotoUrl ? 'transparent' : c.color">
+                  @if (c.authorPhotoUrl) {
+                    <img class="av__i" [src]="c.authorPhotoUrl" alt="" />
+                  } @else { {{ ini(c.author) }} }
+                </span>
                 <div class="cm__b">
                   <div class="cm__h">
                     <span class="cm__n">{{ c.author }}</span>
@@ -447,13 +453,16 @@ export class FicheTacheComponent implements OnChanges {
 
   private toRow(c: TaskComment): CommentRow {
     const mine = c.authorUserId === this.session.user()?.id;
+    const member = this.directory().find(m => m.userId === c.authorUserId);
     return {
       id: c.id,
       // Nom réel de l'auteur, résolu via l'annuaire du workspace.
       author: mine
         ? (this.session.user()?.displayName ?? 'Moi')
-        : (this.directory().find(m => m.userId === c.authorUserId)?.name ?? 'Membre'),
+        : (member?.name ?? 'Membre'),
       authorUserId: c.authorUserId,
+      // L'annuaire porte la photo (il contient aussi l'utilisateur courant).
+      authorPhotoUrl: member?.photoUrl,
       color: avatarColorFor(c.authorUserId),
       time: this.fmtDateTime(c.createdAt),
       parts: parseRichText(c.content),

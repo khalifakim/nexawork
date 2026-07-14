@@ -66,3 +66,6 @@
   0%, 65% { filter: brightness(.97); }
   100%    { filter: none; }
 }
+
+/* Photo de profil de l'interlocuteur (forme conservée). */
+.av__c--img { object-fit: cover; display: block; }

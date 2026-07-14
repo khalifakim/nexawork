@@ -157,7 +157,8 @@ export class WorkspaceHttpService extends BaseHttpService implements WorkspaceSe
 function toMemberAdmin(r: MemberResponse): WorkspaceMemberAdmin {
   return {
     memberId: r.id, userId: r.userId, name: r.displayName, email: r.email,
-    color: colorFor(r.userId), role: r.orgRole, isOwner: r.isOwner, active: !r.isDeactivated,
+    color: colorFor(r.userId), photoUrl: r.photoUrl || undefined,
+    role: r.orgRole, isOwner: r.isOwner, active: !r.isDeactivated,
   };
 }
 function toInvitation(r: InvitationResponse): WorkspaceInvitation {

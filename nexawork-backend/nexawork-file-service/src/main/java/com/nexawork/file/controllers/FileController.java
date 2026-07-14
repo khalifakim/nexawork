@@ -61,6 +61,35 @@ public class FileController {
         return Response.<StoredFileResponse>ok().setPayload(fileService.getMetadata(id));
     }
 
+    /**
+     * Photo de profil — servie <b>en ligne</b> et <b>sans authentification</b>.
+     *
+     * <p>Un avatar s'affiche via une balise {@code <img src>}, et un navigateur
+     * <b>n'y joint aucun en-tête {@code Authorization}</b> : passer par la route
+     * protégée {@code /download} renvoyait donc un <b>401</b>, d'où l'image cassée
+     * partout dans l'application. Cette route est publique (liste blanche Gateway).</p>
+     *
+     * <p><b>Elle ne peut pas servir n'importe quel fichier</b> : seuls les objets du
+     * bucket des <i>avatars</i> sont acceptés — un identifiant de document GED ou de
+     * pièce jointe y est refusé (404), sans révéler son existence. Une photo de profil
+     * n'est de toute façon pas un secret : elle est visible de tout le workspace.</p>
+     *
+     * <p>{@code inline} (et non {@code attachment}) : sinon le navigateur téléchargerait
+     * l'image au lieu de l'afficher.</p>
+     */
+    @GetMapping("/{id}/avatar")
+    public ResponseEntity<InputStreamResource> avatar(@PathVariable UUID id) {
+        StoredFile file = fileService.getAvatarEntity(id);
+        GetObjectResponse stream = minioService.openStream(file.getBucket(), file.getObjectKey());
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline")
+                // Les avatars changent rarement ; l'URL porte l'UUID du fichier, donc
+                // une nouvelle photo = une nouvelle URL. Le cache est sûr.
+                .header(HttpHeaders.CACHE_CONTROL, "public, max-age=86400")
+                .contentType(MediaType.parseMediaType(file.getContentType()))
+                .body(new InputStreamResource(stream));
+    }
+
     /** URL présignée MinIO (le client télécharge directement depuis MinIO). */
     @GetMapping("/{id}/url")
     public Response<PresignedUrlResponse> url(@PathVariable UUID id) {

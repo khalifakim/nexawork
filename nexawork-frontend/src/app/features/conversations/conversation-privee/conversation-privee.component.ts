@@ -42,7 +42,11 @@ type Msg = ConversationMessage;
       <div class="ch">
         <div class="ch__peer" (click)="bus.openProfile(peer().name)" style="cursor:pointer">
           <div class="av">
-            <span class="av__c" [style.background]="peer().color">{{ ini(peer().name) }}</span>
+            @if (peer().photoUrl) {
+              <img class="av__c av__c--img" [src]="peer().photoUrl" alt="" />
+            } @else {
+              <span class="av__c" [style.background]="peer().color">{{ ini(peer().name) }}</span>
+            }
             @if (peer().online) { <span class="av__d"></span> }
           </div>
           <div>

@@ -124,6 +124,21 @@ public class FileServiceImpl implements FileService {
                 .orElseThrow(() -> new ResourceNotFoundException("Fichier introuvable."));
     }
 
+    /**
+     * Garde de la route publique des avatars. Le bucket fait foi : seuls les objets
+     * du bucket `users` (contexte `avatar`) sortent. Un identifiant de document GED
+     * ou de pièce jointe est refusé en **404** — on ne révèle pas son existence.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public StoredFile getAvatarEntity(UUID id) {
+        StoredFile file = getEntity(id);
+        if (!properties.getBuckets().getUsers().equals(file.getBucket())) {
+            throw new ResourceNotFoundException("Fichier introuvable.");
+        }
+        return file;
+    }
+
     @Override
     @Transactional
     public void delete(UUID id) {
