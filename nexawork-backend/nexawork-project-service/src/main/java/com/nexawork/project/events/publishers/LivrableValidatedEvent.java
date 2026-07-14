@@ -13,6 +13,8 @@ public record LivrableValidatedEvent(
         String taskTitle,
         UUID projectId,
         String projectName,
+        /** Workspace propriétaire — porté jusqu'à la notification pour la scoper. */
+        UUID organisationId,
         UUID validatedByUserId,
         UUID assigneeUserId) {
 }

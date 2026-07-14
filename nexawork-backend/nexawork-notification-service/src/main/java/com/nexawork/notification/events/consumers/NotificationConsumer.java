@@ -47,6 +47,7 @@ public class NotificationConsumer {
                 .body("Une tâche vous a été assignée : « " + e.taskTitle() + " » (" + e.projectName() + ").")
                 // Ouvre le Kanban du projet avec la fiche de tâche dépliée (?task=<id>).
                 .targetUrl("/app/projets/" + e.projectId() + "/kanban?task=" + e.taskId())
+                .workspaceId(e.organisationId())
                 .payload(Map.of("taskId", e.taskId().toString(), "projectId", e.projectId().toString()))
                 .build());
     }
@@ -64,6 +65,7 @@ public class NotificationConsumer {
                     .title("Nouveau commentaire")
                     .body("Commentaire sur « " + e.taskTitle() + " » (" + e.projectName() + ") : " + e.excerpt())
                     .targetUrl("/app/projets/" + e.projectId() + "/kanban?task=" + e.taskId())
+                    .workspaceId(e.organisationId())
                     .payload(Map.of("taskId", e.taskId().toString(), "projectId", e.projectId().toString()))
                     .build());
         }
@@ -80,6 +82,7 @@ public class NotificationConsumer {
                 .title("Livrable validé")
                 .body("Votre livrable « " + e.taskTitle() + " » a été validé (" + e.projectName() + ").")
                 .targetUrl("/app/projets/" + e.projectId() + "/tasks/" + e.taskId())
+                .workspaceId(e.organisationId())
                 .payload(Map.of("taskId", e.taskId().toString(), "projectId", e.projectId().toString()))
                 .build());
     }

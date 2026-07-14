@@ -96,6 +96,7 @@ public class TaskCommentServiceImpl implements TaskCommentService {
                     task.getTitle(),
                     task.getProject().getId(),
                     task.getProject().getName(),
+                    task.getProject().getOrganisationId(),
                     caller.userId(),
                     excerpt(saved.getContent()),
                     recipients));

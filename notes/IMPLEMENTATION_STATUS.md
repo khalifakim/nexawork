@@ -444,6 +444,18 @@ Builds Angular dev + prod verts, `mvn compile` vert. **Non testé en navigateur.
 > literal TypeScript** termine la chaîne → cascade d'erreurs TS incompréhensibles (`TS18004`, `NG1002`…) très
 > loin de la vraie ligne. **Jamais de backtick dans un commentaire de template.**
 
+### Lot du 2026-07-14 (midi) — notifications : scope workspace, historique complet, suppression
+**Rebuild requis : `project-service`, `notification-service`, `frontend`.** Aucune migration
+(`workspace_id` existait déjà sur `notifications` — il n'était simplement **jamais renseigné** par 3 consumers).
+Build Angular prod vert, `mvn compile` vert. **Non testé en navigateur.**
+
+| # | Symptôme | Cause racine (**mesurée**) | Correctif |
+| :-: | :- | :- | :- |
+| 45 | Les notifications **ne sont pas cloisonnées par workspace** | `list()` filtrait par **destinataire seulement**. Surtout : **3 des consumers in-app ne posaient pas `workspaceId`** (`TASK_ASSIGNED`, `MENTION` sur commentaire, `LIVRABLE_VALIDATED`) — **parce que leurs événements ne le portaient pas** : `TaskAssignedEvent`/`TaskCommentedEvent`/`LivrableValidatedEvent` ne transportent que `projectId`, jamais l'organisation. Le Notification Service **ne pouvait pas** le deviner. | Correction **à la source** : `organisationId` ajouté aux 3 événements côté **`project-service`** (`project.getOrganisationId()`, déjà porté par l'entité `Project`), propagé aux 3 consumers. `list()` **et** le compteur de la cloche sont désormais **scopés au workspace actif** (`X-Org-Id`). |
+| 46 | Les anciennes notifications disparaîtraient du scope | Un filtre strict par workspace ferait **disparaître d'un coup** les notifications antérieures (elles n'ont pas de `workspace_id`). Mesuré : **1 ligne héritée** à `NULL`. | Repli **`OR workspace_id IS NULL`** dans la requête : rien n'est perdu, et toute notification **nouvelle** porte son workspace. |
+| 47 | Les notifications « anciennes » semblaient perdues | **Elles étaient bien persistées** (déjà vérifié en #42), mais le frontend appelait `GET /notifications` **sans paramètre** → taille de page serveur par défaut = **20**. Au-delà, les plus anciennes étaient **tronquées**. | Le client demande explicitement `size=100` (maximum admis par le serveur). |
+| 48 | Impossible de **supprimer** une notification | Le backend n'exposait que `markRead` et `hide` (masquage) ; **aucun DELETE**. Et le menu de la cloche n'offrait **aucune action** par notification. | **`DELETE /notifications/{id}`** (garde `requireMine` : 404 si inconnue, 403 si celle d'un autre) + bouton **corbeille** sur chaque ligne du menu, révélé au survol. La ligne n'est retirée qu'**après** confirmation du serveur ; `stopPropagation` empêche le clic d'ouvrir la notification (la navigation annulerait le DELETE — même piège qu'en #40). |
+
 ## 3 · Décisions/gaps (voir plan §5)
 
 **✅ Tranchés**

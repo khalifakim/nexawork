@@ -24,6 +24,8 @@ export abstract class NotificationsService {
   abstract markRead(id: string): Observable<void>;
   /** Masque une notification de la liste. */
   abstract hide(id: string): Observable<void>;
+  /** Supprime définitivement une notification. */
+  abstract remove(id: string): Observable<void>;
   /** Enregistre l'abonnement Web Push du navigateur. */
   abstract subscribePush(sub: PushSubscriptionJSON): Observable<void>;
   /** Retire l'abonnement Web Push. */
@@ -39,6 +41,7 @@ export class NotificationsMockService extends NotificationsService {
   live(): Observable<Notification> { return EMPTY; }
   markRead(_id: string): Observable<void> { return of(void 0); }
   hide(_id: string): Observable<void> { return of(void 0); }
+  remove(_id: string): Observable<void> { return of(void 0); }
   subscribePush(_sub: PushSubscriptionJSON): Observable<void> { return of(void 0); }
   unsubscribePush(_endpoint: string): Observable<void> { return of(void 0); }
 }
@@ -61,8 +64,13 @@ const KIND: Record<NotificationType, NotificationKind> = {
 export class NotificationsHttpService extends BaseHttpService implements NotificationsService {
   private readonly stomp = inject(StompClientService);
 
+  /**
+   * Historique complet du workspace actif. La taille par défaut du serveur est de
+   * 20 : au-delà, les notifications plus anciennes étaient tout simplement
+   * tronquées. On demande explicitement le maximum admis (100).
+   */
   list(): Observable<Notification[]> {
-    return this.get$<NotificationPageResponse>('notification', '/notifications')
+    return this.get$<NotificationPageResponse>('notification', '/notifications', { size: 100 })
       .pipe(map(page => (page.notifications ?? []).map(toNotification)));
   }
 
@@ -78,6 +86,9 @@ export class NotificationsHttpService extends BaseHttpService implements Notific
   }
   hide(id: string): Observable<void> {
     return this.patch$<void>('notification', `/notifications/${id}/hide`, {});
+  }
+  remove(id: string): Observable<void> {
+    return this.delete$<void>('notification', `/notifications/${id}`);
   }
 
   subscribePush(sub: PushSubscriptionJSON): Observable<void> {

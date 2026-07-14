@@ -147,6 +147,12 @@ const ACTIVE_CALL_POLL_MS = 15_000;
                     <div style="font-size:13px;color:var(--nx-text-700);line-height:1.45;margin:2px 0 5px">{{ n.text }}</div>
                     <div style="font-size:12px;color:var(--nx-text-400);font-weight:500">{{ n.date }}</div>
                   </div>
+                  <!-- stopPropagation : sans lui le clic remonterait à la ligne, qui
+                       ouvre la notification (et la navigation annulerait le DELETE). -->
+                  <button class="nm__del" title="Supprimer cette notification"
+                          (click)="removeNotif(n, $event)">
+                    <app-icon name="trash" [size]="15" />
+                  </button>
                 </div>
               } @empty { <div class="nm__empty">Aucune notification {{ notifFilter()==='nonlu' ? 'non lue' : '' }}.</div> }
             </div>
@@ -333,9 +339,14 @@ export class HeaderComponent {
     return this.notifFilter() === 'nonlu' ? list.filter(n => !n.read) : list;
   });
   unread = computed(() => this.visibleNotifsAll().filter(n => !n.read).length);
+  /** Supprimées côté serveur — retirées de la vue sans recharger la liste. */
+  private removedIds = signal<string[]>([]);
   private visibleNotifsAll = computed(() => {
     const read = this.readIds();
-    return this.notifs().map(n => ({ ...n, read: n.read || read.includes(n.id) }));
+    const removed = this.removedIds();
+    return this.notifs()
+      .filter(n => !removed.includes(n.id))
+      .map(n => ({ ...n, read: n.read || read.includes(n.id) }));
   });
 
   constructor() {
@@ -351,6 +362,20 @@ export class HeaderComponent {
     this.readIds.update(l => l.includes(id) ? l : [...l, id]);
     this.notifsSvc.markRead(id).subscribe({ error: () => {} });
   }
+  /**
+   * Supprime définitivement la notification. Le popover reste ouvert (on en
+   * supprime souvent plusieurs d'affilée) et la ligne n'est retirée qu'APRÈS
+   * confirmation du serveur — sinon elle disparaîtrait de l'écran sur un échec,
+   * pour réapparaître au rechargement.
+   */
+  removeNotif(n: Notif, ev: Event): void {
+    ev.stopPropagation();
+    this.notifsSvc.remove(n.id).subscribe({
+      next: () => this.removedIds.update(l => [...l, n.id]),
+      error: () => this.toast.show({ message: 'Impossible de supprimer la notification.', icon: 'warning' }),
+    });
+  }
+
   ini(name: string): string { return initials(name); }
   logout(): void { this.close(); this.session.logout(); }
 

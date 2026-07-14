@@ -18,18 +18,18 @@ public final class Events {
 
     public record TaskAssigned(
             UUID taskId, String taskTitle, UUID projectId, String projectName,
-            UUID assigneeUserId, UUID assignerUserId) {
+            UUID organisationId, UUID assigneeUserId, UUID assignerUserId) {
     }
 
     /** Nouveau commentaire sur une tâche : tous les membres du projet (hors auteur). */
     public record TaskCommented(
             UUID taskId, String taskKey, String taskTitle, UUID projectId, String projectName,
-            UUID authorUserId, String excerpt, java.util.List<UUID> recipientUserIds) {
+            UUID organisationId, UUID authorUserId, String excerpt, java.util.List<UUID> recipientUserIds) {
     }
 
     public record LivrableValidated(
             UUID taskId, String taskTitle, UUID projectId, String projectName,
-            UUID validatedByUserId, UUID assigneeUserId) {
+            UUID organisationId, UUID validatedByUserId, UUID assigneeUserId) {
     }
 
     public record CallEnded(
