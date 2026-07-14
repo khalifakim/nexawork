@@ -70,7 +70,10 @@ public class JitsiTokenService {
                 .header().add("kid", jitsiProperties.getApiKeyId()).and()
                 .issuer("chat")                          // valeur fixe JaaS
                 .subject(jitsiProperties.getAppId())     // Tenant ID
-                .audience().add("jitsi").and()           // valeur fixe JaaS
+                // `single` et non `add` : JJWT sérialise une audience multiple en
+                // TABLEAU (["jitsi"]), or JaaS exige la CHAÎNE "jitsi" et refuse
+                // sinon la connexion (« Invalid 'aud' value. It should be 'jitsi' »).
+                .audience().single("jitsi")              // valeur fixe JaaS
                 .claim("room", roomName)
                 .claim("context", context)
                 .issuedAt(new Date(nowSeconds * 1000))

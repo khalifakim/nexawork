@@ -270,7 +270,14 @@ export class HeaderComponent {
     const call = this.ongoingCall();
     this.close();
     if (!call) return;
-    window.open('/salle/' + call.id, 'nexawork-reunion-' + call.id, 'width=1280,height=800,noopener');
+    const win = window.open('/salle/' + call.id, 'nexawork-reunion-' + call.id, 'width=1280,height=800,noopener');
+    // Un popup bloqué échouait EN SILENCE : le clic ne « faisait rien ».
+    if (!win) {
+      this.toast.show({
+        message: 'Autorisez les fenêtres surgissantes pour rejoindre la salle.',
+        icon: 'warning',
+      });
+    }
   }
   /** Notifications of the active workspace (reload on workspace switch). */
   private notifsSvc = inject(NotificationsService);

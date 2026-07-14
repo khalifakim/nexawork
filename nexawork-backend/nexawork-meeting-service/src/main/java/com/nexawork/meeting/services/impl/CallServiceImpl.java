@@ -118,13 +118,29 @@ public class CallServiceImpl implements CallService {
         return toResponse(call, token);
     }
 
+    /**
+     * Quitte l'appel. **L'appel se clôt de lui-même** quand plus personne n'est
+     * présent : sans cela il restait `ACTIVE` indéfiniment (bannière « Appel en
+     * cours » perpétuelle, et REF A refusant toute réunion suivante).
+     */
     @Override
     public void leave(UUID callId) {
         UUID me = caller.userId();
+        Call call = loadInOrg(callId);
         participantRepository.findByCallIdAndUserId(callId, me).ifPresent(p -> {
             p.setLeftAt(LocalDateTime.now());
             participantRepository.save(p);
         });
+
+        if (call.getStatus() != CallStatus.ACTIVE) {
+            return;
+        }
+        // Plus aucun participant entré et non reparti → la réunion est finie.
+        boolean someoneStillIn = participantRepository.findByCallId(callId).stream()
+                .anyMatch(p -> p.getJoinedAt() != null && p.getLeftAt() == null);
+        if (!someoneStillIn) {
+            endCall(call);
+        }
     }
 
     @Override
@@ -135,6 +151,11 @@ public class CallServiceImpl implements CallService {
             throw new com.nexawork.commons.exceptions.ForbiddenException(
                     "Seul l'hôte ou un administrateur peut terminer l'appel.");
         }
+        endCall(call);
+    }
+
+    /** Clôture effective : statut, sortie de tous les présents, événement `call.ended`. */
+    private void endCall(Call call) {
         if (call.getStatus() == CallStatus.ENDED) {
             return;
         }
@@ -144,7 +165,7 @@ public class CallServiceImpl implements CallService {
         callRepository.save(call);
 
         // Tous les participants encore présents quittent.
-        participantRepository.findByCallId(callId).stream()
+        participantRepository.findByCallId(call.getId()).stream()
                 .filter(p -> p.getLeftAt() == null)
                 .forEach(p -> { p.setLeftAt(now); participantRepository.save(p); });
 
@@ -153,7 +174,7 @@ public class CallServiceImpl implements CallService {
         eventPublisher.publishCallEnded(new CallEndedEvent(
                 call.getId(), call.getTopic(), call.getRoomName(),
                 call.getOrganisationId(), call.getHostUserId(), durationSeconds));
-        log.info("Appel {} terminé (durée {}s)", callId, durationSeconds);
+        log.info("Appel {} terminé (durée {}s)", call.getId(), durationSeconds);
     }
 
     @Override

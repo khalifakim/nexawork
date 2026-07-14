@@ -30,6 +30,11 @@ spring:
       mail.smtp.connectiontimeout: 5000
       mail.smtp.timeout: 5000
       mail.smtp.writetimeout: 5000
+      # Le réseau est derrière un proxy TLS intercepteur : son certificat auto-signé
+      # fait échouer le handshake (« Could not convert socket to TLS ») — c'est ce
+      # qui empêchait l'email d'invitation d'invité externe de partir. Même
+      # contournement que l'Auth Service (nexawork-auth.yml) ; à retirer en prod.
+      mail.smtp.ssl.trust: ${SMTP_SSL_TRUST:*}
 
 nexawork:
   # ─── Web Push VAPID (notifications push navigateur) ─────────────────────────
