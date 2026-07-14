@@ -400,6 +400,32 @@ Aucune migration. Builds Angular dev + prod verts, `mvn compile` vert.
 > **alimentait directement #32** (appel jamais clos). Les correctifs #34/#35/#36/#37 ne seront réellement
 > exerçables qu'une fois la clé publique corrigée dans la console JaaS.
 
+#### Rotation de la clé JaaS — 2026-07-14 (en attente de test navigateur)
+L'ancienne clé (`kid …/c66d9e`, créée le 17/06) était **enregistrée sous la bonne app** — le `kid` correspondait.
+Ce qui n'a **jamais pu être prouvé**, c'est que la clé **publique stockée par 8x8** derrière ce `kid` soit la
+jumelle de la clé **privée** du `.env` : la console n'affiche pas la clé publique, et 8x8 n'expose aucun endpoint
+public pour la lire (`api.jaas.8x8.vc` **n'existe pas** — vérifié : l'hôte ne résout pas, alors que `8x8.vc`
+répond 200 ; la connectivité sortante n'est donc pas en cause).
+
+**Méthode retenue** — au lieu de laisser JaaS générer la paire (auquel cas la correspondance reste invérifiable) :
+1. paire RSA 2048 générée **localement**, dans `.secrets/` (**hors dépôt**) ;
+2. **clé publique téléversée** dans la console → nouveau `kid` **`…/228bdd`** ;
+3. clé privée injectée dans `.env` en **base64 pur, sans en-têtes ni sauts de ligne** —
+   `JitsiTokenService.loadPrivateKey()` retire de toute façon les en-têtes **et tous les espaces** avant de
+   décoder. Ce format **supprime tout échappement** : ni `sed`, ni `perl`, ni `awk` de ce poste ne parvenaient à
+   produire des `\n` littéraux fiables dans un `.env` (le shell les convertissait en vrais sauts de ligne, et la
+   valeur se retrouvait tronquée à 44 caractères — silencieusement).
+4. **Correspondance prouvée** : l'empreinte SHA-256 de la clé publique dérivée du `.env` est identique à celle du
+   fichier téléversé (`a8b90be2678c863d2a73278341dcbbeba11614bb7d5f5a531f7602e355791b2a`).
+
+⚠️ **L'ancienne clé `c66d9e` est conservée dans la console volontairement** : si les réunions échouent *encore*
+après cette rotation, c'est que la cause n'était **pas** la clé — information décisive, qu'une suppression
+prématurée détruirait.
+
+🔒 **`.gitignore`** : `.env` seul était ignoré → une sauvegarde `.env.backup-*` portant les **mêmes secrets** a
+bel et bien été commitée (localement, jamais poussée) avant d'être retirée. Corrigé : **`.env.*`** et
+**`.secrets/`** sont désormais ignorés.
+
 ## 3 · Décisions/gaps (voir plan §5)
 
 **✅ Tranchés**
