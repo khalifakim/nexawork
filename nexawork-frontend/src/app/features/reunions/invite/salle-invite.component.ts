@@ -59,7 +59,14 @@ export class SalleInviteComponent {
 
   private async open(access: GuestAccess): Promise<void> {
     try {
-      this.api = await openJitsiRoom(this.stage.nativeElement, access.jitsiUrl, access.jwt, access.displayName);
+      // L'invité externe n'a pas de compte : son nom vient du lien d'invitation.
+      // Il reste soumis à la salle d'attente (JWT sans `lobby_bypass`) — le
+      // modérateur l'admet.
+      this.api = await openJitsiRoom(
+        this.stage.nativeElement, access.jitsiUrl, access.jwt,
+        { displayName: access.displayName },
+        message => this.fail(message),
+      );
       this.loading.set(false);
       this.api.addListener('readyToClose', () => { this.api?.dispose(); window.close(); });
     } catch {

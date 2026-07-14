@@ -64,9 +64,13 @@ export class MeetingsMockService extends MeetingsService {
   }
   active(): Observable<CallRoom[]> { return of([]); }
   create(topic: string, _memberIds: string[]): Observable<CallRoom> {
-    return of({ id: 'mock-' + Date.now(), roomName: topic, topic, jitsiUrl: '', jwt: '' }).pipe(delay(80));
+    const me = this.session.user()?.id ?? 'mock-user';
+    return of({ id: 'mock-' + Date.now(), roomName: topic, topic, hostUserId: me, jitsiUrl: '', jwt: '' }).pipe(delay(80));
   }
-  join(id: string): Observable<CallRoom> { return of({ id, roomName: id, topic: id, jitsiUrl: '', jwt: '' }); }
+  join(id: string): Observable<CallRoom> {
+    const me = this.session.user()?.id ?? 'mock-user';
+    return of({ id, roomName: id, topic: id, hostUserId: me, jitsiUrl: '', jwt: '' });
+  }
   leave(_id: string): Observable<void> { return of(void 0); }
   end(_id: string): Observable<void> { return of(void 0); }
   hide(_id: string): Observable<void> { return of(void 0); }
@@ -151,7 +155,10 @@ export class MeetingsHttpService extends BaseHttpService implements MeetingsServ
 // ── Mapping ──────────────────────────────────────────────────────────────────
 
 function toRoom(c: CallResponse): CallRoom {
-  return { id: c.id, roomName: c.roomName, topic: c.topic, jitsiUrl: c.jitsiUrl ?? '', jwt: c.jwt ?? '' };
+  return {
+    id: c.id, roomName: c.roomName, topic: c.topic, hostUserId: c.hostUserId,
+    jitsiUrl: c.jitsiUrl ?? '', jwt: c.jwt ?? '',
+  };
 }
 
 function toMeeting(c: CallResponse, meId?: string): Meeting {

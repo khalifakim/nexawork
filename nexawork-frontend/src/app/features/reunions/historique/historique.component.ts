@@ -128,15 +128,34 @@ export class HistoriqueReunionsComponent {
 
   toggleMenu(id: string, ev: Event): void { ev.stopPropagation(); this.menu.set(this.menu() === id ? null : id); }
 
+  /**
+   * Masquage et suppression PERSISTÉS. Les deux se contentaient d'alimenter un
+   * signal local et d'afficher un toast affirmant « supprimée définitivement » :
+   * aucune requête n'atteignait jamais le serveur, et tout réapparaissait au
+   * rechargement. Le masquage local n'est appliqué qu'APRÈS confirmation du
+   * serveur — sinon la ligne disparaîtrait de l'écran d'un utilisateur à qui
+   * REF B vient de refuser la suppression (403).
+   */
   hide(m: Meeting): void {
     this.menu.set(null);
-    this.hidden.update(l => [...l, m.id]);
-    this.toast.show({ message: '« ' + m.name + ' » masquée de votre historique' });
+    this.meetingsSvc.hide(m.id).subscribe({
+      next: () => {
+        this.hidden.update(l => [...l, m.id]);
+        this.toast.show({ message: '« ' + m.name + ' » masquée de votre historique' });
+      },
+      error: () => this.toast.show({ message: 'Impossible de masquer « ' + m.name + ' ».', icon: 'warning' }),
+    });
   }
+
   remove(m: Meeting): void {
     this.menu.set(null);
-    this.removed.update(l => [...l, m.id]);
-    this.toast.show({ message: '« ' + m.name + ' » supprimée définitivement' });
+    this.meetingsSvc.remove(m.id).subscribe({
+      next: () => {
+        this.removed.update(l => [...l, m.id]);
+        this.toast.show({ message: '« ' + m.name + ' » supprimée définitivement' });
+      },
+      error: () => this.toast.show({ message: 'Impossible de supprimer « ' + m.name + ' ».', icon: 'warning' }),
+    });
   }
 
   open(id: string): void { this.router.navigate(['/app/reunions/historique', id]); }

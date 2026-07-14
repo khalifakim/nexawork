@@ -78,4 +78,6 @@ export const ICON_PATHS: Record<string, string> = {
   workflow: '<circle cx="6" cy="6" r="2.4"/><circle cx="6" cy="18" r="2.4"/><path d="M6 8.5v7M9 6h7a3 3 0 0 1 3 3v0a3 3 0 0 1-3 3H8"/>',
   alert: '<path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3.1l-8-14a2 2 0 0 0-3.4 0z"/>',
   sparkle: '<path d="M12 2l2.4 6.6L21 11l-6.6 2.4L12 20l-2.4-6.6L3 11l6.6-2.4z"/>',
+  // Combiné raccroché — clôture de l'appel pour tous (modérateur).
+  phoneOff: '<path d="M2.5 14.5c4-4.7 15-4.7 19 0l-2.6 2.2a1.6 1.6 0 0 1-2.1-.1l-1.5-1.4a1.6 1.6 0 0 0-1-.4h-4.6a1.6 1.6 0 0 0-1 .4l-1.5 1.4a1.6 1.6 0 0 1-2.1.1z"/>',
 };

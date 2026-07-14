@@ -19,6 +19,7 @@ import { ApercuDocumentComponent } from '@shared/overlays/apercu-document/apercu
 import { FicheTacheComponent } from '@features/projets/modals/fiche-tache/fiche-tache.component';
 import { GedAccessModalComponent } from '@shared/overlays/ged-access-modal/ged-access-modal.component';
 import { GedVersionsModalComponent } from '@shared/overlays/ged-versions-modal/ged-versions-modal.component';
+import { AppelEntrantComponent } from '@shared/overlays/appel-entrant/appel-entrant.component';
 import { ConfirmDialogComponent } from '@shared/overlays/confirm-dialog/confirm-dialog.component';
 import { SessionService } from '@core/services/session.service';
 import { UserProfileService } from '@core/services/user-profile.service';
@@ -44,7 +45,7 @@ const SECTION_TITLES: Record<string, string> = {
   selector: 'app-shell',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterOutlet, HeaderComponent, RailComponent, Sidebar2Component, IconComponent, InvitationModalComponent, RechercheGlobaleComponent, NouveauMessageComponent, NouveauCanalComponent, ModifierCanalComponent, GererAccesCanalComponent, WorkspaceCreateComponent, CreerProjetComponent, FicheProfilComponent, ApercuDocumentComponent, FicheTacheComponent, GedAccessModalComponent, GedVersionsModalComponent, ConfirmDialogComponent],
+  imports: [RouterOutlet, HeaderComponent, RailComponent, Sidebar2Component, IconComponent, InvitationModalComponent, RechercheGlobaleComponent, NouveauMessageComponent, NouveauCanalComponent, ModifierCanalComponent, GererAccesCanalComponent, WorkspaceCreateComponent, CreerProjetComponent, FicheProfilComponent, ApercuDocumentComponent, FicheTacheComponent, GedAccessModalComponent, GedVersionsModalComponent, ConfirmDialogComponent, AppelEntrantComponent],
   template: `
     <div class="shell">
       <app-header (search)="bus.openSearch()" />
@@ -93,6 +94,10 @@ const SECTION_TITLES: Record<string, string> = {
     @if (taskCard(); as tc) { <app-fiche-tache [task]="tc" [loading]="taskLoading()" (closed)="bus.taskId.set(null)" (openTask)="switchTask($event)" (deleted)="onTaskDeleted($event)" /> }
     @if (ged.accessName(); as an) { <app-ged-access-modal [name]="an" [scope]="gedAccessScope()" (closed)="ged.accessName.set(null)" /> }
     @if (ged.versionsName(); as vn) { <app-ged-versions-modal [name]="vn" (closed)="ged.versionsName.set(null)" /> }
+
+    <!-- Appel entrant : monté au niveau du shell pour surgir quelle que soit la
+         page ouverte. Le composant se pilote lui-même via IncomingCallService. -->
+    <app-appel-entrant />
   `,
   styles: [`
     .shell { height: 100vh; display: flex; flex-direction: column; overflow: hidden; background: var(--nx-bg); }

@@ -8,6 +8,7 @@ import { catchError, switchMap } from 'rxjs/operators';
 import { SessionService } from '@core/services/session.service';
 import { MeetingsService } from '@core/services/meetings.service';
 import { CallRoom } from '@core/models/meeting.models';
+import { openMeetingWindow } from '@core/util/meeting-window.util';
 import { environment } from '@environment/environment';
 import { WorkspaceLoaderService } from '@core/services/workspace-loader.service';
 import { ToastService } from '@core/services/toast.service';
@@ -270,9 +271,8 @@ export class HeaderComponent {
     const call = this.ongoingCall();
     this.close();
     if (!call) return;
-    const win = window.open('/salle/' + call.id, 'nexawork-reunion-' + call.id, 'width=1280,height=800,noopener');
     // Un popup bloqué échouait EN SILENCE : le clic ne « faisait rien ».
-    if (!win) {
+    if (!openMeetingWindow(call.id)) {
       this.toast.show({
         message: 'Autorisez les fenêtres surgissantes pour rejoindre la salle.',
         icon: 'warning',

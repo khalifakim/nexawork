@@ -31,16 +31,28 @@ function loadExternalApi(domain: string, appId: string): Promise<void> {
   });
 }
 
+/** Identité NexaWork transmise à JaaS — l'utilisateur ne resaisit jamais son nom. */
+export interface JitsiUser {
+  displayName?: string;
+  email?: string;
+}
+
 /**
  * Monte la salle dans `parent` et rend l'API. Rejette si l'URL est invalide ou
  * si le script JaaS ne se charge pas — l'appelant affiche alors une vraie erreur
  * plutôt qu'un « Connexion à la salle… » perpétuel.
+ *
+ * `onError` remonte les erreurs émises par JaaS APRÈS le montage (jeton refusé,
+ * conférence inaccessible…). Sans lui, elles restaient enfermées dans l'iframe :
+ * l'application ne pouvait ni les afficher ni les journaliser, et un « Authentication
+ * failed » ne laissait aucune trace côté NexaWork.
  */
 export async function openJitsiRoom(
   parent: HTMLElement,
   jitsiUrl: string,
   jwt: string,
-  displayName?: string,
+  user?: JitsiUser,
+  onError?: (message: string) => void,
 ): Promise<JitsiApi> {
   if (!jitsiUrl || !jwt) throw new Error('Salle vidéo indisponible (configuration JaaS manquante).');
 
@@ -52,11 +64,51 @@ export async function openJitsiRoom(
   await loadExternalApi(domain, appId);
   if (!window.JitsiMeetExternalAPI) throw new Error('IFrame API JaaS indisponible.');
 
-  return new window.JitsiMeetExternalAPI(domain, {
+  const api = new window.JitsiMeetExternalAPI(domain, {
     roomName,
     jwt,
     parentNode: parent,
-    configOverwrite: { prejoinPageEnabled: false },
-    ...(displayName ? { userInfo: { displayName } } : {}),
+    configOverwrite: {
+      // `prejoinConfig.enabled` est l'option COURANTE ; `prejoinPageEnabled` est
+      // son ancien nom, désormais ignoré par Jitsi — c'est pour cela que l'écran
+      // de pré-connexion réclamait encore le nom. Les deux sont posées : le
+      // tenant JaaS peut tourner sur une version antérieure.
+      prejoinConfig: { enabled: false },
+      prejoinPageEnabled: false,
+    },
+    // L'utilisateur est DÉJÀ authentifié sur NexaWork : son nom est porté par le
+    // JWT (`context.user.name`) et repris ici, il n'a donc rien à ressaisir.
+    ...(user?.displayName || user?.email
+      ? { userInfo: { displayName: user.displayName, email: user.email } }
+      : {}),
   });
+
+  if (onError) {
+    // JaaS refusant le jeton émet `errorOccurred` : sans écoute, l'utilisateur ne
+    // voyait qu'un « Authentication failed » à l'intérieur de l'iframe, sans
+    // qu'aucun diagnostic ne remonte.
+    api.addListener('errorOccurred', (payload: unknown) => {
+      const err = payload as { error?: { message?: string; name?: string } } | undefined;
+      const name = err?.error?.name ?? '';
+      const message = err?.error?.message ?? '';
+      console.error('[JaaS] errorOccurred', payload);
+      onError(describeJitsiError(name, message));
+    });
+  }
+  return api;
+}
+
+/**
+ * Traduit une erreur JaaS en message actionnable. Le cas de loin le plus fréquent
+ * est le refus du jeton : il ne vient PAS de la salle mais de la configuration du
+ * tenant (clé publique enregistrée dans la console 8x8 ≠ clé privée qui signe).
+ */
+function describeJitsiError(name: string, message: string): string {
+  const raw = (name + ' ' + message).toLowerCase();
+  if (raw.includes('auth') || raw.includes('token') || raw.includes('jwt')) {
+    return "La visioconférence a refusé le jeton d'accès (JaaS). "
+      + 'La clé publique enregistrée dans la console 8x8 ne correspond probablement '
+      + "pas à la clé privée qui signe les jetons. Détail technique : " + (message || name || 'inconnu');
+  }
+  return message || name || 'Erreur de la visioconférence.';
 }

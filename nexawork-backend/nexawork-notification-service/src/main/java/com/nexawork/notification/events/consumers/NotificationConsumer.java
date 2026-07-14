@@ -106,7 +106,14 @@ public class NotificationConsumer {
                 .body(e.inviterDisplayName() + " vous invite à la réunion « " + e.topic() + " » — Rejoindre.")
                 .targetUrl("/app/reunions/" + e.callId())
                 .workspaceId(e.organisationId())
-                .payload(Map.of("callId", e.callId().toString()))
+                // Le frontend ouvre un modal d'appel entrant (façon Teams) sur
+                // réception : il lui faut le sujet et l'appelant SANS avoir à
+                // analyser le corps du message, qui est du texte d'affichage.
+                // `Map.of` refuse les valeurs nulles (NPE) — d'où les replis.
+                .payload(Map.of(
+                        "callId", e.callId().toString(),
+                        "topic", e.topic() != null ? e.topic() : "Réunion",
+                        "actorName", e.inviterDisplayName() != null ? e.inviterDisplayName() : "Un membre"))
                 .build());
     }
 

@@ -109,6 +109,8 @@ function toNotification(r: NotificationResponse): Notification {
     kind: KIND[r.type] ?? 'message',
     // Le header route à partir de `target` ; l'URL cible du backend fait foi.
     target: r.targetUrl ?? '',
+    type: r.type,
+    payload: r.payload,
   };
 }
 

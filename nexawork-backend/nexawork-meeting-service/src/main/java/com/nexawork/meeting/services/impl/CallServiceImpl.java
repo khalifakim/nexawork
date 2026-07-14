@@ -13,6 +13,7 @@ import com.nexawork.meeting.events.publishers.CallEndedEvent;
 import com.nexawork.meeting.events.publishers.MeetingEventPublisher;
 import com.nexawork.meeting.events.publishers.MeetingParticipantInvitedEvent;
 import com.nexawork.meeting.properties.JitsiProperties;
+import com.nexawork.meeting.properties.MeetingProperties;
 import com.nexawork.meeting.repositories.CallParticipantRepository;
 import com.nexawork.meeting.repositories.CallRepository;
 import com.nexawork.meeting.repositories.MeetingHiddenRepository;
@@ -49,6 +50,7 @@ public class CallServiceImpl implements CallService {
     JitsiTokenService tokenService;
     MeetingEventPublisher eventPublisher;
     JitsiProperties jitsiProperties;
+    MeetingProperties meetingProperties;
     CallerContext caller;
 
     @Override
@@ -110,11 +112,14 @@ public class CallServiceImpl implements CallService {
         participantRepository.save(participant);
 
         boolean isHost = call.getHostUserId().equals(me);
-        // M3 : l'hôte et les membres conviés explicitement entrent directement ;
-        // un membre non convié qui atteint la salle passe par la salle d'attente.
-        boolean lobbyBypass = isHost || Boolean.TRUE.equals(participant.getInvitedExplicitly());
+        // Tout membre AUTHENTIFIÉ du workspace entre directement dans la salle : il
+        // s'est déjà authentifié sur la plateforme, lui réclamer une seconde
+        // validation manuelle n'apporte aucune sécurité (l'appel n'est de toute
+        // façon visible que de son hôte et de ses conviés — cf. activeCalls()).
+        // Seul l'INVITÉ EXTERNE, qui n'a pas de compte, passe par la salle
+        // d'attente (GuestService : lobbyBypass = false).
         String token = tokenService.generateToken(call.getRoomName(), me,
-                caller.displayName(), null, isHost, lobbyBypass);
+                caller.displayName(), null, isHost, true);
         return toResponse(call, token);
     }
 
@@ -243,6 +248,52 @@ public class CallServiceImpl implements CallService {
         }
         callRepository.delete(call); // cascade DB : participants, invités, chat, fichiers, masquages
         log.info("Appel {} supprimé par {}", callId, caller.userId());
+    }
+
+    /**
+     * Filet de sécurité du cycle de vie (cf. {@link CallService#sweepStaleCalls()}).
+     * {@code leave()} ne clôt l'appel que lorsqu'un participant *entré* en repart :
+     * si l'hôte crée l'appel et n'entre jamais dans la salle, plus personne ne
+     * déclenche jamais la clôture et l'appel reste ACTIVE à vie. Ce balayage est
+     * le seul mécanisme qui rattrape ce cas.
+     */
+    @Override
+    public void sweepStaleCalls() {
+        LocalDateTime now = LocalDateTime.now();
+        Duration abandonAfter = Duration.ofMinutes(meetingProperties.getAbandonTimeoutMinutes());
+        Duration maxDuration = Duration.ofHours(meetingProperties.getMaxDurationHours());
+
+        for (Call call : callRepository.findByStatus(CallStatus.ACTIVE)) {
+            LocalDateTime start = call.getStartedAt() != null ? call.getStartedAt() : call.getCreatedAt();
+
+            if (start != null && Duration.between(start, now).compareTo(maxDuration) > 0) {
+                log.info("Appel {} clos d'office : durée maximale de {} h dépassée.",
+                        call.getId(), meetingProperties.getMaxDurationHours());
+                endCall(call);
+                continue;
+            }
+
+            List<CallParticipant> participants = participantRepository.findByCallId(call.getId());
+            boolean someoneStillIn = participants.stream()
+                    .anyMatch(p -> p.getJoinedAt() != null && p.getLeftAt() == null);
+            if (someoneStillIn) {
+                continue;
+            }
+
+            // Salle vide : depuis le départ du dernier présent, ou — si personne
+            // n'est jamais entré — depuis le début de l'appel.
+            LocalDateTime emptySince = participants.stream()
+                    .map(CallParticipant::getLeftAt)
+                    .filter(java.util.Objects::nonNull)
+                    .max(LocalDateTime::compareTo)
+                    .orElse(start);
+
+            if (emptySince != null && Duration.between(emptySince, now).compareTo(abandonAfter) > 0) {
+                log.info("Appel {} clos d'office : salle vide depuis plus de {} min.",
+                        call.getId(), meetingProperties.getAbandonTimeoutMinutes());
+                endCall(call);
+            }
+        }
     }
 
     // ─── Helpers ────────────────────────────────────────────────────────────────

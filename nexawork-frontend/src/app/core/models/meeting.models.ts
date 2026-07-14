@@ -14,6 +14,8 @@ export interface CallRoom {
   id: string;
   roomName: string;
   topic: string;
+  /** Créateur de l'appel = modérateur. Lui seul peut le clore pour tout le monde. */
+  hostUserId: string;
   /** Domaine JaaS (base de l'IFrame API). */
   jitsiUrl: string;
   /** JWT signé (identité + droits + lobby_bypass). */
