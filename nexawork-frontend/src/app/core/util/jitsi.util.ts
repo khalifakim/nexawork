@@ -90,6 +90,14 @@ export async function openJitsiRoom(
       // part au File Service → MinIO, et reste téléchargeable après la réunion).
       // Le bouton de JaaS téléverserait chez 8x8, hors de notre portée.
       hiddenToolbarButtons: ['polls', 'closedcaptions', 'recording', 'livestreaming', 'filesharing'],
+      // Tente de retirer l'onglet « Documents » (partage de fichiers) du panneau de
+      // chat. ⚠️ Best-effort : l'intérieur de l'iframe Jitsi n'est pas contrôlable de
+      // façon garantie (cross-origin), et cette clé n'est pas documentée sur toutes
+      // les versions. Selon le tenant, l'onglet peut rester affiché — mais son bouton
+      // « Share File » est de toute façon inerte (`file-upload: false`). Notre propre
+      // partage se fait par le panneau « Fichiers » de la salle.
+      fileSharing: { enabled: false },
+      disableFilesharing: true,
       // 🔴 SALLE D'ATTENTE (lobby) DÉSACTIVÉE — décision imposée par JaaS.
       //
       // Le claim `lobby_bypass` sur lequel reposait le contournement **n'existe pas**

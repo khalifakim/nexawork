@@ -4,6 +4,7 @@ import { switchMap } from 'rxjs/operators';
 import { BaseHttpService } from '@core/http/base-http.service';
 import { FilesHttpService } from '@core/http/files.http.service';
 import { api } from '@core/http/api.config';
+import { SILENT } from '@core/http/http-context';
 import { environment } from '@environment/environment';
 
 /** Message du chat de réunion — vue d'affichage. */
@@ -88,10 +89,14 @@ export class MeetingChatService extends BaseHttpService {
     );
   }
 
-  /** Fichiers partagés pendant une réunion (relecture après l'appel). */
+  /**
+   * Fichiers partagés pendant une réunion (relecture après l'appel + sondage dans
+   * la salle). **Silencieux** : sondé toutes les 6 s, il ne doit jamais afficher
+   * « le serveur ne répond pas » sur une lenteur passagère.
+   */
   files(callId: string): Observable<MeetingFileResponse[]> {
     if (environment.mock.meetings) return of([]);
-    return this.get$<MeetingFileResponse[]>('meeting', `/calls/${callId}/files`);
+    return this.get$<MeetingFileResponse[]>('meeting', `/calls/${callId}/files`, undefined, SILENT());
   }
 
   // ── Invité externe (M5) ───────────────────────────────────────────────────

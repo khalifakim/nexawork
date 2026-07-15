@@ -298,18 +298,12 @@ export class HeaderComponent {
     this.toast.show({ message: 'Vous avez quitté « ' + call.meetingTitle + ' »' });
   }
 
-  /** Rejoindre / revenir à la salle — elle vit dans sa propre fenêtre. */
+  /** Rejoindre / revenir à la salle — fenêtre dédiée, ou onglet courant si le popup est bloqué. */
   focusCall(): void {
     const call = this.ongoingCall();
     this.close();
     if (!call) return;
-    // Un popup bloqué échouait EN SILENCE : le clic ne « faisait rien ».
-    if (!openMeetingWindow(call.id)) {
-      this.toast.show({
-        message: 'Autorisez les fenêtres surgissantes pour rejoindre la salle.',
-        icon: 'warning',
-      });
-    }
+    openMeetingWindow(call.id); // ne peut plus échouer : fenêtre ou, à défaut, onglet courant
   }
   /** Notifications of the active workspace (reload on workspace switch). */
   private notifsSvc = inject(NotificationsService);

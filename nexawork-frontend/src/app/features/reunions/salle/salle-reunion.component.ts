@@ -346,6 +346,11 @@ export class SalleReunionComponent implements OnDestroy {
     this.api?.dispose();
     this.api = undefined;
     window.close();
+    // `window.close()` ne ferme que les fenêtres ouvertes par script. Si la salle a
+    // été ouverte dans l'onglet courant (popup bloqué → repli same-tab), il ne fait
+    // rien : on ramène alors l'utilisateur à l'application. Dans un vrai popup, ce
+    // code ne s'exécute pas (la fenêtre est déjà fermée).
+    window.location.assign('/app/reunions/lancer');
   }
 
   private fail(message: string): void {

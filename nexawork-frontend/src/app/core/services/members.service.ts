@@ -2,6 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { BehaviorSubject, Observable, map, of, timer } from 'rxjs';
 import { catchError, delay, switchMap } from 'rxjs/operators';
 import { BaseHttpService } from '@core/http/base-http.service';
+import { SILENT } from '@core/http/http-context';
 import { StompClientService } from '@core/ws/stomp-client.service';
 import { Member, MemberResponse } from '@core/models/member.models';
 import { ME, slugName, avatarColorFor } from '@core/util/ui.util';
@@ -76,8 +77,9 @@ export class MembersHttpService extends BaseHttpService implements MembersServic
   constructor() {
     super();
     // Référence périodique (rattrape un événement manqué, amorce l'état initial).
+    // Sondage de fond → silencieux (SILENT) : jamais de toast « serveur ne répond pas ».
     timer(0, PRESENCE_POLL_MS).pipe(
-      switchMap(() => this.get$<string[]>('notification', '/presence/online').pipe(catchError(() => of<string[]>([])))),
+      switchMap(() => this.get$<string[]>('notification', '/presence/online', undefined, SILENT()).pipe(catchError(() => of<string[]>([])))),
     ).subscribe(ids => this.presenceSet.next(new Set(ids)));
 
     // Temps réel : connexion / déconnexion diffusées par le Notification Service.

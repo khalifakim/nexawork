@@ -3,6 +3,7 @@ import { Store } from '@ngrx/store';
 import { Observable, map, of } from 'rxjs';
 import { delay } from 'rxjs/operators';
 import { BaseHttpService } from '@core/http/base-http.service';
+import { SILENT } from '@core/http/http-context';
 import { api } from '@core/http/api.config';
 import { selectToken } from '@store/auth/auth.selectors';
 import {
@@ -109,7 +110,10 @@ export class MeetingsHttpService extends BaseHttpService implements MeetingsServ
   }
 
   active(): Observable<CallRoom[]> {
-    return this.get$<CallResponse[]>('meeting', '/calls/active').pipe(map(calls => calls.map(toRoom)));
+    // Sondage de fond (toutes les 15 s) : silencieux. Une lenteur passagère ne doit
+    // JAMAIS déclencher « le serveur ne répond pas » — l'appelant retombe sur [].
+    return this.get$<CallResponse[]>('meeting', '/calls/active', undefined, SILENT())
+      .pipe(map(calls => calls.map(toRoom)));
   }
 
   create(topic: string, memberIds: string[]): Observable<CallRoom> {

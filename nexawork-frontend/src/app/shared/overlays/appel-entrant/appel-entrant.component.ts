@@ -1,7 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 import { IncomingCallService } from '@core/services/incoming-call.service';
-import { ToastService } from '@core/services/toast.service';
 import { openMeetingWindow } from '@core/util/meeting-window.util';
 import { avatarColorFor, initials } from '@core/util/ui.util';
 
@@ -68,7 +67,6 @@ import { avatarColorFor, initials } from '@core/util/ui.util';
 })
 export class AppelEntrantComponent {
   private readonly incoming = inject(IncomingCallService);
-  private readonly toast = inject(ToastService);
 
   readonly call = this.incoming.incoming;
 
@@ -78,14 +76,8 @@ export class AppelEntrantComponent {
   accept(): void {
     const c = this.call();
     if (!c) return;
-    const opened = openMeetingWindow(c.callId);
     this.incoming.accepted();
-    if (!opened) {
-      this.toast.show({
-        message: 'Autorisez les fenêtres surgissantes pour rejoindre la salle.',
-        icon: 'warning',
-      });
-    }
+    openMeetingWindow(c.callId); // fenêtre dédiée, ou onglet courant si le popup est bloqué
   }
 
   decline(): void { this.incoming.dismiss(); }
