@@ -75,8 +75,9 @@ declare_queue_binding nexawork.notification.meeting-invite      meeting.particip
 echo "GED queues :"
 declare_queue_binding nexawork.ged.project-created              project.created
 
-# ── Queue Messaging Service (1) — V5.1 §7.4 ───────────────────────────────────
+# ── Queues Messaging Service (2) — V5.1 §7.4 ──────────────────────────────────
 echo "Messaging queues :"
 declare_queue_binding nexawork.messaging.project-created        project.created
+declare_queue_binding nexawork.messaging.project-deleted        project.deleted
 
 echo "Toutes les queues et bindings RabbitMQ créés."

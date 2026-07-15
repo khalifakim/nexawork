@@ -20,6 +20,9 @@ public interface ChannelRepository extends JpaRepository<Channel, UUID> {
 
     List<Channel> findByProjectId(UUID projectId);
 
+    /** Supprime tous les canaux d'un projet (à la suppression du projet — cf. consumer). */
+    long deleteByProjectId(UUID projectId);
+
     /**
      * Recherche globale (§4.8) : canaux du workspace dont le nom contient le
      * terme. La visibilité (REF F — canaux privés) est appliquée en aval par le

@@ -40,7 +40,7 @@ type ChMsg = ChannelMessage;
         } @else {
           <span class="hash">#</span>
         }
-        <span class="ch__n">{{ name() }}</span>
+        <span class="ch__n">{{ displayName() }}</span>
         @if (isPrivate()) {
           <span class="pill pill--priv"><app-icon name="lock" [size]="12" />Privé</span>
         }
@@ -145,7 +145,7 @@ type ChMsg = ChannelMessage;
       @if (canWrite()) {
         <div class="composer">
           <app-comment-composer
-            [placeholder]="'Écrire dans #' + name() + '…'"
+            [placeholder]="'Écrire dans #' + displayName() + '…'"
             (submitted)="onSend($event)" />
         </div>
       } @else {
@@ -170,12 +170,28 @@ export class CanalComponent {
   @Input() set channelId(v: string | null | undefined) { this._embeddedId.set(v ?? null); }
   private _embeddedId = signal<string | null>(null);
   private routeName = toSignal(this.route.paramMap.pipe(map(p => p.get('id') ?? 'annonces')), { initialValue: 'annonces' });
+  /**
+   * ⚠️ `name()` est en réalité l'**identifiant d'URL** du canal (`annonces-e2d7cff8`
+   * pour un canal de projet), pas son libellé. Tout le reste du composant s'en sert
+   * comme clé (résolution, droits, envoi de message) — on ne le renomme pas pour
+   * ne pas tout casser, mais **il ne doit JAMAIS être affiché** : voir `displayName`.
+   */
   name = computed<string>(() => this._embeddedId() ?? this.routeName());
 
   private channelsSvc = inject(ChannelsService);
   private filesSvc = inject(FilesHttpService);
 
   private channels = toSignal(this.channelsSvc.list(), { initialValue: [] });
+
+  /**
+   * Libellé affiché — le **vrai** nom du canal, résolu depuis la liste (« annonces »),
+   * jamais l'identifiant technique. Avant chargement de la liste, on retire le suffixe
+   * `-xxxxxxxx` (8 hex du projet) pour ne pas laisser fuiter l'id à l'écran.
+   */
+  displayName = computed<string>(() => {
+    const id = this.name();
+    return this.channels().find(c => c.id === id)?.name ?? id.replace(/-[0-9a-f]{8}$/, '');
+  });
   private archivedSvc = inject(ArchivedProjectsService);
   kind = computed<'bell' | 'hash'>(() => this.channels().find(c => c.id === this.name())?.kind ?? 'hash');
   /**

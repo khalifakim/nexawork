@@ -8,6 +8,7 @@ import com.nexawork.project.dtos.responses.ProjectResponse;
 import com.nexawork.project.entities.Project;
 import com.nexawork.project.entities.enums.ProjectStatus;
 import com.nexawork.project.events.publishers.ProjectCreatedEvent;
+import com.nexawork.project.events.publishers.ProjectDeletedEvent;
 import com.nexawork.project.events.publishers.ProjectEventPublisher;
 import com.nexawork.project.mappers.ProjectMapper;
 import com.nexawork.project.repositories.ProjectMemberRepository;
@@ -144,7 +145,12 @@ public class ProjectServiceImpl implements ProjectService {
     public void delete(UUID projectId) {
         Project project = guard.loadInOrg(projectId);
         caller.requireWorkspaceAdmin("supprimer un projet");
+        UUID organisationId = project.getOrganisationId(); // capturé AVANT la suppression
         projectRepository.delete(project); // cascade DB : membres, équipes, statuts, tâches...
+        // Les canaux du projet vivent dans le Messaging (autre base) : pas de cascade
+        // SQL possible. On publie `project.deleted` pour qu'il les supprime — sans quoi
+        // ils resteraient orphelins (canaux #général/#annonces d'un projet disparu).
+        eventPublisher.publishProjectDeleted(new ProjectDeletedEvent(projectId, organisationId));
         log.info("Projet {} supprimé par {}", projectId, caller.userId());
     }
 
