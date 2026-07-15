@@ -64,10 +64,6 @@ public class MeetingFile {
     @Column(name = "content_type")
     private String contentType;
 
-    /** Vestige du partage JaaS (métadonnées seules) — nul désormais. */
-    @Column(name = "jaas_file_id")
-    private String jaasFileId;
-
     /** Auteur interne — nul si le partage vient d'un invité externe (sans compte). */
     @Column(name = "shared_by")
     private UUID sharedBy;
