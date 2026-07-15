@@ -204,14 +204,22 @@ export class SalleReunionComponent implements OnDestroy {
     // jeton refusé) : notre voile masquait l'écran.
     this.loading.set(false);
 
+    // 🔴 Fin d'appel fiable. `videoConferenceLeft` est émis par JaaS quand on quitte
+    // la conférence, l'onglet **encore vivant** : on fait alors un VRAI appel HTTP
+    // `leave()` (au lieu du `fetch keepalive` de la fermeture, qui n'aboutit pas
+    // toujours). C'est ce qui garantit que le serveur clôt l'appel dès que le
+    // DERNIER participant part — sinon il restait ACTIVE et la bannière persistait.
+    this.api.addListener('videoConferenceLeft', () => this.leaveReliably());
     this.api.addListener('readyToClose', () => this.close());
     // M2 — persistance du chat de réunion.
     this.api.addListener('incomingMessage', (p: unknown) => this.chat.capture(this.callId, p, false));
     this.api.addListener('outgoingMessage', (p: unknown) => this.chat.capture(this.callId, p, true));
 
     // M5 — les fichiers partagés par les AUTRES doivent apparaître sans recharger.
+    // 12 s (et non 6) pour ménager une machine modeste, et jamais pendant un envoi
+    // en cours (l'upload sature déjà le File Service — inutile d'ajouter des GET).
     this.refreshFiles();
-    this.filesPoll = setInterval(() => this.refreshFiles(), 6000);
+    this.filesPoll = setInterval(() => { if (!this.sharing()) this.refreshFiles(); }, 12000);
   }
 
   /**
@@ -257,11 +265,22 @@ export class SalleReunionComponent implements OnDestroy {
    * Le nom est aussi annoncé dans le chat de la salle — sans quoi personne ne
    * saurait, pendant l'appel, qu'un fichier vient d'être partagé.
    */
+  /** Au-delà, l'upload sature la VM (surtout sur une machine modeste) — voir point 3. */
+  private static readonly MAX_FILE_MB = 25;
+
   onFilePicked(ev: Event): void {
     const input = ev.target as HTMLInputElement;
     const file = input.files?.[0];
     input.value = ''; // permet de repartager le même fichier
     if (!file || this.sharing()) return;
+
+    if (file.size > SalleReunionComponent.MAX_FILE_MB * 1024 * 1024) {
+      this.toast.show({
+        message: 'Fichier trop volumineux — ' + SalleReunionComponent.MAX_FILE_MB + ' Mo maximum.',
+        icon: 'warning',
+      });
+      return;
+    }
 
     const workspaceId = this.session.activeWorkspaceId();
     if (!workspaceId) return;
@@ -335,10 +354,27 @@ export class SalleReunionComponent implements OnDestroy {
     this.leave();
   }
 
+  /**
+   * Départ à la FERMETURE de l'onglet (`pagehide`/`ngOnDestroy`) : une requête
+   * Angular serait annulée avec le document, on part donc en `fetch keepalive`.
+   * Moins fiable qu'un appel normal — d'où `leaveReliably()` sur `videoConferenceLeft`.
+   */
   private leave(): void {
     if (this.left || !this.callId) return;
     this.left = true;
     this.meetings.leaveOnUnload(this.callId);
+  }
+
+  /**
+   * Départ pendant que l'onglet est ENCORE vivant (l'utilisateur a raccroché dans
+   * Jitsi) : appel HTTP normal, qui aboutit. Le serveur clôt l'appel si c'était le
+   * dernier participant. Le flag `left` empêche le `readyToClose` suivant de
+   * renvoyer un second `leave`.
+   */
+  private leaveReliably(): void {
+    if (this.left || !this.callId) return;
+    this.left = true;
+    this.meetings.leave(this.callId).subscribe({ error: () => { /* filet keepalive au pagehide */ } });
   }
 
   close(): void {

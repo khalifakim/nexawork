@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable, map, of } from 'rxjs';
-import { switchMap } from 'rxjs/operators';
+import { switchMap, timeout } from 'rxjs/operators';
 import { BaseHttpService } from '@core/http/base-http.service';
 import { FilesHttpService } from '@core/http/files.http.service';
 import { api } from '@core/http/api.config';
@@ -86,6 +86,11 @@ export class MeetingChatService extends BaseHttpService {
         fileSize: stored.size,
         contentType: stored.contentType,
       })),
+      // Borne dans le temps : un upload est « long-running » (exclu du timeout
+      // global), mais s'il n'aboutit pas — File Service saturé/absent — l'envoi
+      // ne doit PAS rester « en chargement » à l'infini. Au-delà, on échoue
+      // proprement et l'utilisateur récupère la main.
+      timeout({ each: 120_000 }),
     );
   }
 

@@ -9,6 +9,7 @@ import { SessionService } from '@core/services/session.service';
 import { MeetingsService } from '@core/services/meetings.service';
 import { environment } from '@environment/environment';
 import { slugify } from '@core/util/ui.util';
+import { openBlankTab, redirectTab, closeTab } from '@core/util/meeting-window.util';
 
 @Component({
   selector: 'app-lancer-reunion',
@@ -71,6 +72,12 @@ export class LancerReunionComponent {
       return;
     }
 
+    // Onglet ouvert MAINTENANT, dans le geste de clic : le navigateur l'autorise.
+    // La création prend un appel réseau ; ouvrir l'onglet APRÈS (dans le `next`)
+    // le ferait bloquer, car on ne serait plus dans un geste utilisateur. On
+    // redirige cet onglet une fois l'id connu.
+    const tab = openBlankTab();
+
     this.creating.set(true);
     this.meetings.create(ev.title, ev.memberIds).pipe(
       // Invités externes : un lien à usage unique par adresse, envoyé par email.
@@ -83,19 +90,13 @@ export class LancerReunionComponent {
         this.creating.set(false);
         this.open.set(false);
         this.toast.show({ message: 'Réunion « ' + ev.title + ' » créée' + suffix });
-        this.openRoomWindow(room.id);
+        redirectTab(tab, room.id);
         this.router.navigate(['/app/reunions/historique']);
       },
-      error: () => this.creating.set(false), // message porté par l'intercepteur
+      error: () => {
+        this.creating.set(false); // message porté par l'intercepteur
+        closeTab(tab);            // la création a échoué : pas de salle à ouvrir
+      },
     });
-  }
-
-  /** Ouvre la salle dans une fenêtre séparée ; repli sur un onglet si le popup est bloqué. */
-  private openRoomWindow(callId: string): void {
-    const url = '/salle/' + callId;
-    const win = window.open(url, 'nexawork-reunion-' + callId, 'width=1280,height=800,noopener');
-    if (!win) {
-      this.toast.show({ message: 'Autorisez les fenêtres surgissantes pour ouvrir la salle.', icon: 'warning' });
-    }
   }
 }
