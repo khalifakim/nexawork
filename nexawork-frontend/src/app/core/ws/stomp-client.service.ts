@@ -73,14 +73,25 @@ class StompConnection {
         for (const frame of queued) this.client?.publish(frame);
         this.onConnected?.(this);
       },
-      onWebSocketClose: () => {
+      onWebSocketClose: (evt) => {
         // Les abonnements meurent avec la socket : sans cette purge, `subscribeIfPossible`
         // les croyait encore actifs à la reconnexion et ne les réarmait jamais
         // — le fil restait muet jusqu'au rechargement de la page.
         this.subs.clear();
+        // Diagnostic : un `code` 1006 = handshake refusé (401/404), 1000 = normal.
+        console.warn('[STOMP] WebSocket fermé', this.url, '— code', evt?.code, '(1006 = handshake refusé côté serveur)');
+      },
+      // Diagnostic : rendre visibles les échecs jusqu'ici SILENCIEUX — c'est ce qui
+      // manquait pour comprendre pourquoi « le temps réel ne marche pas ».
+      onStompError: (frame) => {
+        console.error('[STOMP] erreur serveur', this.url, '—', frame.headers['message'], frame.body);
+      },
+      onWebSocketError: (evt) => {
+        console.error('[STOMP] erreur WebSocket', this.url, evt);
       },
     });
     this.client.activate();
+    console.info('[STOMP] connexion à', this.socketUrl().replace(/access_token=[^&]+/, 'access_token=***'));
   }
 
   private subscribeIfPossible(destination: string): void {

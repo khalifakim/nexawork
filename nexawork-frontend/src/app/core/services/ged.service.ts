@@ -479,10 +479,13 @@ function toTaskAttachmentItem(a: TaskAttachmentLineResponse, byId: Map<string, M
 }
 
 function toContentItems(content: FolderContentResponse, byId: Map<string, Member>): GedItem[] {
+  // `?? []` : un dossier restreint (ou vide) peut renvoyer un champ à `null` plutôt
+  // qu'un tableau vide — `null.map` crashait alors l'ouverture (« Cannot read
+  // properties of null (reading 'map') »), le chargement ne se terminait jamais.
   return [
-    ...content.subFolders.map(f => toFolderItem(f, byId)),
-    ...content.files.map(f => toFileItem(f, byId)),
-    ...content.taskAttachments.map(a => toTaskAttachmentItem(a, byId)),
+    ...(content.subFolders ?? []).map(f => toFolderItem(f, byId)),
+    ...(content.files ?? []).map(f => toFileItem(f, byId)),
+    ...(content.taskAttachments ?? []).map(a => toTaskAttachmentItem(a, byId)),
   ];
 }
 

@@ -2,10 +2,12 @@ package com.nexawork.file.services;
 
 import com.nexawork.commons.exceptions.ResourceNotFoundException;
 import com.nexawork.file.properties.MinioProperties;
+import io.minio.BucketExistsArgs;
 import io.minio.GetObjectArgs;
 import io.minio.GetObjectResponse;
 import io.minio.GetPresignedObjectUrlArgs;
 import io.minio.ListObjectsArgs;
+import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import io.minio.RemoveObjectArgs;
@@ -50,6 +52,9 @@ public class MinioService {
     public UploadResult upload(String bucket, String objectKey, InputStream inputStream,
                                long size, String contentType) {
         try {
+            // Filet : si le bucket n'existe pas (MinIO vide, init au démarrage échoué),
+            // le créer ici plutôt que d'échouer en 500. Idempotent.
+            ensureBucket(bucket);
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             try (DigestInputStream digestStream = new DigestInputStream(inputStream, digest)) {
                 long partSize = size < 0 ? 10 * 1024 * 1024 : -1; // 10 Mo si taille inconnue
@@ -65,6 +70,15 @@ public class MinioService {
         } catch (Exception e) {
             log.error("Échec upload MinIO {}/{} : {}", bucket, objectKey, e.getMessage());
             throw new IllegalStateException("Échec du stockage du fichier.", e);
+        }
+    }
+
+    /** Crée le bucket s'il n'existe pas (idempotent). */
+    private void ensureBucket(String bucket) throws Exception {
+        boolean exists = minioClient.bucketExists(BucketExistsArgs.builder().bucket(bucket).build());
+        if (!exists) {
+            minioClient.makeBucket(MakeBucketArgs.builder().bucket(bucket).build());
+            log.info("Bucket MinIO « {} » créé à la volée (upload).", bucket);
         }
     }
 

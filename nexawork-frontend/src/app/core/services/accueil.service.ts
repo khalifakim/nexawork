@@ -93,8 +93,10 @@ export class AccueilHttpService extends BaseHttpService implements AccueilServic
       const projectName = new Map(projects.map(p => [p.id, p.name]));
       const rows = tasks.map(t => toMyTaskRow(t, projectName.get(t.projectId) ?? ''));
       const sections: MyTaskSection[] = [
-        { cat: "Aujourd'hui", color: '#5B8DEF', tasks: rows.filter(r => r.slot === 'today') },
-        { cat: 'En retard',   color: '#F5564E', tasks: rows.filter(r => r.slot === 'late') },
+        // Prioritaires : échéance aujourd'hui OU déjà dépassée.
+        { cat: 'Prioritaires', color: '#F5564E', tasks: rows.filter(r => r.slot === 'priority') },
+        // Toutes les autres tâches (à venir ou sans échéance), tous projets confondus.
+        { cat: 'Mes autres tâches', color: '#5B8DEF', tasks: rows.filter(r => r.slot === 'other') },
       ];
       return sections.filter(s => s.tasks.length > 0);
     }));
@@ -135,18 +137,20 @@ function toMyTaskRow(t: TaskResponse, projectName: string): MyTaskRow & { slot?:
   };
 }
 
-/** Créneau d'échéance de l'écran §5.1 : le jour même, ou dépassée. Au-delà : non affichée. */
-type DueSlot = 'today' | 'late';
+/**
+ * Créneau de l'écran « Mes tâches » (§5.1) :
+ * - `priority` : échéance **aujourd'hui ou dépassée** — à traiter en priorité ;
+ * - `other` : tout le reste (échéance future OU aucune échéance).
+ * Contrairement à la version précédente, aucune tâche n'est plus masquée.
+ */
+type DueSlot = 'priority' | 'other';
 
-function dueSlot(dueDate?: string): DueSlot | undefined {
-  if (!dueDate) return undefined;
+function dueSlot(dueDate?: string): DueSlot {
+  if (!dueDate) return 'other'; // sans échéance → « Mes autres tâches »
   const d = new Date(dueDate + 'T00:00:00');
-  if (Number.isNaN(d.getTime())) return undefined;
+  if (Number.isNaN(d.getTime())) return 'other';
   const today = new Date(); today.setHours(0, 0, 0, 0);
-  const days = Math.round((d.getTime() - today.getTime()) / 86_400_000);
-  if (days < 0) return 'late';
-  if (days === 0) return 'today';
-  return undefined;
+  return d.getTime() <= today.getTime() ? 'priority' : 'other';
 }
 
 function formatDue(iso: string): string {

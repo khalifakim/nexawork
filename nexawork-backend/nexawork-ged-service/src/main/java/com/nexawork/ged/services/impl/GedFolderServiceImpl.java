@@ -124,7 +124,10 @@ public class GedFolderServiceImpl implements GedFolderService {
         List<com.nexawork.ged.dtos.responses.FileResponse> files =
                 fileRepository.findByFolderIdAndIsDeletedFalse(folderId).stream()
                         .filter(access::canView).map(fileMapper::asDto).toList();
-        return builder.subFolders(subFolders).files(files).build();
+        // `taskAttachments(List.of())` explicite : un dossier normal n'en a pas, mais
+        // sans l'initialiser le champ restait NULL, et le frontend crashait dessus
+        // (« Cannot read properties of null (reading 'map') »).
+        return builder.subFolders(subFolders).files(files).taskAttachments(List.of()).build();
     }
 
     @Override
