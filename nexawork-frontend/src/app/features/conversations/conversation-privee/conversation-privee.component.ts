@@ -174,7 +174,11 @@ export class ConversationPriveeComponent {
   // ── Indicateur « est en train d'écrire » ────────────────────────────────────
   /** Vrai uniquement quand le pair est EN LIGNE et tape réellement (STOMP). */
   private typingRaw = signal(false);
-  peerTyping = computed(() => this.typingRaw() && this.peer().online);
+  // 🔴 Le « en train d'écrire » NE dépend PLUS de la présence. Un événement typing
+  // reçu prouve à lui seul que la personne est là (elle tape) ; le coupler à
+  // `peer().online` le masquait dès que la présence était en retard ou indisponible.
+  // L'expiration est déjà gérée par `typingTimer` (4 s sans nouvel événement).
+  peerTyping = computed(() => this.typingRaw());
   /** Timer d'expiration : l'indicateur retombe si plus rien n'arrive. */
   private typingTimer?: ReturnType<typeof setTimeout>;
   /** Anti-spam : on ne republie « je tape » qu'une fois par fenêtre. */

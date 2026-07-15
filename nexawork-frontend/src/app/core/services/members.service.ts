@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { BehaviorSubject, Observable, map, of, timer } from 'rxjs';
+import { BehaviorSubject, Observable, combineLatest, map, of, timer } from 'rxjs';
 import { catchError, delay, switchMap } from 'rxjs/operators';
 import { BaseHttpService } from '@core/http/base-http.service';
 import { SILENT } from '@core/http/http-context';
@@ -125,18 +125,26 @@ export class MembersHttpService extends BaseHttpService implements MembersServic
     return this.directory().pipe(map(list => list.filter(m => m.userId !== meId)));
   }
 
+  // `byName` / `bySlug` sont **vivants** : recombinés avec le flux de présence, ils
+  // ré-émettent à chaque connexion/déconnexion. Sans ça, l'« En ligne » de la fiche
+  // profil et de l'en-tête de conversation était figé à l'ouverture (`directory()`
+  // ne fige la présence qu'une fois).
   byName(name: string): Observable<Member> {
     const key = name.trim().toLowerCase();
-    return this.directory().pipe(map(list =>
-      list.find(m => m.name.toLowerCase() === key)
-      ?? list.find(m => m.name.toLowerCase().split(/\s+/)[0] === key)
-      ?? list.find(m => m.name.toLowerCase().startsWith(key))
-      ?? unknown(name),
-    ));
+    return combineLatest([this.directory(), this.presence$]).pipe(map(([list, online]) => {
+      const m = list.find(x => x.name.toLowerCase() === key)
+        ?? list.find(x => x.name.toLowerCase().split(/\s+/)[0] === key)
+        ?? list.find(x => x.name.toLowerCase().startsWith(key))
+        ?? unknown(name);
+      return m.userId ? { ...m, online: online.has(m.userId) } : m;
+    }));
   }
 
   bySlug(slug: string): Observable<Member> {
-    return this.directory().pipe(map(list => list.find(m => slugName(m.name) === slug) ?? unknown(slug)));
+    return combineLatest([this.directory(), this.presence$]).pipe(map(([list, online]) => {
+      const m = list.find(x => slugName(x.name) === slug) ?? unknown(slug);
+      return m.userId ? { ...m, online: online.has(m.userId) } : m;
+    }));
   }
 }
 
