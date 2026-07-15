@@ -2,6 +2,7 @@ import { Injectable, Signal, inject, signal } from '@angular/core';
 import { EMPTY, Observable, forkJoin, map, of, switchMap } from 'rxjs';
 import { delay, filter } from 'rxjs/operators';
 import { BaseHttpService } from '@core/http/base-http.service';
+import { SILENT } from '@core/http/http-context';
 import { FilesHttpService } from '@core/http/files.http.service';
 import { StompClientService } from '@core/ws/stomp-client.service';
 import { Conversation, ConversationMessage, ConversationResponse } from '@core/models/conversation.models';
@@ -33,6 +34,8 @@ export abstract class ConversationsService {
   abstract sendMessage(id: string, content: string, files?: File[], mentions?: MentionRef[]): Observable<void>;
   /** Marque comme lus les messages reçus de la conversation. */
   abstract markRead(id: string): void;
+  /** Accusé de lecture d'un message reçu (`PATCH /messages/{id}/read`) — temps réel. */
+  abstract markMessageRead(messageId: string): void;
   /** Signale au pair que je suis (ou non) en train d'écrire (STOMP, volatile). */
   abstract sendTyping(id: string, typing: boolean): void;
   /** Flux « le pair est en train d'écrire » (true/false) — temps réel. */
@@ -64,6 +67,7 @@ export class ConversationsMockService extends ConversationsService {
   live(_id: string): Observable<ConversationMessage> { return EMPTY; }
   sendMessage(_id: string, _content: string, _files?: File[], _mentions?: MentionRef[]): Observable<void> { return of(void 0); }
   markRead(_id: string): void { /* no-op en mock */ }
+  markMessageRead(_messageId: string): void { /* no-op en mock */ }
   sendTyping(_id: string, _typing: boolean): void { /* no-op en mock */ }
   typing(_id: string): Observable<boolean> { return EMPTY; }
   deleteForMe(id: string): void {
@@ -167,10 +171,7 @@ export class ConversationsHttpService extends BaseHttpService implements Convers
   }
 
   markRead(id: string): void {
-    // Efface le badge « non lu » localement à l'ouverture. L'accusé de lecture
-    // serveur se fait par message (`PATCH /messages/{id}/read`) ; il sera émis
-    // à la réception de chaque message quand le flux STOMP portera les ids —
-    // différé ici pour éviter un aller-retour par message à l'ouverture.
+    // Efface le badge « non lu » localement à l'ouverture de la conversation.
     const conv = this.cache().get(id);
     if (conv && conv.unread > 0) {
       this.cache.update(m => {
@@ -179,6 +180,17 @@ export class ConversationsHttpService extends BaseHttpService implements Convers
         return next;
       });
     }
+  }
+
+  /**
+   * Accusé de lecture d'UN message (`PATCH /messages/{id}/read`). C'est cet appel
+   * — jusqu'ici jamais émis — qui pose `readAt` côté serveur ; le serveur en informe
+   * alors l'expéditeur en temps réel (son message passe « lu »). Appelé à la
+   * réception d'un message du pair. Silencieux : un accusé raté n'alarme personne.
+   */
+  markMessageRead(messageId: string): void {
+    if (!messageId) return;
+    this.patch$<unknown>('messaging', `/messages/${messageId}/read`, {}, SILENT()).subscribe({ error: () => {} });
   }
 
   deleteForMe(id: string): void {

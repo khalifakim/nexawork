@@ -181,6 +181,8 @@ export class ConversationPriveeComponent {
   peerTyping = computed(() => this.typingRaw());
   /** Timer d'expiration : l'indicateur retombe si plus rien n'arrive. */
   private typingTimer?: ReturnType<typeof setTimeout>;
+  /** Messages déjà signalés « lus » au serveur — évite de re-PATCHer à chaque ré-ouverture. */
+  private readonly markedRead = new Set<string>();
   /** Anti-spam : on ne republie « je tape » qu'une fois par fenêtre. */
   private lastTypingSentAt = 0;
   private stopTypingTimer?: ReturnType<typeof setTimeout>;
@@ -261,8 +263,17 @@ export class ConversationPriveeComponent {
         this.searchQ.set('');
         this.loading.set(false);
         this.typingRaw.set(false); // jamais affiché par défaut à l'ouverture
-        // À l'ouverture, marquer la conversation comme lue (accusé de lecture).
+        // À l'ouverture, effacer le badge « non lu » et émettre l'accusé de lecture
+        // serveur pour chaque message du pair reçu pendant mon absence → l'expéditeur
+        // les voit passer « lu » en temps réel. Dédupliqué pour ne pas re-PATCHer à
+        // chaque ré-ouverture (le serveur est idempotent, mais autant lui épargner).
         this.conversationsSvc.markRead(this.slug());
+        for (const m of thread) {
+          if (!m.me && m.id && !this.markedRead.has(m.id)) {
+            this.markedRead.add(m.id);
+            this.conversationsSvc.markMessageRead(m.id);
+          }
+        }
       });
 
     // Indicateur de saisie du pair (STOMP). Retombe seul après 4 s sans signal.
@@ -279,13 +290,38 @@ export class ConversationPriveeComponent {
           this.typingTimer = setTimeout(() => this.typingRaw.set(false), 4000);
         }
       });
-    // Réception temps réel des messages du pair (mes propres messages sont déjà
-    // affichés de façon optimiste à l'envoi).
+    // Réception temps réel. Le serveur diffuse un message sur DEUX occasions :
+    // à l'envoi, et à sa LECTURE (accusé de lecture — il revient avec `read=true`).
     toObservable(this.slug)
       .pipe(switchMap(s => this.conversationsSvc.live(s)), takeUntilDestroyed())
       .subscribe(msg => {
+        this.msgs.update(list => {
+          // 1. Message déjà connu (même id) → mise à jour, typiquement l'accusé de
+          //    lecture : MON message passe « lu » sans que je recharge.
+          const known = list.findIndex(m => m.id && m.id === msg.id);
+          if (known >= 0) {
+            const next = [...list];
+            next[known] = { ...next[known], read: msg.read ?? next[known].read };
+            return next;
+          }
+          // 2. MON propre message qui revient du serveur → remplace l'optimiste
+          //    (affiché sans id à l'envoi) pour récupérer son id, cible du reçu de lecture.
+          if (msg.me) {
+            const optimistic = list.findIndex(m => m.me && !m.id);
+            if (optimistic >= 0) { const next = [...list]; next[optimistic] = msg; return next; }
+            return list; // déjà présent
+          }
+          // 3. Nouveau message du pair.
+          return [...list, msg];
+        });
+        // À la réception d'un message du pair, j'émets l'accusé de lecture serveur
+        // (`PATCH /messages/{id}/read`) → le serveur en informe l'expéditeur en
+        // temps réel (cas 1 chez lui). J'efface aussi le badge « non lu » local.
         if (!msg.me) {
-          this.msgs.update(list => [...list, msg]);
+          if (msg.id && !this.markedRead.has(msg.id)) {
+            this.markedRead.add(msg.id);
+            this.conversationsSvc.markMessageRead(msg.id);
+          }
           this.conversationsSvc.markRead(this.slug());
         }
       });

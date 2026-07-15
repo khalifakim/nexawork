@@ -126,6 +126,11 @@ public class ConversationServiceImpl implements ConversationService {
         if (message.getReadAt() == null) {
             message.setReadAt(Instant.now());
             messageRepository.save(message);
+            // Accusé de lecture TEMPS RÉEL : on rediffuse le message (désormais avec
+            // `readAt`) sur le topic de la conversation. L'EXPÉDITEUR, abonné, voit
+            // alors son message passer « lu » sans recharger. Sans cette diffusion,
+            // le `readAt` n'était visible qu'au prochain rechargement de la page.
+            broadcaster.broadcastConversationMessage(message.getConversationId(), assembler.toDto(message));
         }
         return assembler.toDto(message);
     }
