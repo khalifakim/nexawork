@@ -1,7 +1,8 @@
-import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, EventEmitter, Input, Output, computed, effect, inject, signal } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { Observable, Subscription } from 'rxjs';
 import { filter } from 'rxjs/operators';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 import { ProjectsService } from '@core/services/projects.service';
@@ -20,6 +21,45 @@ import { Project } from '@core/models/project.models';
 import { Conversation } from '@core/models/conversation.models';
 import { Channel } from '@core/models/channel.models';
 import { workspaceQuery, workspaceSignal } from '@core/util/workspace-signal';
+
+/**
+ * Suit en temps réel l'ensemble des fils (conversations OU canaux) où quelqu'un
+ * est en train d'écrire, pour l'afficher dans la sidebar même fil fermé. Un
+ * abonnement STOMP par fil (partagé avec la vue ouverte via le client STOMP),
+ * avec expiration de 4 s si plus aucun signal n'arrive. `sync()` (ré)aligne les
+ * abonnements sur la liste courante ; `destroy()` libère tout à la destruction.
+ */
+class LiveTypingSet {
+  private readonly typing = signal<Set<string>>(new Set());
+  private readonly subs = new Map<string, Subscription>();
+  private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
+  /** Ids des fils où quelqu'un écrit actuellement (lu par le template). */
+  readonly value = this.typing.asReadonly();
+
+  sync(ids: string[], factory: (id: string) => Observable<boolean>): void {
+    const wanted = new Set(ids);
+    for (const id of [...this.subs.keys()]) {
+      if (!wanted.has(id)) { this.subs.get(id)!.unsubscribe(); this.subs.delete(id); this.clear(id); }
+    }
+    for (const id of ids) {
+      if (this.subs.has(id)) continue;
+      this.subs.set(id, factory(id).subscribe(t => (t ? this.mark(id) : this.clear(id))));
+    }
+  }
+  private mark(id: string): void {
+    if (!this.typing().has(id)) { const n = new Set(this.typing()); n.add(id); this.typing.set(n); }
+    clearTimeout(this.timers.get(id));
+    this.timers.set(id, setTimeout(() => this.clear(id), 4000));
+  }
+  private clear(id: string): void {
+    clearTimeout(this.timers.get(id)); this.timers.delete(id);
+    if (this.typing().has(id)) { const n = new Set(this.typing()); n.delete(id); this.typing.set(n); }
+  }
+  destroy(): void {
+    this.subs.forEach(s => s.unsubscribe()); this.subs.clear();
+    this.timers.forEach(t => clearTimeout(t)); this.timers.clear();
+  }
+}
 
 /** Sidebar 2 body — contextual sub-navigation for the active rail section. */
 @Component({
@@ -137,6 +177,7 @@ import { workspaceQuery, workspaceSignal } from '@core/util/workspace-signal';
             <a class="row row--ch" [routerLink]="['/app/canaux', c.id]" routerLinkActive="row--on">
               <app-icon class="row__i" [name]="c.kind" [size]="16" />
               <span>{{ c.name }}</span>
+              @if (chanTyping.value().has(c.id)) { <span class="chtyping">En train d'écrire…</span> }
               @if (isPrivate(c.id)) { <span class="lock" title="Canal privé"><app-icon name="lock" [size]="13" /></span> }
             </a>
             @if (isAdmin()) {
@@ -182,6 +223,7 @@ import { workspaceQuery, workspaceSignal } from '@core/util/workspace-signal';
                   <a class="row row--sub row--ch" [routerLink]="['/app/canaux', c.id]" routerLinkActive="row--on">
                     <app-icon class="row__i" [name]="c.kind" [size]="16" />
                     <span>{{ c.name }}</span>
+                    @if (chanTyping.value().has(c.id)) { <span class="chtyping">En train d'écrire…</span> }
                     @if (isPrivate(c.id)) { <span class="lock" title="Canal privé"><app-icon name="lock" [size]="13" /></span> }
                   </a>
                   @if (canManageProjectChannels()) {
@@ -230,7 +272,7 @@ import { workspaceQuery, workspaceSignal } from '@core/util/workspace-signal';
               } @else {
                 <span class="conv__av" [style.background]="c.color">{{ c.initials }}</span>
               }
-              <span class="conv__t"><span class="conv__n">{{ c.name }}</span><span class="conv__m">{{ c.msg }}</span></span>
+              <span class="conv__t"><span class="conv__n">{{ c.name }}</span>@if (convTyping.value().has(c.id)) { <span class="conv__typing">En train d'écrire…</span> } @else { <span class="conv__m">{{ c.msg }}</span> }</span>
               <span class="conv__r">
                 <span class="conv__time">{{ c.time }}</span>
                 @if (c.unread) { <span class="conv__u">{{ c.unread }}</span> }
@@ -328,7 +370,9 @@ import { workspaceQuery, workspaceSignal } from '@core/util/workspace-signal';
     .row--sub { padding-left: 30px; }
     .row__i { color: var(--nx-text-400); display: flex; flex: none; }
     .row--on .row__i { color: var(--nx-indigo); }
-    .row > span:not(.dot):not(.row__badge):not(.row__pct):not(.chev2):not(.lock) { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .row > span:not(.dot):not(.row__badge):not(.row__pct):not(.chev2):not(.lock):not(.chtyping) { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    /* Indicateur « en train d'écrire » d'un canal (sidebar) — vert, compact (§#3). */
+    .chtyping { flex: none; color: var(--nx-success); font-size: 11px; font-weight: 600; font-style: italic; white-space: nowrap; }
     .row__badge { font-size: 11px; color: var(--nx-text-500); font-weight: 600; }
     .row__pct { font-size: 11px; color: var(--nx-text-500); font-weight: 600; }
     .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
@@ -413,6 +457,8 @@ import { workspaceQuery, workspaceSignal } from '@core/util/workspace-signal';
     .conv__t { flex: 1; min-width: 0; display: flex; flex-direction: column; }
     .conv__n { font-size: 13px; font-weight: 600; color: var(--nx-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .conv__m { font-size: 12px; color: var(--nx-text-400); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    /* « En train d'écrire » d'une conversation (sidebar) — vert (§#3). */
+    .conv__typing { font-size: 12px; color: var(--nx-success); font-weight: 600; font-style: italic; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .conv__r { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex: none; }
     .conv__time { font-size: 10.5px; color: var(--nx-text-300); }
     .conv__u { min-width: 17px; height: 17px; padding: 0 5px; border-radius: 9px; background: var(--nx-indigo); color: #fff; font-size: 10.5px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
@@ -488,15 +534,24 @@ export class Sidebar2Component {
 
   private conversationsSvc = inject(ConversationsService);
 
+  /** Déclenche le (re)chargement à chaque changement d'espace ; peuple le cache réactif du service. */
   private allConvos = workspaceSignal<Conversation[]>(this.session, () => this.conversationsSvc.list(), []);
-  /** Conversation list minus those hidden by the current user, filtered by the shared search query. */
+  /**
+   * Liste des conversations, rendue depuis le **signal réactif** du service (et non
+   * le résultat figé de `list()`) : ainsi, ouvrir une conversation vide son badge
+   * « non lu » **sans rechargement** (`markRead` mute le cache du service).
+   */
   filteredConvos = computed<Conversation[]>(() => {
+    this.allConvos(); // dépendance : garde le chargement vivant et recharge au changement d'espace
     const q = this.bus.conversationSearch().toLowerCase().trim();
     const deleted = this.conversationsSvc.deletedIds();
-    const visible = this.allConvos().filter(c => !deleted.has(c.id));
+    const visible = this.conversationsSvc.items().filter(c => !deleted.has(c.id));
     if (!q) return visible;
     return visible.filter(c => c.name.toLowerCase().includes(q));
   });
+  /** Fils où quelqu'un écrit — conversations et canaux (affiché en sidebar, §#3). */
+  protected convTyping = new LiveTypingSet();
+  protected chanTyping = new LiveTypingSet();
   convMenuId = signal<string | null>(null);
   /** True when the current URL is the "En ligne" sub-route of Conversations. */
   private _url = signal(this.router.url);
@@ -650,6 +705,15 @@ export class Sidebar2Component {
   toggleDocsProj(e: Event): void { e.preventDefault(); e.stopPropagation(); this.docsProjOpen.set(!this.docsProjOpen()); }
 
   constructor() {
+    // Abonne la sidebar au « en train d'écrire » de chaque conversation / canal
+    // visible, pour l'afficher fil fermé. Les abonnements se réalignent quand la
+    // liste change ; ils sont libérés à la destruction du composant.
+    effect(() => this.convTyping.sync(this.conversationsSvc.items().map(c => c.id),
+      id => this.conversationsSvc.typing(id)));
+    effect(() => this.chanTyping.sync(this.visibleChannels().map(c => c.id),
+      id => this.channelsSvc.typing(id)));
+    inject(DestroyRef).onDestroy(() => { this.convTyping.destroy(); this.chanTyping.destroy(); });
+
     this.router.events
       .pipe(filter((e): e is NavigationEnd => e instanceof NavigationEnd), takeUntilDestroyed())
       .subscribe(e => {

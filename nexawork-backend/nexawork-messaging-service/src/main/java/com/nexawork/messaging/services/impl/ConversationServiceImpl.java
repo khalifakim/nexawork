@@ -159,12 +159,16 @@ public class ConversationServiceImpl implements ConversationService {
     private ConversationResponse toDto(Conversation c) {
         List<UUID> participants = participantRepository.findByConversationId(c.getId())
                 .stream().map(ConversationParticipant::getUserId).toList();
-        boolean isRead = participantRepository.findByConversationId(c.getId()).stream()
-                .filter(p -> p.getUserId().equals(caller.userId()))
-                .findFirst().map(ConversationParticipant::getIsRead).orElse(true);
+        // Vrai compteur de non-lus (messages reçus sans `readAt`) : remplace le
+        // booléen `is_read` du participant, jamais remis à jour après création →
+        // le badge restait figé à « 1 ». `isRead` en découle (= aucun non-lu).
+        long unread = messageRepository.countUnreadInConversation(c.getId(), caller.userId());
         return ConversationResponse.builder()
                 .id(c.getId()).workspaceId(c.getWorkspaceId()).type(c.getType())
-                .participantUserIds(participants).isRead(isRead).createdAt(c.getCreatedAt()).build();
+                .participantUserIds(participants)
+                .unreadCount(unread)
+                .isRead(unread == 0)
+                .createdAt(c.getCreatedAt()).build();
     }
 
     private LocalDateTime parseCursor(String cursor) {

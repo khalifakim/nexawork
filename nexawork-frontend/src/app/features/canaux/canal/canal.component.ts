@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, ElementRef, Input, ViewChild, computed, effect, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop';
-import { map, switchMap } from 'rxjs/operators';
+import { map, switchMap, tap } from 'rxjs/operators';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 import { CommentComposerComponent } from '@shared/ui/comment-composer/comment-composer.component';
 import { MentionChipComponent, MentionChipEvent } from '@shared/ui/mention-chip/mention-chip.component';
@@ -142,11 +142,16 @@ type ChMsg = ChannelMessage;
         }
       </div>
 
+      @if (peerTyping()) {
+        <div class="typing">En train d'écrire…</div>
+      }
+
       @if (canWrite()) {
         <div class="composer">
           <app-comment-composer
             [placeholder]="'Écrire dans #' + displayName() + '…'"
-            (submitted)="onSend($event)" />
+            (submitted)="onSend($event)"
+            (typing)="onTyping()" />
         </div>
       } @else {
         <div class="ro"><app-icon name="lock" [size]="16" /><span>{{ archived() ? 'Projet archivé — canal en lecture seule.' : 'Canal en lecture seule — écriture réservée aux administrateurs.' }}</span></div>
@@ -285,12 +290,42 @@ export class CanalComponent {
   @ViewChild('msgsEl') private msgsEl?: ElementRef<HTMLDivElement>;
   @ViewChild('sinput') private searchInput?: ElementRef<HTMLInputElement>;
 
+  // ── Indicateur « en train d'écrire » (canal) — miroir des conversations ──────
+  private typingRaw = signal(false);
+  /** Vrai dès que quelqu'un (autre que moi) écrit dans le canal. Sans le nom (§#3). */
+  peerTyping = computed(() => this.typingRaw());
+  private typingTimer?: ReturnType<typeof setTimeout>;
+  private lastTypingSentAt = 0;
+  private stopTypingTimer?: ReturnType<typeof setTimeout>;
+
+  /** Frappe locale → publie « je tape » (throttlé) puis « j'ai arrêté » après 3 s. */
+  onTyping(): void {
+    const now = Date.now();
+    if (now - this.lastTypingSentAt > 2000) {
+      this.lastTypingSentAt = now;
+      this.channelsSvc.sendTyping(this.name(), true);
+    }
+    clearTimeout(this.stopTypingTimer);
+    this.stopTypingTimer = setTimeout(() => {
+      this.lastTypingSentAt = 0;
+      this.channelsSvc.sendTyping(this.name(), false);
+    }, 3000);
+  }
+
   constructor() {
     toObservable(this.name)
       .pipe(switchMap(id => this.channelsSvc.thread(id)), takeUntilDestroyed())
       .subscribe(thread => {
         this.msgs.set(thread);
         this.searchQ.set('');
+      });
+    // Indicateur de saisie d'un autre membre (STOMP). Retombe seul après 4 s.
+    toObservable(this.name)
+      .pipe(tap(() => this.typingRaw.set(false)), switchMap(id => this.channelsSvc.typing(id)), takeUntilDestroyed())
+      .subscribe(isTyping => {
+        this.typingRaw.set(isTyping);
+        clearTimeout(this.typingTimer);
+        if (isTyping) this.typingTimer = setTimeout(() => this.typingRaw.set(false), 4000);
       });
     // Réception temps réel : on n'ajoute que les messages des autres (mon propre
     // message est déjà affiché de façon optimiste à l'envoi, évitant un doublon).

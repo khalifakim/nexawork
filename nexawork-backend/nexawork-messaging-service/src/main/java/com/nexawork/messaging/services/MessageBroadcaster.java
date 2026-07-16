@@ -66,4 +66,13 @@ public class MessageBroadcaster {
     public void broadcastTyping(UUID conversationId, TypingEvent event) {
         messagingTemplate.convertAndSend("/topic/conversations/" + conversationId + "/typing", event);
     }
+
+    /**
+     * Diffuse l'indicateur de saisie d'un canal sur {@code /topic/channels/{id}/typing}
+     * (événement volatile, jamais persisté). Les abonnés — vue du canal ET sidebar —
+     * affichent « En train d'écrire… » pour ceux qui ne sont pas l'auteur.
+     */
+    public void broadcastChannelTyping(UUID channelId, TypingEvent event) {
+        messagingTemplate.convertAndSend("/topic/channels/" + channelId + "/typing", event);
+    }
 }

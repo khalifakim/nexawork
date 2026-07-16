@@ -25,6 +25,8 @@ export interface ConversationResponse {
   type: string;
   participantUserIds: string[];
   isRead: boolean;
+  /** Vrai nombre de messages non lus reçus (badge sidebar). */
+  unreadCount?: number;
   createdAt: string;
 }
 

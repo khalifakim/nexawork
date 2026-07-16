@@ -143,7 +143,7 @@ type Msg = ConversationMessage;
       </div>
 
       @if (peerTyping()) {
-        <div class="typing">{{ peer().name.split(' ')[0] }} est en train d'écrire…</div>
+        <div class="typing">En train d'écrire…</div>
       }
 
       <div class="composer">

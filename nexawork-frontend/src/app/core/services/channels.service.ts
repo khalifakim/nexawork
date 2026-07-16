@@ -1,6 +1,6 @@
 import { Injectable, Signal, computed, inject, signal } from '@angular/core';
 import { EMPTY, Observable, forkJoin, map, of, switchMap } from 'rxjs';
-import { delay } from 'rxjs/operators';
+import { delay, filter } from 'rxjs/operators';
 import { toObservable } from '@angular/core/rxjs-interop';
 import { BaseHttpService } from '@core/http/base-http.service';
 import { FilesHttpService, StoredFile } from '@core/http/files.http.service';
@@ -40,6 +40,11 @@ export abstract class ChannelsService {
    * backend porte une pièce jointe par message).
    */
   abstract sendMessage(id: string, content: string, files?: File[], mentions?: MentionRef[]): Observable<void>;
+
+  /** Signale la saisie dans un canal (STOMP, volatile) — alimente vue canal + sidebar. */
+  abstract sendTyping(id: string, typing: boolean): void;
+  /** Flux « quelqu'un écrit dans ce canal » (true/false), hors soi-même. */
+  abstract typing(id: string): Observable<boolean>;
 
   abstract rename(id: string, patch: UpdateChannelPayload): void;
   abstract remove(id: string): void;
@@ -106,6 +111,8 @@ export class ChannelsMockService extends ChannelsService {
   thread(id: string): Observable<ChannelMessage[]> { return of(CHANNEL_THREADS[id] ?? DEFAULT_CHANNEL_THREAD).pipe(delay(80)); }
   live(_id: string): Observable<ChannelMessage> { return EMPTY; }
   sendMessage(_id: string, _content: string, _files?: File[], _mentions?: MentionRef[]): Observable<void> { return of(void 0); }
+  sendTyping(_id: string, _typing: boolean): void { /* no-op en mock */ }
+  typing(_id: string): Observable<boolean> { return EMPTY; }
 
   rename(id: string, patch: UpdateChannelPayload): void {
     const wsId = this.session.activeWorkspaceId();
@@ -204,6 +211,25 @@ export class ChannelsHttpService extends BaseHttpService implements ChannelsServ
   private resolve(id: string): Channel | undefined { return this.cache().get(id); }
 
   private uuidOf(id: string): string | undefined { return this.resolve(id)?.uuid; }
+
+  /** Publie l'indicateur de saisie du canal (`/app/channels/{uuid}/typing`). Volatile. */
+  sendTyping(id: string, typing: boolean): void {
+    const uuid = this.uuidOf(id);
+    if (uuid) this.stomp.publish(`/app/channels/${uuid}/typing`, { typing });
+  }
+
+  /** Flux « quelqu'un écrit dans ce canal » : ignore mes propres événements. */
+  typing(id: string): Observable<boolean> {
+    return this.ensureUuid(id).pipe(switchMap(uuid => {
+      if (!uuid) return EMPTY;
+      const meId = this.session.user()?.id;
+      return this.stomp.watch(`/topic/channels/${uuid}/typing`).pipe(
+        map(frame => JSON.parse(frame.body) as { userId: string; typing: boolean }),
+        filter(e => e.userId !== meId),
+        map(e => e.typing),
+      );
+    }));
+  }
 
   thread(id: string): Observable<ChannelMessage[]> {
     return this.ensureUuid(id).pipe(switchMap(uuid => {

@@ -46,7 +46,7 @@
 .cm__file:hover .cm__dl { color: var(--nx-indigo); }
 .bubble--me .cm__file { background: #fff; border-color: #E9D890; }
 
-.typing { flex: none; padding: 0 28px 6px; font-size: 12px; color: var(--nx-text-300); font-style: italic; }
+.typing { flex: none; padding: 0 28px 6px; font-size: 12px; color: var(--nx-success); font-weight: 600; font-style: italic; }
 
 .composer { flex: none; padding: 0 28px 22px; }
 .box { border: 1px solid var(--nx-border); border-radius: 14px; background: #fff; box-shadow: var(--nx-shadow-rest); }

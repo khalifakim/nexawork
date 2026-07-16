@@ -1,6 +1,6 @@
-import { Injectable, Signal, inject, signal } from '@angular/core';
+import { Injectable, Signal, computed, inject, signal } from '@angular/core';
 import { EMPTY, Observable, forkJoin, map, of, switchMap } from 'rxjs';
-import { delay, filter } from 'rxjs/operators';
+import { delay, filter, tap } from 'rxjs/operators';
 import { BaseHttpService } from '@core/http/base-http.service';
 import { SILENT } from '@core/http/http-context';
 import { FilesHttpService } from '@core/http/files.http.service';
@@ -23,6 +23,12 @@ import { Member } from '@core/models/member.models';
 export abstract class ConversationsService {
   /** Conversations of the active workspace (sidebar + list). */
   abstract list(): Observable<Conversation[]>;
+  /**
+   * Vue réactive des conversations courantes. À la différence de `list()` (un
+   * fetch), ce signal reflète les mutations d'état de lecture : ouvrir une
+   * conversation vide son badge **sans rechargement** (la sidebar la lit).
+   */
+  abstract readonly items: Signal<Conversation[]>;
   /** Message thread of one conversation (by peer slug). */
   abstract thread(id: string): Observable<ConversationMessage[]>;
   /** Live stream of new messages of one conversation (STOMP). */
@@ -56,17 +62,21 @@ export class ConversationsMockService extends ConversationsService {
   private readonly _deletedByOther: ReadonlySet<string> = new Set(['equipe-design']);
   private readonly _deletedByMe = signal<ReadonlySet<string>>(new Set());
   readonly deletedIds = this._deletedByMe.asReadonly();
+  private readonly _items = signal<Conversation[]>([]);
+  readonly items = this._items.asReadonly();
 
   list(): Observable<Conversation[]> {
     const wsId = this.session.activeWorkspaceId();
-    return of(CONVERSATIONS_BY_WORKSPACE[wsId] ?? []).pipe(delay(80));
+    return of(CONVERSATIONS_BY_WORKSPACE[wsId] ?? []).pipe(delay(80), tap(l => this._items.set(l)));
   }
   thread(id: string): Observable<ConversationMessage[]> {
     return of(CONVERSATION_THREADS[id] ?? DEFAULT_CONVERSATION_THREAD).pipe(delay(80));
   }
   live(_id: string): Observable<ConversationMessage> { return EMPTY; }
   sendMessage(_id: string, _content: string, _files?: File[], _mentions?: MentionRef[]): Observable<void> { return of(void 0); }
-  markRead(_id: string): void { /* no-op en mock */ }
+  markRead(id: string): void {
+    this._items.update(list => list.map(c => c.id === id ? { ...c, unread: 0 } : c));
+  }
   markMessageRead(_messageId: string): void { /* no-op en mock */ }
   sendTyping(_id: string, _typing: boolean): void { /* no-op en mock */ }
   typing(_id: string): Observable<boolean> { return EMPTY; }
@@ -86,6 +96,8 @@ export class ConversationsHttpService extends BaseHttpService implements Convers
 
   /** Conversations courantes indexées par slug du pair. */
   private readonly cache = signal<Map<string, Conversation>>(new Map());
+  /** Vue réactive : `markRead` mute le cache → la sidebar vide le badge sans recharger. */
+  readonly items = computed(() => [...this.cache().values()]);
   private readonly _deletedByMe = signal<ReadonlySet<string>>(new Set());
   readonly deletedIds = this._deletedByMe.asReadonly();
 
@@ -236,7 +248,8 @@ function toConversation(c: ConversationResponse, meId: string | undefined, byId:
     initials: initials(name),
     photoUrl: peer?.photoUrl,
     msg: '',
-    unread: c.isRead ? 0 : 1,
+    // Vrai compteur (repli sur l'ancien booléen si l'image backend ne l'envoie pas encore).
+    unread: c.unreadCount ?? (c.isRead ? 0 : 1),
     time: '',
     uuid: c.id,
     peerUserId: peerId,
