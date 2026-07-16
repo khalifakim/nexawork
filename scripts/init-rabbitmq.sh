@@ -71,6 +71,8 @@ declare_queue_binding nexawork.notification.external-guest      external.guest.i
 declare_queue_binding nexawork.notification.mention             message.mention
 declare_queue_binding nexawork.notification.message-created     message.created
 declare_queue_binding nexawork.notification.document-shared     document.shared
+declare_queue_binding nexawork.notification.member-added        project.member-added
+declare_queue_binding nexawork.notification.comment-mention     comment.mention
 declare_queue_binding nexawork.notification.meeting-invite      meeting.participant.invited
 
 # ── Queue GED Service (1) — V5.1 §7.4 ─────────────────────────────────────────

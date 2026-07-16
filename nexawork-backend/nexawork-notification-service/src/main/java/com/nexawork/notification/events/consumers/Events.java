@@ -66,4 +66,17 @@ public final class Events {
             UUID recipientUserId, String documentName, String targetType, UUID targetId,
             UUID organisationId, UUID sharedByUserId) {
     }
+
+    /** {@code project.member-added} — un utilisateur a été ajouté à un projet (§4.7). */
+    public record AddedToProject(
+            UUID recipientUserId, UUID projectId, String projectName,
+            UUID organisationId, UUID addedByUserId) {
+    }
+
+    /** {@code comment.mention} — un utilisateur a été mentionné dans un commentaire (§4.7). */
+    public record CommentMention(
+            UUID commentId, UUID taskId, String taskKey, String taskTitle, UUID projectId,
+            String projectName, UUID recipientUserId, UUID authorUserId, UUID organisationId,
+            String excerpt) {
+    }
 }

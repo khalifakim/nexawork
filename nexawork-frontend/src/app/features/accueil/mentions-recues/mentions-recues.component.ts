@@ -83,7 +83,7 @@ const TAB_ORDER: FilterKey[] = ['Toutes', 'Canaux', 'Discussions', 'Commentaires
     </div>
 
     @if (openedTask()) {
-      <app-fiche-tache [task]="openedTask()!" (closed)="openedTask.set(null)" />
+      <app-fiche-tache [task]="openedTask()!" [anchorCommentId]="anchorComment()" (closed)="openedTask.set(null)" />
     }
   `,
   styleUrl: './mentions-recues.component.scss',
@@ -96,6 +96,8 @@ export class MentionsRecuesComponent {
 
   filter      = signal<FilterKey>('Toutes');
   openedTask  = signal<TaskCard | null>(null);
+  /** Commentaire à ancrer dans la fiche ouverte (mention de commentaire). */
+  anchorComment = signal<string | null>(null);
   /** Ids the user marked read this session (on top of the mock's own `read` flag). */
   private readIds = signal<string[]>([]);
 
@@ -143,14 +145,15 @@ export class MentionsRecuesComponent {
   /** Route to the element a mention points at, per its serialisable target. */
   private goTo(m: Mention): void {
     switch (m.target.kind) {
-      case 'task':         this.openTaskById(m.target.id); break;
+      case 'task':         this.openTaskById(m.target.id, m.target.commentId); break;
       case 'conversation': this.router.navigate(['/app/conversations', m.target.slug]); break;
       case 'channel':      this.router.navigate(['/app/canaux', m.target.slug]); break;
     }
   }
 
   /** `ref` = UUID de la tâche, ou sa clé lisible quand la mention n'a pas d'id résolu. */
-  private openTaskById(ref: string): void {
+  private openTaskById(ref: string, commentId?: string): void {
+    this.anchorComment.set(commentId ?? null);
     this.tasksSvc.cardByRef(ref).subscribe(card => { if (card) this.openedTask.set(card); });
   }
 }

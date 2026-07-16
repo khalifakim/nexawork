@@ -1,9 +1,10 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable, forkJoin, map, of } from 'rxjs';
-import { delay } from 'rxjs/operators';
+import { catchError, delay } from 'rxjs/operators';
 import { BaseHttpService } from '@core/http/base-http.service';
 import {
   Dashboard, DashboardAlert, DashboardProj, MentionKind, MyTaskRow, MyTaskSection, ReceivedMention,
+  ReceivedCommentMentionResponse,
 } from '@core/models/accueil.models';
 import { TaskResponse } from '@core/models/task.models';
 import { MY_TASKS_BY_WORKSPACE, MENTIONS_BY_WORKSPACE, DASHBOARD_BY_WORKSPACE } from '@core/mock/accueil';
@@ -106,10 +107,17 @@ export class AccueilHttpService extends BaseHttpService implements AccueilServic
   mentions(): Observable<ReceivedMention[]> {
     return forkJoin({
       list: this.get$<MentionResponse[]>('messaging', '/mentions'),
+      // Mentions dans les commentaires (Project) → onglet « Commentaires ». Tolérant
+      // aux pannes : un échec ne doit pas vider les mentions de messagerie.
+      comments: this.get$<ReceivedCommentMentionResponse[]>('project', '/comment-mentions')
+        .pipe(catchError(() => of<ReceivedCommentMentionResponse[]>([]))),
       dir: this.members.directory(),
-    }).pipe(map(({ list, dir }) => {
+    }).pipe(map(({ list, comments, dir }) => {
       const byId = new Map(dir.map(m => [m.userId, m]));
-      return list.map(m => toMention(m, byId));
+      return [
+        ...list.map(m => toMention(m, byId)),
+        ...comments.map(c => toCommentMention(c, byId)),
+      ];
     }));
   }
 
@@ -169,6 +177,29 @@ function mentionKind(m: MentionResponse): MentionKind {
   if (m.channelId) return 'Canaux';
   if (m.conversationId) return 'Discussions';
   return 'Commentaires';
+}
+
+/** Mention de commentaire (Project) → ligne « Mentions reçues » (onglet Commentaires). */
+function toCommentMention(
+  c: ReceivedCommentMentionResponse,
+  byId: Map<string | undefined, { name: string; color: string; photoUrl?: string }>,
+): ReceivedMention {
+  const author = byId.get(c.authorUserId);
+  const name = author?.name ?? 'Membre';
+  return {
+    id: c.commentId,
+    a: name,
+    initials: initials(name),
+    photoUrl: author?.photoUrl,
+    c: author?.color ?? avatarColorFor(c.authorUserId),
+    verb: 'vous a mentionné',
+    snip: c.excerpt ?? '',
+    ctx: c.taskKey ? c.taskKey + ' · ' + c.projectName : 'Commentaire',
+    date: formatAgo(c.createdAt),
+    kind: 'Commentaires',
+    // Ouvre la fiche de tâche ancrée sur le commentaire.
+    target: { kind: 'task', id: c.taskId, commentId: c.commentId },
+  };
 }
 
 function toMention(

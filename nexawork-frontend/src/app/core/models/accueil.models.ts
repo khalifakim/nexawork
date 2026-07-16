@@ -9,9 +9,22 @@ export interface MyTaskSection { cat: string; color: string; tasks: MyTaskRow[];
  */
 export type MentionKind = 'Canaux' | 'Discussions' | 'Commentaires';
 export type MentionTarget =
-  | { kind: 'task'; id: string }
+  | { kind: 'task'; id: string; commentId?: string }
   | { kind: 'conversation'; slug: string }
   | { kind: 'channel'; slug: string };
+
+/** Mention reçue dans un commentaire (Project) — onglet « Commentaires ». */
+export interface ReceivedCommentMentionResponse {
+  commentId: string;
+  taskId: string;
+  taskKey: string;
+  taskTitle: string;
+  projectId: string;
+  projectName: string;
+  authorUserId: string;
+  excerpt: string;
+  createdAt: string;
+}
 
 export interface ReceivedMention {
   id: string;

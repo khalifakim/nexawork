@@ -126,7 +126,7 @@ interface ConfirmCfg { title: string; danger: boolean; btn: string; icon: string
       </div>
     </div>
 
-    @if (selected(); as t) { <app-fiche-tache [task]="t" [loading]="taskLoading()" (closed)="selected.set(null)" (openTask)="switchTask($event)" (deleted)="onTaskDeleted($event)" (updated)="onTaskUpdated($event)" /> }
+    @if (selected(); as t) { <app-fiche-tache [task]="t" [loading]="taskLoading()" [anchorCommentId]="anchorComment()" (closed)="selected.set(null)" (openTask)="switchTask($event)" (deleted)="onTaskDeleted($event)" (updated)="onTaskUpdated($event)" /> }
     @if (createCol() !== null) {
       <app-creer-tache
         [projectId]="id()"
@@ -184,10 +184,13 @@ export class ProjetShellComponent {
       if (pid) this.store.projectId.set(pid);
     });
 
-    // Notification cliquée (?task=<id>) → ouvre directement la fiche de la tâche.
+    // Notification cliquée (?task=<id>&comment=<id>) → ouvre la fiche, ancrée sur
+    // le commentaire mentionné le cas échéant.
     this.route.queryParamMap
-      .pipe(map(q => q.get('task')), takeUntilDestroyed())
-      .subscribe(taskId => {
+      .pipe(takeUntilDestroyed())
+      .subscribe(q => {
+        const taskId = q.get('task');
+        this.anchorComment.set(q.get('comment'));
         if (!taskId || this.selected()?.id === taskId) return;
         this.taskLoading.set(true);
         this.tasksSvc.cardById(taskId).subscribe(card => {
@@ -213,6 +216,8 @@ export class ProjetShellComponent {
   confirmKind  = signal<ConfirmKind | null>(null);
   roToast      = signal<string | null>(null);
   taskLoading  = signal(false);
+  /** Commentaire à ancrer dans la fiche (notification `?comment=<id>`). */
+  anchorComment = signal<string | null>(null);
   private _t: any;
   private _taskT: any;
 

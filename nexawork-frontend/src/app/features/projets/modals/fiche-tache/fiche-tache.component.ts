@@ -10,6 +10,7 @@ import { ShellBus } from '@layouts/app-shell/shell.bus';
 import { TaskCard, TaskComment, AttachedRef, KanbanColumn, TaskPriority, UpdateTaskPayload } from '@core/models/task.models';
 import { Member } from '@core/models/member.models';
 import { chipTabFor as chipTabForUtil, parseRichText, RichPart } from '@core/util/mention.util';
+import { MentionRef } from '@core/models/mention.models';
 import { avatarColorFor } from '@core/util/ui.util';
 import { TasksService } from '@core/services/tasks.service';
 import { MembersService } from '@core/services/members.service';
@@ -213,7 +214,7 @@ interface CommentRow {
             <span class="spacer"></span><button class="x" (click)="closed.emit()"><app-icon name="x" [size]="17" /></button></div>
           <div class="thread" #threadEl>
             @for (c of comments(); track c.id) {
-              <div class="cm" [class.cm--mine]="c.mine">
+              <div class="cm" [class.cm--mine]="c.mine" [class.cm--focus]="c.id === focusedComment()" [attr.data-cid]="c.id">
                 <span class="av" [style.background]="c.authorPhotoUrl ? 'transparent' : c.color">
                   @if (c.authorPhotoUrl) {
                     <img class="av__i" [src]="c.authorPhotoUrl" alt="" />
@@ -301,6 +302,10 @@ export class FicheTacheComponent implements OnChanges {
   protected comments = signal<CommentRow[]>([]);
   /** Envoi de commentaire en cours (spinner du composeur). */
   protected commentSending = signal(false);
+  /** Commentaire à cibler (notification de mention de commentaire) — défilement + surbrillance. */
+  private _anchorComment = signal<string | null>(null);
+  @Input() set anchorCommentId(v: string | null | undefined) { this._anchorComment.set(v ?? null); }
+  protected focusedComment = signal<string | null>(null);
   protected attachments = signal<AttachedRef[]>([]);
   adding = signal(false);
   draft = signal('');
@@ -338,6 +343,16 @@ export class FicheTacheComponent implements OnChanges {
   assigneeInitials = computed(() => this.ini(this.assigneeLabel()));
 
   constructor() {
+    // Ancrage sur un commentaire ciblé (mention) : défile vers lui et l'encadre
+    // une fois le fil peint.
+    effect(() => {
+      const cid = this._anchorComment();
+      if (!cid || !this.comments().length) return;
+      this.focusedComment.set(cid);
+      requestAnimationFrame(() =>
+        this.threadEl?.nativeElement.querySelector(`[data-cid="${cid}"]`)
+          ?.scrollIntoView({ block: 'center', behavior: 'smooth' }));
+    });
     effect(() => {
       this.comments();
       requestAnimationFrame(() => this.scrollThreadToBottom());
@@ -525,6 +540,16 @@ export class FicheTacheComponent implements OnChanges {
   // ── Commentaires ────────────────────────────────────────────────────────────
   onNewComment(payload: { parts: RichPart[]; files: { file?: File }[]; text: string }): void {
     const files = payload.files.map(f => f.file).filter((f): f is File => !!f);
+    // Mentions de personnes résolues en userId via l'annuaire (déjà chargé) → le
+    // serveur notifie les mentionnés (hors moi) et alimente « Mentions reçues ».
+    const mentions: MentionRef[] = payload.parts
+      .filter(p => p.type === 'person')
+      .map((p): MentionRef | null => {
+        const m = this.directory().find(x => x.name === p.val)
+          ?? this.directory().find(x => x.name.toLowerCase().startsWith(p.val.toLowerCase()));
+        return m?.userId ? { type: 'USER', targetId: m.userId, targetText: p.val } : null;
+      })
+      .filter((m): m is MentionRef => m !== null);
     // Affichage OPTIMISTE : le commentaire apparaît immédiatement (le serveur peut
     // être lent sous charge) ; il est réconcilié avec l'id réel à la réponse, ou
     // retiré en cas d'échec. Supprime la latence perçue « le commentaire arrive tard ».
@@ -534,7 +559,7 @@ export class FicheTacheComponent implements OnChanges {
       content: payload.text, createdAt: new Date().toISOString(), attachments: [],
     })]);
     this.commentSending.set(true);
-    this.tasksSvc.addComment(this.task.id, this.task.projectId, payload.text, files)
+    this.tasksSvc.addComment(this.task.id, this.task.projectId, payload.text, files, mentions)
       .subscribe({
         next: c => {
           this.comments.update(list => list.map(r => r.id === tempId ? this.toRow(c) : r));

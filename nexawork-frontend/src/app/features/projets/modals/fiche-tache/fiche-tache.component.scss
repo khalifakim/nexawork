@@ -133,3 +133,7 @@
 /* Photo de profil dans l'avatar d'un commentaire (forme conservée). */
 .av { overflow: hidden; }
 .av__i { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* Commentaire ciblé par une notification de mention — encadré + pulsation brève. */
+.cm--focus { box-shadow: 0 0 0 2px var(--nx-indigo); border-radius: 10px; animation: nxCmPulse 2.6s ease-out; }
+@keyframes nxCmPulse { 0%, 65% { background: rgba(91,95,233,.07); } 100% { background: transparent; } }

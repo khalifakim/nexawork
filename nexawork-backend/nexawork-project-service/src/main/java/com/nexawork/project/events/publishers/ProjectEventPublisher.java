@@ -24,6 +24,8 @@ public class ProjectEventPublisher {
     public static final String ROUTING_TASK_ASSIGNED = "task.assigned";
     public static final String ROUTING_TASK_COMMENTED = "task.commented";
     public static final String ROUTING_LIVRABLE_VALIDATED = "livrable.validated";
+    public static final String ROUTING_MEMBER_ADDED = "project.member-added";
+    public static final String ROUTING_COMMENT_MENTION = "comment.mention";
 
     RabbitTemplate rabbitTemplate;
 
@@ -45,6 +47,14 @@ public class ProjectEventPublisher {
 
     public void publishLivrableValidated(LivrableValidatedEvent event) {
         publish(ROUTING_LIVRABLE_VALIDATED, event, "livrable " + event.taskId());
+    }
+
+    public void publishAddedToProject(AddedToProjectEvent event) {
+        publish(ROUTING_MEMBER_ADDED, event, "membre " + event.recipientUserId() + " → projet " + event.projectId());
+    }
+
+    public void publishCommentMention(CommentMentionEvent event) {
+        publish(ROUTING_COMMENT_MENTION, event, "mention " + event.recipientUserId() + " sur commentaire " + event.commentId());
     }
 
     private void publish(String routingKey, Object event, String context) {

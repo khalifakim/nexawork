@@ -5,6 +5,7 @@ import { delay } from 'rxjs/operators';
 import { BaseHttpService } from '@core/http/base-http.service';
 import { SKIP_ERROR_TOAST } from '@core/http/http-context';
 import { FilesHttpService, StoredFile } from '@core/http/files.http.service';
+import { MentionRef } from '@core/models/mention.models';
 import {
   AttachmentResponse, CommentResponse, CreateStatusPayload, CreateTaskPayload, KanbanColumn,
   ProjectOverviewResponse, StatusResponse, SubTask, SubTaskResponse, TaskAttachment, TaskCard,
@@ -56,7 +57,7 @@ export abstract class TasksService {
   // ── Commentaires (avec pièces jointes) ──────────────────────────────────────
   abstract comments(taskId: string): Observable<TaskComment[]>;
   /** Poste un commentaire ; les fichiers sont d'abord poussés au File Service. */
-  abstract addComment(taskId: string, projectId: string, content: string, files: File[]): Observable<TaskComment>;
+  abstract addComment(taskId: string, projectId: string, content: string, files: File[], mentions?: MentionRef[]): Observable<TaskComment>;
   abstract removeComment(taskId: string, commentId: string): Observable<void>;
 
   // ── Pièces jointes de la tâche ──────────────────────────────────────────────
@@ -212,7 +213,7 @@ export class TasksMockService extends TasksService {
   }
 
   comments(taskId: string): Observable<TaskComment[]> { return of((this.cmts[taskId] ?? []).map(c => ({ ...c }))).pipe(delay(40)); }
-  addComment(taskId: string, _projectId: string, content: string, files: File[]): Observable<TaskComment> {
+  addComment(taskId: string, _projectId: string, content: string, files: File[], _mentions?: MentionRef[]): Observable<TaskComment> {
     const c: TaskComment = {
       id: 'c' + (++this.seq), taskId, authorUserId: 'me', content, createdAt: new Date().toISOString(),
       attachments: files.map((f, i) => ({ id: 'ca' + this.seq + i, name: f.name, url: '#', size: f.size, contentType: f.type })),
@@ -358,10 +359,12 @@ export class TasksHttpService extends BaseHttpService implements TasksService {
   comments(taskId: string): Observable<TaskComment[]> {
     return this.get$<CommentResponse[]>('project', `/tasks/${taskId}/comments`).pipe(map(rs => rs.map(toComment)));
   }
-  addComment(taskId: string, projectId: string, content: string, files: File[]): Observable<TaskComment> {
+  addComment(taskId: string, projectId: string, content: string, files: File[], mentions: MentionRef[] = []): Observable<TaskComment> {
     const post = (stored: StoredFile[]) => this.post$<CommentResponse>('project', `/tasks/${taskId}/comments`, {
       content,
       attachments: stored.map(s => ({ fileName: s.fileName, fileUrl: s.downloadUrl, fileSize: s.size, contentType: s.contentType })),
+      // Seules les mentions de personnes portent un destinataire à notifier.
+      mentions: mentions.filter(m => m.type === 'USER').map(m => ({ targetId: m.targetId, targetText: m.targetText })),
     }).pipe(map(toComment));
 
     if (files.length === 0) return post([]);

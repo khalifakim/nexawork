@@ -211,6 +211,45 @@ public class NotificationConsumer {
                 .build());
     }
 
+    /** Ajout à un projet (§4.7) : le membre ajouté est notifié ; le lien ouvre le board. */
+    @RabbitListener(queues = "nexawork.notification.member-added")
+    public void onAddedToProject(Events.AddedToProject e) {
+        if (e.recipientUserId() == null) {
+            return;
+        }
+        creator.create(Command.builder()
+                .recipientUserId(e.recipientUserId())
+                .type(NotificationType.ADDED_TO_PROJECT)
+                .title("Ajouté à un projet")
+                .body("Vous avez été ajouté au projet « " + e.projectName() + " ».")
+                .targetUrl("/app/projets/" + e.projectId() + "/kanban")
+                .workspaceId(e.organisationId())
+                .build());
+    }
+
+    /**
+     * Mention dans un commentaire (§4.7, §5.3) : la personne visée est notifiée ; le
+     * lien ouvre la fiche de tâche ancrée sur le commentaire ({@code ?task=…&comment=…}).
+     */
+    @RabbitListener(queues = "nexawork.notification.comment-mention")
+    public void onCommentMention(Events.CommentMention e) {
+        if (e.recipientUserId() == null) {
+            return;
+        }
+        creator.create(Command.builder()
+                .recipientUserId(e.recipientUserId())
+                .type(NotificationType.MENTION)
+                .title("Vous avez été mentionné")
+                .body("Vous avez été mentionné dans un commentaire de « " + e.taskTitle() + " » : « " + e.excerpt() + " »")
+                .targetUrl("/app/projets/" + e.projectId() + "/kanban?task=" + e.taskId() + "&comment=" + e.commentId())
+                .workspaceId(e.organisationId())
+                .payload(Map.of(
+                        "taskId", e.taskId().toString(),
+                        "projectId", e.projectId().toString(),
+                        "commentId", e.commentId().toString()))
+                .build());
+    }
+
     /** Nom de l'auteur, ou un libellé neutre si la Gateway ne l'a pas propagé. */
     private String author(String displayName) {
         return displayName != null && !displayName.isBlank() ? displayName : "Quelqu'un";

@@ -2,6 +2,7 @@ package com.nexawork.project.services;
 
 import com.nexawork.project.dtos.requests.CreateCommentRequest;
 import com.nexawork.project.dtos.responses.CommentResponse;
+import com.nexawork.project.dtos.responses.ReceivedCommentMentionResponse;
 
 import java.util.List;
 import java.util.UUID;
@@ -18,4 +19,7 @@ public interface TaskCommentService {
     CommentResponse addComment(UUID taskId, CreateCommentRequest request);
 
     void deleteComment(UUID taskId, UUID commentId);
+
+    /** Mentions reçues dans des commentaires (onglet « Commentaires » de « Mentions reçues »). */
+    List<ReceivedCommentMentionResponse> listReceivedMentions();
 }
