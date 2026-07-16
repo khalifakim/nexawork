@@ -96,7 +96,7 @@ export class AccueilHttpService extends BaseHttpService implements AccueilServic
         // Prioritaires : échéance aujourd'hui OU déjà dépassée.
         { cat: 'Prioritaires', color: '#F5564E', tasks: rows.filter(r => r.slot === 'priority') },
         // Toutes les autres tâches (à venir ou sans échéance), tous projets confondus.
-        { cat: 'Mes autres tâches', color: '#5B8DEF', tasks: rows.filter(r => r.slot === 'other') },
+        { cat: 'Toutes mes tâches', color: '#5B8DEF', tasks: rows.filter(r => r.slot === 'other') },
       ];
       return sections.filter(s => s.tasks.length > 0);
     }));

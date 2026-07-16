@@ -60,4 +60,10 @@ public final class Events {
             String authorDisplayName, UUID organisationId, String excerpt,
             UUID channelId, String channelName, UUID conversationId) {
     }
+
+    /** {@code document.shared} — un document GED a été partagé avec un utilisateur (§4.7). */
+    public record DocumentShared(
+            UUID recipientUserId, String documentName, String targetType, UUID targetId,
+            UUID organisationId, UUID sharedByUserId) {
+    }
 }

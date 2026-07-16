@@ -525,14 +525,23 @@ export class FicheTacheComponent implements OnChanges {
   // ── Commentaires ────────────────────────────────────────────────────────────
   onNewComment(payload: { parts: RichPart[]; files: { file?: File }[]; text: string }): void {
     const files = payload.files.map(f => f.file).filter((f): f is File => !!f);
+    // Affichage OPTIMISTE : le commentaire apparaît immédiatement (le serveur peut
+    // être lent sous charge) ; il est réconcilié avec l'id réel à la réponse, ou
+    // retiré en cas d'échec. Supprime la latence perçue « le commentaire arrive tard ».
+    const tempId = 'tmp-' + Date.now();
+    this.comments.update(list => [...list, this.toRow({
+      id: tempId, taskId: this.task.id, authorUserId: this.session.user()?.id ?? 'me',
+      content: payload.text, createdAt: new Date().toISOString(), attachments: [],
+    })]);
     this.commentSending.set(true);
     this.tasksSvc.addComment(this.task.id, this.task.projectId, payload.text, files)
       .subscribe({
         next: c => {
-          this.comments.update(list => [...list, this.toRow(c)]);
+          this.comments.update(list => list.map(r => r.id === tempId ? this.toRow(c) : r));
           this.commentSending.set(false);
         },
         error: () => {
+          this.comments.update(list => list.filter(r => r.id !== tempId));
           this.commentSending.set(false);
           this.toast.show({ message: "L'envoi du commentaire a échoué.", icon: 'warning' });
         },

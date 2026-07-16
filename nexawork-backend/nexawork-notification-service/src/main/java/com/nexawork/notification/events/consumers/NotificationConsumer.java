@@ -191,6 +191,26 @@ public class NotificationConsumer {
         }
     }
 
+    /**
+     * Document partagé (§4.7) : le bénéficiaire est notifié. Le lien ouvre l'espace
+     * « Partagé avec moi » du GED. Le nom du partageur n'est pas propagé au GED — on
+     * ne l'invente pas (corps neutre), comme pour la mention.
+     */
+    @RabbitListener(queues = "nexawork.notification.document-shared")
+    public void onDocumentShared(Events.DocumentShared e) {
+        if (e.recipientUserId() == null) {
+            return;
+        }
+        creator.create(Command.builder()
+                .recipientUserId(e.recipientUserId())
+                .type(NotificationType.DOCUMENT_SHARED)
+                .title("Document partagé")
+                .body("Un document « " + e.documentName() + " » a été partagé avec vous.")
+                .targetUrl("/app/documents/partage")
+                .workspaceId(e.organisationId())
+                .build());
+    }
+
     /** Nom de l'auteur, ou un libellé neutre si la Gateway ne l'a pas propagé. */
     private String author(String displayName) {
         return displayName != null && !displayName.isBlank() ? displayName : "Quelqu'un";
