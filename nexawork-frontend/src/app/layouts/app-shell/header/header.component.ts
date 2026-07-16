@@ -330,6 +330,20 @@ export class HeaderComponent {
   constructor() {
     // Réception temps réel : la notification s'ajoute en tête de la liste.
     this.notifsSvc.live().pipe(takeUntilDestroyed()).subscribe(n => {
+      // Invitation à une réunion (§15) : le modal d'appel entrant s'ouvre IMMÉDIATEMENT
+      // via STOMP (le sondage /calls/active de 15 s n'est qu'un filet). Vaut à la
+      // création comme pour une invitation à une réunion déjà en cours. `offer()`
+      // n'écrase pas un modal déjà affiché pour le même appel.
+      if (n.type === 'MEETING_INVITED') {
+        const callId = n.payload?.['callId'] as string | undefined;
+        if (callId) {
+          this.incomingCall.offer({
+            callId,
+            topic: (n.payload?.['topic'] as string) || 'Réunion',
+            caller: (n.payload?.['actorName'] as string) || GENERIC_CALLER,
+          });
+        }
+      }
       // Anti-bruit (§4) : une notif « nouveau message » d'un fil que je regarde à
       // l'instant est marquée lue sans jamais s'afficher (je vois déjà le message).
       const threadId = n.payload?.['threadId'] as string | undefined;

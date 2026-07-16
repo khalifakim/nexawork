@@ -227,16 +227,45 @@ public class CallServiceImpl implements CallService {
         notifyInvited(call, userIds);
     }
 
+    /**
+     * Appels « en cours » de l'appelant (bannière). Un appel ne compte que si
+     * **au moins un participant est réellement présent** (joined, pas encore left) :
+     * sans cela, un appel créé puis abandonné (hôte qui ne rejoint jamais, ou
+     * fermeture sans {@code leave} propre) restait ACTIVE → bannière perpétuelle,
+     * visible même après reconnexion (§13). Au passage, on **clôt** les appels
+     * ACTIVE que plus personne n'occupe (nettoyage paresseux) — avec une période de
+     * grâce pour ne pas fermer un appel à peine créé dont l'hôte ouvre la salle.
+     */
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public List<CallResponse> activeCalls() {
         UUID me = caller.userId();
-        return callRepository.findByOrganisationIdOrderByCreatedAtDesc(caller.organisationId()).stream()
-                .filter(c -> c.getStatus() == CallStatus.ACTIVE)
+        LocalDateTime now = LocalDateTime.now();
+        List<Call> calls = callRepository.findByOrganisationIdOrderByCreatedAtDesc(caller.organisationId());
+        for (Call c : calls) {
+            if (c.getStatus() != CallStatus.ACTIVE || anyoneCurrentlyIn(c.getId())) {
+                continue;
+            }
+            // Personne dedans : clôture si passé la grâce de 2 min (le temps que l'hôte
+            // rejoigne), OU appel anormalement vieux (filet de sécurité, ex. crash).
+            boolean pastGrace = c.getCreatedAt() == null || c.getCreatedAt().isBefore(now.minusMinutes(2));
+            boolean tooOld = c.getCreatedAt() != null && c.getCreatedAt().isBefore(now.minusHours(12));
+            if (pastGrace || tooOld) {
+                endCall(c);
+            }
+        }
+        return calls.stream()
+                .filter(c -> c.getStatus() == CallStatus.ACTIVE && anyoneCurrentlyIn(c.getId()))
                 .filter(c -> c.getHostUserId().equals(me)
                         || participantRepository.findByCallIdAndUserId(c.getId(), me).isPresent())
                 .map(c -> toResponse(c, null))
                 .toList();
+    }
+
+    /** Vrai si au moins un participant est actuellement dans l'appel (joined, pas left). */
+    private boolean anyoneCurrentlyIn(UUID callId) {
+        return participantRepository.findByCallId(callId).stream()
+                .anyMatch(p -> p.getJoinedAt() != null && p.getLeftAt() == null);
     }
 
     @Override

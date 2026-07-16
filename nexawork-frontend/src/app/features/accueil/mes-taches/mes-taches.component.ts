@@ -17,8 +17,8 @@ import { LoaderComponent } from '@shared/ui/loader/loader.component';
   template: `
     <div class="wrap">
       <div class="head">
-        <h1>Aujourd'hui et en retard</h1>
-        <p>Vos tâches prioritaires dont l'échéance est aujourd'hui ou déjà dépassée, tous projets confondus.</p>
+        <h1>Mes tâches prioritaires et toutes mes tâches</h1>
+        <p>Vos tâches prioritaires (échéance aujourd'hui ou en retard) et, en dessous, toutes vos tâches — tous projets confondus.</p>
       </div>
 
       @if (loading()) {

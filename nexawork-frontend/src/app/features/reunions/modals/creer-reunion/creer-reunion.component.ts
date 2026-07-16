@@ -52,9 +52,11 @@ interface Person { id: string; n: string; c: string; role: string; email: string
             <div class="srch">
               <div class="srch__bar" [class.srch__bar--on]="q()">
                 <app-icon name="search" [size]="16" />
-                <input [value]="q()" (input)="q.set($any($event.target).value)" placeholder="Rechercher par nom ou email…" />
+                <input [value]="q()" (focus)="pickerOpen.set(true)"
+                       (input)="q.set($any($event.target).value); pickerOpen.set(true)"
+                       placeholder="Rechercher par nom ou email…" />
               </div>
-              @if (suggestions().length) {
+              @if (pickerOpen() && suggestions().length) {
                 <div class="dd">
                   @for (m of suggestions(); track m.id) {
                     <button class="dd__row" (click)="addMember(m)">
@@ -64,7 +66,7 @@ interface Person { id: string; n: string; c: string; role: string; email: string
                     </button>
                   }
                 </div>
-              } @else if (q()) {
+              } @else if (pickerOpen() && q()) {
                 <div class="dd dd--empty">Aucun membre trouvé</div>
               }
             </div>
@@ -210,13 +212,17 @@ export class CreerReunionComponent {
   /** Membres réels du workspace (hors soi) — la liste était codée en dur. */
   private people = toSignal(this.membersSvc.others(), { initialValue: [] as Member[] });
 
+  /** Liste déroulante ouverte : dès l'ouverture du modal, puis rouverte au focus. */
+  pickerOpen = signal(true);
+
+  /** Membres proposés — TOUS (hors déjà sélectionnés) quand la recherche est vide,
+   *  filtrés par nom/email sinon. La liste s'affiche donc dès l'ouverture (§14). */
   suggestions = computed<Person[]>(() => {
     const q = this.q().toLowerCase().trim();
-    if (!q) return [];
     const sel = new Set(this.internal().map(p => p.id));
     return this.people()
       .filter(m => !!m.userId && !sel.has(m.userId))
-      .filter(m => m.name.toLowerCase().includes(q) || (m.email ?? '').toLowerCase().includes(q))
+      .filter(m => !q || m.name.toLowerCase().includes(q) || (m.email ?? '').toLowerCase().includes(q))
       .map(m => ({ id: m.userId!, n: m.name, c: m.color, role: m.role, email: m.email ?? '' }));
   });
   totalInvites = computed(() => this.internal().length + this.external().length);
@@ -245,7 +251,9 @@ export class CreerReunionComponent {
 
   ini(n: string): string { return n.split(/\s+/).map(w => w[0]).join(''); }
 
-  addMember(p: Person): void { this.internal.update(l => [...l, p]); this.q.set(''); }
+  // Sélection : ajoute, vide le champ, ferme la liste (elle se rouvre au prochain
+  // focus) — pour enchaîner rapidement plusieurs ajouts (§14).
+  addMember(p: Person): void { this.internal.update(l => [...l, p]); this.q.set(''); this.pickerOpen.set(false); }
   removeMember(id: string): void { this.internal.update(l => l.filter(x => x.id !== id)); }
   addExternal(): void {
     if (!this.canAddExternal()) return;
