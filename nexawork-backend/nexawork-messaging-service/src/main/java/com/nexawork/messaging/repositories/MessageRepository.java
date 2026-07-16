@@ -73,6 +73,24 @@ public interface MessageRepository extends JpaRepository<Message, UUID> {
     long countUnreadInConversation(@Param("conversationId") UUID conversationId,
                                    @Param("userId") UUID userId);
 
+    /** Messages d'un canal non postés par l'appelant (canal jamais ouvert = tout est non lu). */
+    @Query("""
+            SELECT COUNT(m) FROM Message m
+            WHERE m.channel.id = :channelId AND m.isDeleted = false AND m.senderUserId <> :userId
+            """)
+    long countChannelMessagesFromOthers(@Param("channelId") UUID channelId,
+                                        @Param("userId") UUID userId);
+
+    /** Messages d'un canal postés APRÈS la dernière lecture, par d'autres que l'appelant. */
+    @Query("""
+            SELECT COUNT(m) FROM Message m
+            WHERE m.channel.id = :channelId AND m.isDeleted = false
+              AND m.senderUserId <> :userId AND m.sentAt > :since
+            """)
+    long countChannelUnreadSince(@Param("channelId") UUID channelId,
+                                 @Param("userId") UUID userId,
+                                 @Param("since") LocalDateTime since);
+
     /**
      * Recherche globale (§4.8) : messages dont le contenu contient le terme, dans
      * les **fils accessibles à l'appelant** — canaux du workspace (visibilité REF F

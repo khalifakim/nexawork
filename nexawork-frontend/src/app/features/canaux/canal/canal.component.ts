@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, ElementRef, Input, ViewChild, computed, effect, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, Input, ViewChild, computed, effect, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { map, switchMap, tap } from 'rxjs/operators';
@@ -81,6 +81,9 @@ type ChMsg = ChannelMessage;
         <div class="msgs" #msgsEl>
           <div class="day"><div class="day__l"></div><span>Aujourd'hui</span><div class="day__l"></div></div>
           @for (m of visible(); track $index) {
+            @if (m.id && m.id === unreadSeparatorId()) {
+              <div class="unreadsep"><span>Messages non lus</span></div>
+            }
             <div class="msg" [class.msg--me]="m.mine"
                  [class.msg--focus]="m.id && m.id === focusMessageId()"
                  [attr.data-mid]="m.id">
@@ -290,6 +293,9 @@ export class CanalComponent {
   @ViewChild('msgsEl') private msgsEl?: ElementRef<HTMLDivElement>;
   @ViewChild('sinput') private searchInput?: ElementRef<HTMLInputElement>;
 
+  /** Id du 1ᵉʳ message non lu au chargement — place la séparation « Messages non lus ». */
+  unreadSeparatorId = signal<string | null>(null);
+
   // ── Indicateur « en train d'écrire » (canal) — miroir des conversations ──────
   private typingRaw = signal(false);
   /** Vrai dès que quelqu'un (autre que moi) écrit dans le canal. Sans le nom (§#3). */
@@ -313,11 +319,23 @@ export class CanalComponent {
   }
 
   constructor() {
+    // Quitter le canal libère le « fil actif ».
+    inject(DestroyRef).onDestroy(() => this.bus.activeThreadId.set(null));
     toObservable(this.name)
       .pipe(switchMap(id => this.channelsSvc.thread(id)), takeUntilDestroyed())
       .subscribe(thread => {
         this.msgs.set(thread);
         this.searchQ.set('');
+        // Séparation « Messages non lus » : 1ᵉʳ message d'autrui posté après ma dernière
+        // lecture (canal jamais ouvert → dès le premier message reçu).
+        const chan = this.channels().find(c => c.id === this.name());
+        const lastRead = chan?.lastReadAt ? new Date(chan.lastReadAt).getTime() : 0;
+        this.unreadSeparatorId.set(
+          thread.find(m => !m.mine && m.id && m.sentAt
+            && new Date(m.sentAt).getTime() > lastRead)?.id ?? null);
+        // Fil actif (anti-bruit notifs) + marque le canal lu (vide le badge, §6).
+        this.bus.activeThreadId.set(chan?.uuid ?? null);
+        this.channelsSvc.markRead(this.name());
       });
     // Indicateur de saisie d'un autre membre (STOMP). Retombe seul après 4 s.
     toObservable(this.name)

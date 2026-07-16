@@ -7,6 +7,7 @@ import com.nexawork.messaging.entities.Message;
 import com.nexawork.messaging.entities.MessageAttachment;
 import com.nexawork.messaging.entities.MessageMention;
 import com.nexawork.messaging.entities.enums.MentionType;
+import com.nexawork.messaging.events.publishers.MessageCreatedEvent;
 import com.nexawork.messaging.events.publishers.MessageMentionEvent;
 import com.nexawork.messaging.events.publishers.MessagingEventPublisher;
 import com.nexawork.messaging.mappers.MessageMapper;
@@ -131,6 +132,22 @@ public class MessageAssembler {
                     excerpt(message.getContent()),
                     channelId, channelName, conversationId));
         }
+    }
+
+    /**
+     * Notifie les destinataires d'un nouveau message (§4.7) : conversation directe
+     * (l'autre participant) ou canal privé (ses membres, hors auteur). Aucun envoi
+     * si la liste est vide (canal public : {@code recipients} vide → pas de cloche).
+     */
+    public void notifyNewMessage(Message message, List<UUID> recipients,
+                                 UUID channelId, String channelName, UUID conversationId) {
+        if (recipients == null || recipients.isEmpty()) {
+            return;
+        }
+        eventPublisher.publishMessageCreated(new MessageCreatedEvent(
+                message.getId(), recipients, message.getSenderUserId(), caller.displayName(),
+                caller.organisationId(), excerpt(message.getContent()),
+                channelId, channelName, conversationId));
     }
 
     /** Extrait affiché sous la notification — exposé aux appelants (activité de canal). */

@@ -53,4 +53,11 @@ public final class Events {
             UUID callId, String topic, UUID organisationId,
             UUID inviterUserId, String inviterDisplayName, UUID recipientUserId) {
     }
+
+    /** {@code message.created} — nouveau message (DM / canal privé) à notifier (§4.7). */
+    public record MessageCreated(
+            UUID messageId, java.util.List<UUID> recipientUserIds, UUID authorUserId,
+            String authorDisplayName, UUID organisationId, String excerpt,
+            UUID channelId, String channelName, UUID conversationId) {
+    }
 }

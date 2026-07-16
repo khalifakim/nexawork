@@ -154,6 +154,43 @@ public class NotificationConsumer {
                 .build());
     }
 
+    /**
+     * Nouveau message (§4.7) : cloche pour chaque destinataire (DM = l'autre
+     * participant ; canal privé = ses membres). Le lien ouvre le fil ; le
+     * {@code payload} porte le fil pour que le frontend n'affiche pas la cloche
+     * quand l'utilisateur est déjà dans ce fil et l'efface à l'ouverture (décision §4).
+     */
+    @RabbitListener(queues = "nexawork.notification.message-created")
+    public void onMessageCreated(Events.MessageCreated e) {
+        if (e.recipientUserIds() == null || e.recipientUserIds().isEmpty()) {
+            return;
+        }
+        boolean isChannel = e.channelId() != null;
+        String body = isChannel
+                ? "Nouveau message dans #" + e.channelName() + " : « " + e.excerpt() + " »"
+                : author(e.authorDisplayName()) + " vous a envoyé un nouveau message : « " + e.excerpt() + " »";
+        String url = isChannel
+                ? "/app/canaux/" + slug(e.channelName())
+                : "/app/conversations/" + slug(author(e.authorDisplayName()));
+        String threadId = (isChannel ? e.channelId() : e.conversationId()).toString();
+        for (java.util.UUID recipient : e.recipientUserIds()) {
+            if (recipient == null || recipient.equals(e.authorUserId())) {
+                continue; // jamais se notifier soi-même
+            }
+            creator.create(Command.builder()
+                    .recipientUserId(recipient)
+                    .type(NotificationType.MESSAGE_RECEIVED)
+                    .title(isChannel ? "Nouveau message dans #" + e.channelName() : "Nouveau message")
+                    .body(body)
+                    .targetUrl(url)
+                    .workspaceId(e.organisationId())
+                    .payload(Map.of(
+                            "threadKind", isChannel ? "channel" : "conversation",
+                            "threadId", threadId))
+                    .build());
+        }
+    }
+
     /** Nom de l'auteur, ou un libellé neutre si la Gateway ne l'a pas propagé. */
     private String author(String displayName) {
         return displayName != null && !displayName.isBlank() ? displayName : "Quelqu'un";

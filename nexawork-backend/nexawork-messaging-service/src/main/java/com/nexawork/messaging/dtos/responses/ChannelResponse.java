@@ -34,5 +34,9 @@ public class ChannelResponse {
     private Integer memberCount;
     /** Date du dernier message (dernière activité) — null si le canal est vide. */
     private LocalDateTime lastActivityAt;
+    /** Nombre de messages non lus pour l'appelant (badge, parité conversations). */
+    private Long unreadCount;
+    /** Dernière lecture du canal par l'appelant — sépare « lus / non lus » côté vue. */
+    private LocalDateTime lastReadAt;
     private LocalDateTime createdAt;
 }

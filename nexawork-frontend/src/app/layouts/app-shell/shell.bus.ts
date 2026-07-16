@@ -43,6 +43,13 @@ export class ShellBus {
    * filters the members roster in that view as well.
    */
   readonly conversationSearch = signal('');
+
+  /**
+   * UUID du fil (conversation ou canal) actuellement ouvert, ou null. Sert à
+   * l'anti-bruit des notifications « nouveau message » : on ne notifie pas (cloche)
+   * l'utilisateur pour un fil qu'il regarde, et on efface ses notifs à l'ouverture (§4).
+   */
+  readonly activeThreadId = signal<string | null>(null);
   /**
    * Sidebar 2 open/closed state. Held here (not in the shell component) so that
    * any routed view can force the sidebar back open — e.g. clicking "Retour aux

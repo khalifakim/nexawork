@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, ElementRef, ViewChild, computed, effect, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, ViewChild, computed, effect, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { map, switchMap, tap } from 'rxjs/operators';
@@ -90,6 +90,9 @@ type Msg = ConversationMessage;
             @if (m.day) {
               <div class="day"><div class="day__l"></div><span>{{ m.day }}</span><div class="day__l"></div></div>
             }
+            @if (m.id && m.id === unreadSeparatorId()) {
+              <div class="unreadsep"><span>Messages non lus</span></div>
+            }
             <div class="line" [class.line--me]="m.me"
                  [class.line--focus]="m.id && m.id === focusMessageId()"
                  [attr.data-mid]="m.id">
@@ -170,6 +173,8 @@ export class ConversationPriveeComponent {
   msgs = signal<Msg[]>([]);
   /** Vrai tant que l'historique de la conversation n'est pas chargé. */
   loading = signal(true);
+  /** Id du 1ᵉʳ message non lu au chargement — place la séparation « Messages non lus ». */
+  unreadSeparatorId = signal<string | null>(null);
 
   // ── Indicateur « est en train d'écrire » ────────────────────────────────────
   /** Vrai uniquement quand le pair est EN LIGNE et tape réellement (STOMP). */
@@ -252,6 +257,8 @@ export class ConversationPriveeComponent {
   @ViewChild('sinput') private searchInput?: ElementRef<HTMLInputElement>;
 
   constructor() {
+    // Quitter les conversations libère le « fil actif » (plus d'anti-bruit associé).
+    inject(DestroyRef).onDestroy(() => this.bus.activeThreadId.set(null));
     toObservable(this.slug)
       .pipe(
         tap(() => this.loading.set(true)),
@@ -263,6 +270,11 @@ export class ConversationPriveeComponent {
         this.searchQ.set('');
         this.loading.set(false);
         this.typingRaw.set(false); // jamais affiché par défaut à l'ouverture
+        // Séparation « Messages non lus » : 1ᵉʳ message reçu non lu, AVANT de marquer lu.
+        this.unreadSeparatorId.set(thread.find(m => m.unreadByMe && m.id)?.id ?? null);
+        // Fil actif → anti-bruit des notifs + effacement des notifs « nouveau message ».
+        this.bus.activeThreadId.set(
+          this.conversationsSvc.items().find(c => c.id === this.slug())?.uuid ?? null);
         // À l'ouverture, effacer le badge « non lu » et émettre l'accusé de lecture
         // serveur pour chaque message du pair reçu pendant mon absence → l'expéditeur
         // les voit passer « lu » en temps réel. Dédupliqué pour ne pas re-PATCHer à

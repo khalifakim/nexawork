@@ -36,6 +36,10 @@ public class MentionServiceImpl implements MentionService {
     @Transactional(readOnly = true)
     public List<MentionResponse> listReceived(boolean onlyUnread) {
         return mentionRepository.findByTargetIdAndMentionType(caller.userId(), MentionType.USER).stream()
+                // Une auto-mention (je me cite dans mon propre message) ne doit jamais
+                // apparaître dans « Mentions reçues » (ni générer de notification, déjà exclu).
+                .filter(m -> m.getMessage() == null
+                        || !caller.userId().equals(m.getMessage().getSenderUserId()))
                 .filter(m -> !onlyUnread || Boolean.FALSE.equals(m.getIsRead()))
                 .map(messageMapper::asMentionDto)
                 .toList();

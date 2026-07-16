@@ -3,6 +3,7 @@ import { EMPTY, Observable, forkJoin, map, of, switchMap } from 'rxjs';
 import { delay, filter } from 'rxjs/operators';
 import { toObservable } from '@angular/core/rxjs-interop';
 import { BaseHttpService } from '@core/http/base-http.service';
+import { SILENT } from '@core/http/http-context';
 import { FilesHttpService, StoredFile } from '@core/http/files.http.service';
 import { StompClientService } from '@core/ws/stomp-client.service';
 import {
@@ -45,6 +46,13 @@ export abstract class ChannelsService {
   abstract sendTyping(id: string, typing: boolean): void;
   /** Flux « quelqu'un écrit dans ce canal » (true/false), hors soi-même. */
   abstract typing(id: string): Observable<boolean>;
+  /** Marque le canal comme lu par l'appelant (vide le badge « non lus », §6). */
+  abstract markRead(id: string): void;
+  /**
+   * Vue réactive des canaux. Comme pour les conversations, la sidebar la lit pour
+   * que le badge « non lus » se vide à l'ouverture **sans rechargement**.
+   */
+  abstract readonly items: Signal<Channel[]>;
 
   abstract rename(id: string, patch: UpdateChannelPayload): void;
   abstract remove(id: string): void;
@@ -106,6 +114,8 @@ export class ChannelsMockService extends ChannelsService {
     return this.perWs()[wsId] ?? [];
   });
   private readonly channels$ = toObservable(this.activeChannels);
+  /** Vue réactive (mock) : la sidebar la lit ; `markRead` y vide le badge. */
+  readonly items = this.activeChannels;
 
   list(): Observable<Channel[]> { return this.channels$; }
   thread(id: string): Observable<ChannelMessage[]> { return of(CHANNEL_THREADS[id] ?? DEFAULT_CHANNEL_THREAD).pipe(delay(80)); }
@@ -113,6 +123,10 @@ export class ChannelsMockService extends ChannelsService {
   sendMessage(_id: string, _content: string, _files?: File[], _mentions?: MentionRef[]): Observable<void> { return of(void 0); }
   sendTyping(_id: string, _typing: boolean): void { /* no-op en mock */ }
   typing(_id: string): Observable<boolean> { return EMPTY; }
+  markRead(id: string): void {
+    const wsId = this.session.activeWorkspaceId();
+    this.perWs.update(m => ({ ...m, [wsId]: (m[wsId] ?? []).map(c => c.id === id ? { ...c, unread: 0 } : c) }));
+  }
 
   rename(id: string, patch: UpdateChannelPayload): void {
     const wsId = this.session.activeWorkspaceId();
@@ -190,6 +204,10 @@ export class ChannelsHttpService extends BaseHttpService implements ChannelsServ
    * et doivent continuer d'aboutir.
    */
   private readonly cache = signal<Map<string, Channel>>(new Map());
+  /** Liste dédupliquée (le cache indexe id ET slug → il ne peut servir de vue). */
+  private readonly _list = signal<Channel[]>([]);
+  /** Vue réactive : `markRead` vide le badge sans rechargement (parité conversations). */
+  readonly items = this._list.asReadonly();
 
   list(): Observable<Channel[]> {
     return this.get$<ChannelResponse[]>('messaging', '/channels').pipe(
@@ -202,9 +220,20 @@ export class ChannelsHttpService extends BaseHttpService implements ChannelsServ
         for (const c of list) byId.set(c.id, c);
         for (const c of list) if (c.slug && !byId.has(c.slug)) byId.set(c.slug, c);
         this.cache.set(byId);
+        this._list.set(list);
         return list;
       }),
     );
+  }
+
+  /**
+   * Marque le canal lu (`PATCH /channels/{uuid}/read`) et vide le badge localement
+   * (le serveur est la source de vérité au prochain `list()`). Silencieux.
+   */
+  markRead(id: string): void {
+    const uuid = this.uuidOf(id);
+    this._list.update(l => l.map(c => (c.id === id || (uuid && c.uuid === uuid)) ? { ...c, unread: 0 } : c));
+    if (uuid) this.patch$<unknown>('messaging', `/channels/${uuid}/read`, {}, SILENT()).subscribe({ error: () => {} });
   }
 
   /** Résout un id d'URL (id unique **ou** slug hérité) en canal connu. */
@@ -451,6 +480,8 @@ function toChannel(r: ChannelResponse): Channel {
     projectId: r.projectId,
     memberCount: r.memberCount,
     lastActivityAt: r.lastActivityAt,
+    unread: r.unreadCount ?? 0,
+    lastReadAt: r.lastReadAt,
   };
 }
 
@@ -464,6 +495,7 @@ function toChannelMessage(
   const files = messageFiles(msg);
   return {
     id: msg.id,
+    sentAt: msg.sentAt,
     author: sender?.name ?? 'Membre',
     // L'annuaire porte la photo : la reprendre ici la rend disponible partout où
     // un message est affiché (canaux ET conversations).
@@ -477,6 +509,10 @@ function toChannelMessage(
 }
 
 function formatTime(iso: string): string {
+  // Garde défensive : `new Date(null/undefined/'')` donnerait l'epoch → « 00:00 »
+  // affiché à tort. La cause racine (sentAt nul en temps réel) est corrigée côté
+  // backend (saveAndFlush), mais un temps absent ne doit jamais afficher minuit.
+  if (!iso) return '';
   const d = new Date(iso);
   if (isNaN(d.getTime())) return '';
   return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');

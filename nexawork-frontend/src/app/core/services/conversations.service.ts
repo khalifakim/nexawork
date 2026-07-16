@@ -266,6 +266,7 @@ function toConversationMessage(msg: MessageResponse, meId: string | undefined, _
     parts: parseRichText(msg.content),
     time: formatTime(msg.sentAt),
     read: mine ? !!msg.readAt : undefined,
+    unreadByMe: !mine && !msg.readAt,
     files,
   };
 }

@@ -73,6 +73,13 @@ public class ChannelController {
         return Response.<List<ChannelMemberResponse>>ok().setPayload(channelService.getAccess(id));
     }
 
+    /** Marque le canal comme lu (parité conversations §6) : vide le badge « non lus ». */
+    @PatchMapping("/{id}/read")
+    public Response<Void> markRead(@PathVariable UUID id) {
+        channelService.markRead(id);
+        return Response.<Void>ok();
+    }
+
     @PutMapping("/{id}/access")
     public Response<List<ChannelMemberResponse>> updateAccess(@PathVariable UUID id,
                                                               @Valid @RequestBody ChannelAccessRequest request) {

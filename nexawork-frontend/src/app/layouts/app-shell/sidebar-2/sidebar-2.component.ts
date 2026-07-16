@@ -179,6 +179,7 @@ class LiveTypingSet {
               <span>{{ c.name }}</span>
               @if (chanTyping.value().has(c.id)) { <span class="chtyping">En train d'écrire…</span> }
               @if (isPrivate(c.id)) { <span class="lock" title="Canal privé"><app-icon name="lock" [size]="13" /></span> }
+              @if (c.unread) { <span class="chbadge">{{ c.unread }}</span> }
             </a>
             @if (isAdmin()) {
               <button class="dots" [class.dots--on]="menuId()===c.id"
@@ -225,6 +226,7 @@ class LiveTypingSet {
                     <span>{{ c.name }}</span>
                     @if (chanTyping.value().has(c.id)) { <span class="chtyping">En train d'écrire…</span> }
                     @if (isPrivate(c.id)) { <span class="lock" title="Canal privé"><app-icon name="lock" [size]="13" /></span> }
+                    @if (c.unread) { <span class="chbadge">{{ c.unread }}</span> }
                   </a>
                   @if (canManageProjectChannels()) {
                     <button class="dots dots--sub" [class.dots--on]="menuId()===c.id"
@@ -370,9 +372,11 @@ class LiveTypingSet {
     .row--sub { padding-left: 30px; }
     .row__i { color: var(--nx-text-400); display: flex; flex: none; }
     .row--on .row__i { color: var(--nx-indigo); }
-    .row > span:not(.dot):not(.row__badge):not(.row__pct):not(.chev2):not(.lock):not(.chtyping) { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .row > span:not(.dot):not(.row__badge):not(.row__pct):not(.chev2):not(.lock):not(.chtyping):not(.chbadge) { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     /* Indicateur « en train d'écrire » d'un canal (sidebar) — vert, compact (§#3). */
     .chtyping { flex: none; color: var(--nx-success); font-size: 11px; font-weight: 600; font-style: italic; white-space: nowrap; }
+    /* Badge de messages non lus d'un canal (parité conversations §6). */
+    .chbadge { flex: none; min-width: 17px; height: 17px; padding: 0 5px; border-radius: 9px; background: var(--nx-indigo); color: #fff; font-size: 10.5px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
     .row__badge { font-size: 11px; color: var(--nx-text-500); font-weight: 600; }
     .row__pct { font-size: 11px; color: var(--nx-text-500); font-weight: 600; }
     .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
@@ -570,7 +574,15 @@ export class Sidebar2Component {
   });
 
   private channelsQuery = workspaceQuery<Channel[]>(this.session, () => this.channelsSvc.list(), [], this.refresh.channels);
-  private channels = this.channelsQuery.value;
+  /**
+   * Rendu depuis le **signal réactif** du service (pas le résultat figé de `list()`) :
+   * ouvrir un canal vide son badge « non lus » sans rechargement (`markRead` mute le
+   * cache du service). `channelsQuery.value()` reste lu pour piloter le chargement.
+   */
+  private channels = computed<Channel[]>(() => {
+    this.channelsQuery.value();
+    return this.channelsSvc.items();
+  });
   private channelsMutating = this.refresh.busy('channels');
   /** Idem `projectsBusy`, pour la liste des canaux. */
   channelsBusy = computed(() => this.channelsMutating() || this.channelsQuery.loading());

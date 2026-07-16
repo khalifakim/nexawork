@@ -20,6 +20,7 @@ public class MessagingEventPublisher {
 
     public static final String EXCHANGE = "nexawork.events";
     public static final String ROUTING_MESSAGE_MENTION = "message.mention";
+    public static final String ROUTING_MESSAGE_CREATED = "message.created";
 
     RabbitTemplate rabbitTemplate;
 
@@ -31,6 +32,18 @@ public class MessagingEventPublisher {
         } catch (Exception e) {
             // Une notification manquée ne doit jamais faire échouer l'envoi du message.
             log.error("Échec de publication de {} : {}", ROUTING_MESSAGE_MENTION, e.getMessage());
+        }
+    }
+
+    /** Nouveau message (§4.7) — notifie les destinataires concernés (DM / canal privé). */
+    public void publishMessageCreated(MessageCreatedEvent event) {
+        try {
+            rabbitTemplate.convertAndSend(EXCHANGE, ROUTING_MESSAGE_CREATED, event);
+            log.info("Événement {} publié : message {} → {} destinataire(s)",
+                    ROUTING_MESSAGE_CREATED, event.messageId(),
+                    event.recipientUserIds() != null ? event.recipientUserIds().size() : 0);
+        } catch (Exception e) {
+            log.error("Échec de publication de {} : {}", ROUTING_MESSAGE_CREATED, e.getMessage());
         }
     }
 }

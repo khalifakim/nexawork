@@ -1,7 +1,7 @@
 import {
   ChangeDetectionStrategy, Component, EventEmitter, Output, computed, effect, inject, signal,
 } from '@angular/core';
-import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { Router, RouterLink } from '@angular/router';
 import { of, timer } from 'rxjs';
 import { catchError, switchMap } from 'rxjs/operators';
@@ -329,8 +329,27 @@ export class HeaderComponent {
 
   constructor() {
     // Réception temps réel : la notification s'ajoute en tête de la liste.
-    this.notifsSvc.live().pipe(takeUntilDestroyed()).subscribe(n =>
-      this.pushed.update(l => [n, ...l]));
+    this.notifsSvc.live().pipe(takeUntilDestroyed()).subscribe(n => {
+      // Anti-bruit (§4) : une notif « nouveau message » d'un fil que je regarde à
+      // l'instant est marquée lue sans jamais s'afficher (je vois déjà le message).
+      const threadId = n.payload?.['threadId'] as string | undefined;
+      if (n.type === 'MESSAGE_RECEIVED' && threadId && threadId === this.bus.activeThreadId()) {
+        this.notifsSvc.markRead(n.id).subscribe({ error: () => {} });
+        return;
+      }
+      this.pushed.update(l => [n, ...l]);
+    });
+    // Effacement à l'ouverture (§4) : ouvrir un fil marque lues ses notifs « nouveau
+    // message » en attente (le badge « non lus » de la sidebar prend le relais).
+    toObservable(this.bus.activeThreadId).pipe(takeUntilDestroyed()).subscribe(threadId => {
+      if (!threadId) return;
+      for (const n of this.notifs()) {
+        if (n.type === 'MESSAGE_RECEIVED' && !n.read && !this.readIds().includes(n.id)
+            && (n.payload?.['threadId'] as string | undefined) === threadId) {
+          this.markRead(n.id);
+        }
+      }
+    });
   }
 
   toggle(m: Menu): void { this.menu.set(this.menu() === m ? null : m); }

@@ -44,6 +44,8 @@ export interface ConversationMessage {
   day?: string;
   /** For messages sent by the current user, indicates whether the peer has read it. */
   read?: boolean;
+  /** Message reçu du pair et non encore lu par moi (au chargement) — place la séparation « Messages non lus ». */
+  unreadByMe?: boolean;
   /** Files attached to the message — same preview format as canaux / task comments. */
   files?: ConversationFile[];
 }

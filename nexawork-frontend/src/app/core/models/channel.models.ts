@@ -32,6 +32,10 @@ export interface Channel {
   memberCount?: number;
   /** Date du dernier message (ISO) — absent si le canal est vide. */
   lastActivityAt?: string;
+  /** Nombre de messages non lus pour l'appelant (badge, parité conversations §6). */
+  unread?: number;
+  /** Dernière lecture du canal (ISO) — sépare « lus / non lus » dans la vue. */
+  lastReadAt?: string;
 }
 
 /** Payload brut d'un canal (Messaging `GET /channels`). */
@@ -49,6 +53,8 @@ export interface ChannelResponse {
   canWrite: boolean;
   memberCount?: number;
   lastActivityAt?: string;
+  unreadCount?: number;
+  lastReadAt?: string;
   createdAt: string;
 }
 
@@ -106,6 +112,8 @@ export interface ChannelFile { id: number; name: string; size: number; /** Chemi
 export interface ChannelMessage {
   /** UUID backend — sert à cibler un message (mention : « ouvrir et encadrer »). */
   id?: string;
+  /** Date d'envoi (ISO) — sert à placer la séparation « Messages non lus ». */
+  sentAt?: string;
   author: string;
   /** Photo de profil de l'auteur — résolue depuis l'annuaire (absente → initiales). */
   authorPhotoUrl?: string;

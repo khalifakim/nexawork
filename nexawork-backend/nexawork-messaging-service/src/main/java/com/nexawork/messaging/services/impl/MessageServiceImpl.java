@@ -81,7 +81,11 @@ public class MessageServiceImpl implements MessageService {
                 .edited(false)
                 .build();
         assembler.applyAttachments(message, request, caller.userId());
-        message = messageRepository.save(message);
+        // saveAndFlush : force l'INSERT immédiat pour que `@CreationTimestamp` peuple
+        // `sentAt` AVANT de construire le DTO diffusé. Sans flush, `sentAt` restait
+        // nul dans la trame temps réel → le destinataire affichait « 00:00 » jusqu'au
+        // prochain rechargement (l'heure réelle n'étant en base qu'au commit).
+        message = messageRepository.saveAndFlush(message);
         List<MessageMention> mentions = assembler.persistMentions(message, request);
         assembler.notifyMentioned(message, mentions, channel.getId(), channel.getName(), null);
         MessageResponse dto = assembler.toDto(message);
@@ -102,6 +106,17 @@ public class MessageServiceImpl implements MessageService {
                         .authorDisplayName(caller.displayName())
                         .excerpt(assembler.excerptOf(message.getContent()))
                         .build());
+
+        // Notification « nouveau message » (cloche) : canaux PRIVÉS uniquement (leurs
+        // membres explicites, hors auteur). Les canaux publics s'appuient sur le badge
+        // « non lus » — pas de cloche pour éviter de notifier tout l'espace (décision §4).
+        if (Boolean.TRUE.equals(channel.getIsPrivate())) {
+            List<UUID> recipients = channelMemberRepository.findByChannelId(channelId).stream()
+                    .map(m -> m.getUserId())
+                    .filter(uid -> !uid.equals(caller.userId()))
+                    .toList();
+            assembler.notifyNewMessage(message, recipients, channel.getId(), channel.getName(), null);
+        }
         return dto;
     }
 

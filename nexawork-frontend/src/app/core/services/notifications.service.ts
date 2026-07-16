@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
-import { EMPTY, Observable, map, merge, of } from 'rxjs';
-import { delay, filter } from 'rxjs/operators';
+import { EMPTY, Observable, map, of } from 'rxjs';
+import { delay } from 'rxjs/operators';
 import { BaseHttpService } from '@core/http/base-http.service';
 import { api } from '@core/http/api.config';
 import { ApiResponse } from '@core/http/response.model';
@@ -60,39 +60,6 @@ const KIND: Record<NotificationType, NotificationKind> = {
   EXTERNAL_GUEST_INVITED: 'projet',
 };
 
-/** Activité de canal poussée en STOMP (non persistée — voir `live()`). */
-interface ChannelActivity {
-  messageId: string;
-  channelId: string;
-  channelName: string;
-  authorUserId: string;
-  authorDisplayName: string;
-  excerpt: string;
-}
-
-/** Activité de canal → ligne de la cloche. Le clic ouvre le canal sur le message. */
-function toChannelNotification(a: ChannelActivity): Notification {
-  return {
-    id: 'ch-' + a.messageId, // volatile : jamais persisté, donc pas d'id serveur
-    actor: a.authorDisplayName,
-    ac: avatarColorFor(a.authorDisplayName || a.authorUserId),
-    title: 'Nouveau message dans #' + a.channelName,
-    text: a.authorDisplayName + ' : ' + a.excerpt,
-    date: "À l'instant",
-    read: false,
-    kind: 'message',
-    type: 'MESSAGE_RECEIVED',
-    // Le canal se route par slug ; le message est ancré (la vue y défile).
-    target: '/app/canaux/' + slugify(a.channelName) + '?message=' + a.messageId,
-  };
-}
-
-/** Nom de canal → slug d'URL (même règle que le backend). */
-function slugify(name: string): string {
-  return name.normalize('NFD').replace(/[̀-ͯ]/g, '')
-    .toLowerCase().replace(/[^a-z0-9\s-]/g, '').trim().replace(/\s+/g, '-');
-}
-
 @Injectable()
 export class NotificationsHttpService extends BaseHttpService implements NotificationsService {
   private readonly stomp = inject(StompClientService);
@@ -109,29 +76,15 @@ export class NotificationsHttpService extends BaseHttpService implements Notific
   }
 
   /**
-   * Flux temps réel de la cloche. Deux sources :
-   * - la **file personnelle** des notifications persistées (mentions, tâches, réunions…) ;
-   * - l'**activité des canaux** (« X a publié dans #… »), qui n'est PAS persistée :
-   *   le Messaging ne connaît pas les membres d'un canal public (la composition des
-   *   projets ne lui appartient pas) et ne peut donc pas créer une notification par
-   *   destinataire. On ne l'invente pas — c'est un signal volatile.
-   *
-   * Les messages qu'on publie soi-même sont écartés (on sait ce qu'on vient d'écrire).
+   * Flux temps réel de la cloche : la **file personnelle** des notifications
+   * persistées (mentions, tâches, réunions, et désormais « nouveau message » pour
+   * les DM et canaux **privés** — §4). Les canaux **publics** n'émettent pas de
+   * cloche (décision §4) : ils s'appuient sur le badge « non lus » de la sidebar.
    */
   live(): Observable<Notification> {
-    const persisted = this.stomp.watchNotifications('/user/queue/notifications').pipe(
+    return this.stomp.watchNotifications('/user/queue/notifications').pipe(
       map(frame => toNotification(JSON.parse(frame.body) as NotificationResponse)),
     );
-
-    const orgId = this.session.activeWorkspaceId();
-    if (!orgId) return persisted;
-
-    const channelActivity = this.stomp.watchChannelActivity(orgId).pipe(
-      map(frame => JSON.parse(frame.body) as ChannelActivity),
-      filter(a => a.authorUserId !== this.session.user()?.id),
-      map(toChannelNotification),
-    );
-    return merge(persisted, channelActivity);
   }
 
   markRead(id: string): Observable<void> {

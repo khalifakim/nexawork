@@ -26,6 +26,9 @@ public interface ChannelService {
 
     void deleteChannel(UUID channelId);
 
+    /** Marque le canal comme lu par l'appelant (remet le compteur de non-lus à zéro). */
+    void markRead(UUID channelId);
+
     List<ChannelMemberResponse> getAccess(UUID channelId);
 
     List<ChannelMemberResponse> updateAccess(UUID channelId, ChannelAccessRequest request);

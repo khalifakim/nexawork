@@ -8,11 +8,13 @@ import com.nexawork.messaging.dtos.responses.ChannelMemberResponse;
 import com.nexawork.messaging.dtos.responses.ChannelResponse;
 import com.nexawork.messaging.entities.Channel;
 import com.nexawork.messaging.entities.ChannelMember;
+import com.nexawork.messaging.entities.ChannelRead;
 import com.nexawork.messaging.entities.enums.ChannelAccessLevel;
 import com.nexawork.messaging.entities.enums.ChannelIcon;
 import com.nexawork.messaging.entities.enums.ChannelType;
 import com.nexawork.messaging.mappers.ChannelMapper;
 import com.nexawork.messaging.repositories.ChannelMemberRepository;
+import com.nexawork.messaging.repositories.ChannelReadRepository;
 import com.nexawork.messaging.repositories.ChannelRepository;
 import com.nexawork.messaging.repositories.MessageRepository;
 import com.nexawork.messaging.security.CallerContext;
@@ -25,6 +27,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -41,6 +44,7 @@ public class ChannelServiceImpl implements ChannelService {
 
     ChannelRepository channelRepository;
     ChannelMemberRepository channelMemberRepository;
+    ChannelReadRepository channelReadRepository;
     MessageRepository messageRepository;
     ChannelMapper channelMapper;
     ChannelAccessGuard guard;
@@ -166,6 +170,27 @@ public class ChannelServiceImpl implements ChannelService {
                 ? (int) channelMemberRepository.countByChannelId(channel.getId())
                 : null);
         dto.setLastActivityAt(messageRepository.findLastActivityAt(channel.getId()));
+        // Non-lus de l'appelant (parité avec les conversations, §6). Un canal jamais
+        // ouvert n'a pas de ligne de lecture → tout ce qui vient d'autrui est non lu.
+        LocalDateTime lastReadAt = channelReadRepository
+                .findByChannelIdAndUserId(channel.getId(), caller.userId())
+                .map(ChannelRead::getLastReadAt).orElse(null);
+        long unread = lastReadAt == null
+                ? messageRepository.countChannelMessagesFromOthers(channel.getId(), caller.userId())
+                : messageRepository.countChannelUnreadSince(channel.getId(), caller.userId(), lastReadAt);
+        dto.setUnreadCount(unread);
+        dto.setLastReadAt(lastReadAt);
         return dto;
+    }
+
+    /** Marque le canal comme lu par l'appelant (upsert de {@code last_read_at} = maintenant). */
+    @Override
+    public void markRead(UUID channelId) {
+        guard.requireViewable(channelId); // REF F
+        UUID me = caller.userId();
+        ChannelRead read = channelReadRepository.findByChannelIdAndUserId(channelId, me)
+                .orElseGet(() -> ChannelRead.builder().channelId(channelId).userId(me).build());
+        read.setLastReadAt(LocalDateTime.now());
+        channelReadRepository.save(read);
     }
 }

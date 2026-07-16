@@ -104,10 +104,19 @@ public class ConversationServiceImpl implements ConversationService {
                 .edited(false)
                 .build();
         assembler.applyAttachments(message, request, caller.userId());
-        message = messageRepository.save(message);
+        // saveAndFlush : peuple `sentAt` (@CreationTimestamp) avant le DTO diffusé,
+        // sinon l'heure part nulle en temps réel → « 00:00 » chez le destinataire.
+        message = messageRepository.saveAndFlush(message);
         assembler.notifyMentioned(message, assembler.persistMentions(message, request), null, null, conversationId);
         MessageResponse dto = assembler.toDto(message);
         broadcaster.broadcastConversationMessage(conversationId, dto); // temps réel (§7.5)
+
+        // Notification « nouveau message » (cloche) → l'autre participant.
+        List<UUID> recipients = participantRepository.findByConversationId(conversationId).stream()
+                .map(ConversationParticipant::getUserId)
+                .filter(uid -> !uid.equals(caller.userId()))
+                .toList();
+        assembler.notifyNewMessage(message, recipients, null, null, conversationId);
         return dto;
     }
 
