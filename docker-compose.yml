@@ -195,6 +195,10 @@ services:
     environment:
       JAVA_TOOL_OPTIONS: *JAVA_OPTS
       CONFIG_REPO_PATH: /config-repo
+      # Le Config Server résout lui-même les placeholders des YAML servis (dont
+      # ${CORS_ORIGINS} de nexawork-gateway.yml) : la variable doit donc être
+      # présente ICI, pas seulement sur la Gateway.
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:4200}
     volumes:
       - ./nexawork-config-repo:/config-repo
     networks:

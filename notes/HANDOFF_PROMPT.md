@@ -3,7 +3,7 @@
 > **Copie-colle ce fichier entier comme premier message à une nouvelle instance Claude Code.**
 > Il est autosuffisant : l'instance se localise via les fichiers de suivi + l'état Docker, puis continue.
 >
-> **Dernière mise à jour : 2026-07-14 (nuit — session « mentions, canaux privés, WebSocket, réunions »).**
+> **Dernière mise à jour : 2026-07-15 (session « temps réel : présence, saisie, accusés de lecture » + pédagogie WebSocket & revue du schéma d'architecture).**
 
 ---
 
@@ -28,19 +28,29 @@ mémoire de master). **Réponds toujours en français.**
 
 ---
 
-## 🟢 ÉTAT À LA REPRISE — le lot 4 est DÉPLOYÉ, il reste à le TESTER
+## 🟢 ÉTAT À LA REPRISE — code écrit & commité, EN ATTENTE DE REBUILD + TEST NAVIGATEUR
 
-**Lot 4 (JaaS `aud`, email invité, temps réel, nom de l'auteur) : construit, déployé et vérifié dans les jars
-le 2026-07-14.** Stack au repos mesurée saine (8 connexions PostgreSQL, aucune erreur récente).
-**Il n'y a aucun build en attente.** Détail complet en §2bis d'`IMPLEMENTATION_STATUS.md` (points #22 à #30).
+Depuis le lot 4, plusieurs lots ont été **écrits, compilés et commités** (voir `git log`). Les derniers commits
+(du plus récent au plus ancien) :
+- `2642040` **accusé de lecture en temps réel** (dernier — voir « TÂCHE EN COURS » et « CE QUI EST CORRIGÉ »).
+- `37922ca` **présence + saisie** : profil/en-tête suivent la présence en direct, « en train d'écrire » découplé
+  de la présence.
+- `488d54f` **lot GED/File/Accueil/WS/UX** : dossier restreint (`null.map`), import 500 (auto-création des
+  buckets MinIO), « Mes tâches » réorganisé, loaders invitations, **diagnostic WebSocket** (logs de fermeture).
+- `ecd509b` suppression de `jaasFileId` (colonne morte de `MeetingFile`) + migration `V6`.
+- `3d35b19`, `b90699a`, `89a14eb`, `93af495` : réunions (fin auto, toast rouge/croix), canaux.
 
-**Ce qu'il reste : la validation en navigateur — rien de ce lot n'a encore été exercé.** Voir « EN ATTENTE DE
-VÉRIFICATION » plus bas. Priorités : la **salle JaaS s'ouvre-t-elle vraiment** (autoriser les popups), le
-**temps réel** (exige **deux comptes connectés**), l'**email d'invité externe**.
+**Ce qui reste : rebuild des images concernées + validation en navigateur.** Le temps réel (présence, saisie,
+messages instantanés, accusés de lecture) **exige deux comptes connectés simultanément**. `git status` est
+**propre** — tout est commité, rien en cours d'édition.
 
-> ⚠️ **Leçon du lot 4** : `api-gateway` faisait partie du lot (il pose `X-User-Name`) mais **manquait à la
-> liste de rebuild** annoncée. **Un correctif transverse — Gateway, `commons` — touche des services qu'on
-> n'a pas en tête : dresser la liste depuis les fichiers modifiés, pas de mémoire.**
+> ⚠️ **Rebuild à faire** (front + back messaging au minimum pour les accusés de lecture) : **dresse la liste
+> depuis les fichiers modifiés de chaque commit**, pas de mémoire. Le front se rebuild à chaque changement TS ;
+> `nexawork-messaging-service` pour le rebroadcast d'accusé de lecture ; `nexawork-file-service` (buckets),
+> `nexawork-ged-service` (dossier restreint) pour le lot `488d54f`.
+
+> ⚠️ **Leçon persistante** : un correctif transverse — Gateway, `commons` — touche des services qu'on n'a pas
+> en tête. Dresser la liste de rebuild **depuis les fichiers modifiés**, pas de mémoire.
 
 **Modèle de vérification d'un build** (piège n°1 — à refaire à chaque lot, avec le **vrai** chemin de la classe :
 `git log --stat` donne le package exact ; un chemin faux rend `0` et fait croire à un échec) :
@@ -49,6 +59,109 @@ docker run --rm --entrypoint sh nexawork-meeting-service -c \
   "unzip -p /app/app.jar BOOT-INF/classes/com/nexawork/meeting/security/GatewayIdentityFilter.class | strings | grep -c X-User-Name"
 # doit afficher 1 — si 0, le build a échoué EN SILENCE
 ```
+
+---
+
+## 🔵 TÂCHE EN COURS À LA REPRISE — pédagogie WebSocket + revue du schéma d'architecture
+
+La session a été **interrompue en plein milieu** de cette tâche. **Reprends-la en premier.** L'utilisateur
+prépare son mémoire et veut **comprendre** puis **corriger son schéma d'architecture** (`figure4_1`, une image
+qu'il a jointe : Client Angular / Gateway / Services métier / RabbitMQ / Données PostgreSQL + Redis/MinIO/JaaS).
+
+### Ce qu'il a demandé (à traiter dans l'ordre) :
+1. **Expliquer, simplement mais exactement** : qu'est-ce qu'un WebSocket ? qu'est-ce qu'un « serveur » ici ?
+   quel composant **frontend** ouvre la connexion WebSocket ?
+2. **Le flux WebSocket étape par étape** : est-ce que le frontend passe **toujours par l'API Gateway**, y
+   compris pour **établir** la connexion WebSocket ? (Réponse courte : **OUI**, voir faits vérifiés ci-dessous.)
+3. **Modifier son schéma** : (a) flèche **bidirectionnelle** Frontend ↔ API Gateway pour le WebSocket ;
+   (b) **même couleur** pour **Messaging** et **Notification** (ils parlent tous deux WebSocket temps réel) ;
+   (c) une **légende** précisant que ces deux services communiquent en temps réel via WebSocket.
+4. **Analyser le schéma** : est-il complet, cohérent, conforme à une archi microservices moderne ? Signaler
+   manques / incohérences / améliorations.
+
+### ✅ FAITS WEBSOCKET VÉRIFIÉS DANS LE CODE (ne pas re-deviner — c'est confirmé) :
+- **Le WebSocket passe bien par la Gateway.** Chaîne complète :
+  `Navigateur → nginx (conteneur frontend) → api-gateway:8080 → service`.
+  - `nexawork-frontend/nginx.conf` : `location /ws/` proxifie vers `http://api-gateway:8080` avec
+    `Upgrade`/`Connection "upgrade"` et `proxy_read_timeout 3600s` (connexions longues).
+  - `nexawork-config-repo/nexawork-gateway.yml` : deux routes **`ws://`** —
+    `messaging-ws` (`Path=/ws/messaging/**` → `PrefixPath=/nexawork-messaging-api-v1` → `ws://…:8083`) et
+    `notification-ws` (`Path=/ws/notifications/**` → `PrefixPath=/nexawork-notification-api-v1` → `ws://…:8085`).
+    Le `PrefixPath` est **indispensable** : l'endpoint STOMP est servi **sous le context-path** du service ;
+    sans lui, le handshake tombe en 404 en boucle.
+- **Deux connexions WebSocket distinctes**, établies paresseusement (`stomp-client.service.ts`) :
+  `/ws/messaging` (canaux + conversations + « en train d'écrire ») et `/ws/notifications` (file personnelle de
+  notifications + **heartbeat de présence** toutes les 20 s).
+- **Le composant frontend qui ouvre la socket** : `StompClientService` (`core/ws/stomp-client.service.ts`), via
+  la lib `@stomp/stompjs` (`new Client({ webSocketFactory: () => new WebSocket(url) })`). Les composants (ex.
+  `conversation-privee.component.ts`) ne touchent jamais la socket directement : ils s'abonnent à des flux
+  RxJS exposés par les services (`ConversationsService.live()`, `MembersService`, etc.).
+- **Authentification au handshake** : un WebSocket natif **ne peut pas porter d'en-tête `Authorization`** →
+  le jeton part en **query string** `?access_token=…`. La Gateway laisse `/ws/**` public mais **lit le jeton**
+  pour propager l'identité (sinon session STOMP **sans Principal** : ni file privée, ni présence). L'URL est
+  reconstruite à **chaque (re)connexion** avec le jeton courant (`webSocketFactory`, pas `brokerURL` figé).
+- **STOMP** = sous-protocole applicatif au-dessus du WebSocket (topics `/topic/...`, files `/user/queue/...`,
+  destinations applicatives `/app/...`). Topics utilisés : `/topic/channels/{id}`,
+  `/topic/conversations/{id}`, `/topic/conversations/{id}/typing`, `/topic/presence`,
+  `/topic/org/{id}/channel-activity` ; files : `/user/queue/notifications`, `/user/queue/channel-activity`.
+- **Redis n'intervient PAS dans le transport WebSocket.** Redis ne sert **qu'à la présence** (clés
+  `presence:user:{id}`, TTL ~30 s réarmé par le heartbeat), géré **uniquement** par le notification-service
+  (seul service avec `spring-data-redis`). **Aucun `@Cacheable` nulle part** — pas de cache applicatif.
+
+### 📗 EXPLICATIONS DÉJÀ DONNÉES À L'UTILISATEUR (reste cohérent avec ça — ne le contredis pas) :
+L'utilisateur a déjà reçu ces réponses lors des sessions précédentes. Réutilise-les telles quelles ; ne
+change pas le discours d'une session à l'autre.
+
+- **Qu'est-ce qu'un WebSocket** : un canal **bidirectionnel** et **persistant** entre navigateur et serveur,
+  ouvert par une requête HTTP « Upgrade » puis maintenu ouvert. Contrairement au REST (une requête → une
+  réponse, puis on ferme), le serveur peut **pousser** des données au client **sans que celui-ci demande** —
+  d'où le « temps réel ». Ici on met **STOMP** par-dessus (un format de messages : s'abonner à un *topic*,
+  publier sur une *destination*).
+- **Qu'est-ce qu'un « serveur » ici** : chaque microservice Spring Boot est un serveur (un processus qui écoute
+  sur un port : 8081…8087). Pour le WebSocket, ce sont **messaging (8083)** et **notification (8085)** qui
+  tiennent la socket ouverte côté serveur.
+- **Quel composant frontend ouvre la socket** : `StompClientService` (`core/ws/stomp-client.service.ts`), et
+  lui seul. Il crée un `Client` `@stomp/stompjs` avec `webSocketFactory: () => new WebSocket(url)`. Les
+  composants Angular ne manipulent jamais la socket : ils s'abonnent à des `Observable` exposés par les
+  services métier (`ConversationsService.live()`, `MembersService`, notifications…).
+
+- **Redis et la présence — le point que l'utilisateur a le plus creusé** :
+  - La **présence** (« qui est en ligne ») est un **état partagé**, pas un événement. Elle est stockée dans
+    **Redis** sous forme de clés `presence:user:{id}` avec un **TTL ~30 s**. Le frontend envoie un
+    **heartbeat** STOMP toutes les 20 s (`/app/presence/heartbeat`) qui **réarme le TTL**. Si le heartbeat
+    s'arrête (onglet fermé, réseau coupé), la clé **expire toute seule** → l'utilisateur bascule hors ligne
+    **sans que personne ait à le détecter activement**. C'est **ça** l'intérêt de Redis ici : un magasin
+    partagé avec **expiration automatique**, que le WebSocket seul ne fournit pas.
+  - **Pourquoi Redis alors qu'on a déjà le WebSocket ?** Le WebSocket sait *qu'*une socket s'ouvre/se ferme,
+    mais il ne **mémorise** rien et n'est **pas partagé** entre instances/services. Redis donne (a) la
+    **persistance** de l'état, (b) l'**expiration TTL** (déconnexion « sale » gérée gratuitement),
+    (c) un état **consultable** par une requête REST (`GET /presence/online`) pour amorcer une vue.
+  - **Pourquoi notification-service et pas messaging** : la présence est **transversale** (elle sert au profil,
+    aux conversations, à la liste des membres — pas qu'à la messagerie). On la met donc dans le service des
+    notifications, **seul service branché sur Redis** (`spring-data-redis`). Messaging reste focalisé sur les
+    messages. **Redis n'est utilisé QUE pour la présence** — **aucun cache applicatif** (`@Cacheable`) nulle part.
+  - **Deux façons de « savoir qui est en ligne » côté frontend**, complémentaires : (1) un **sondage** REST
+    toutes les 20 s (`GET /presence/online`) qui amorce/rattrape l'état ; (2) le **temps réel** via
+    `/topic/presence` où le notification-service **diffuse** chaque connexion/déconnexion. Sans le (2), une
+    déconnexion n'apparaissait qu'au prochain sondage (jusqu'à 20 s de retard).
+
+- **Messages instantanés / « en train d'écrire » / accusés de lecture = des ÉVÉNEMENTS** (pas des états) :
+  poussés directement par WebSocket, **sans Redis**. Un message → publié sur `/topic/conversations/{id}` ;
+  la saisie → `/topic/conversations/{id}/typing` (volatile, retombe après 4 s) ; l'accusé de lecture → le
+  serveur **rediffuse** le message avec `readAt` sur le même topic (cf. Lot 5).
+
+### 💡 Pistes de revue du schéma (à confirmer en regardant l'image avec l'utilisateur) :
+- La flèche Client ↔ Gateway est déjà étiquetée « REST JSON / WebSocket » : bon, mais l'utilisateur veut la
+  rendre **explicitement bidirectionnelle** pour le WebSocket, et **teinter Messaging + Notification** d'une
+  même couleur avec **légende dédiée**. Aller dans ce sens.
+- Manques/améliorations possibles à évoquer : le **flux JaaS/WebRTC** part-il bien du **navigateur** vers
+  `8x8.vc` (média P2P **hors** Gateway) — à vérifier sur le schéma ; la **présence Redis** est portée par le
+  **notification-service** (pas messaging) ; distinguer visuellement **synchrone** (REST/WS) et **asynchrone**
+  (RabbitMQ). Rester **descriptif et honnête** : ne pas inventer de composant absent du code.
+
+> ⚠️ Le schéma est produit par l'utilisateur (image PNG) : **tu ne peux pas l'éditer directement**. Décris
+> précisément **quoi changer et où** (couleurs, flèches, légende), ou propose un diagramme Mermaid/texte qu'il
+> reportera. Ne prétends pas avoir « modifié » l'image.
 
 ---
 
@@ -192,6 +305,25 @@ docker exec nexawork-postgres psql -U postgres -tc \
 
 ---
 
+### Lot 5 — temps réel : présence, saisie, accusés de lecture ✅ **commité** (non rebuild / non retesté)
+- **Import de fichier 500** : le `file-service` n'avait **aucune auto-création de bucket** MinIO (il dépendait
+  d'un sidecar `minio-init` oublié) → `BucketInitializer` (`@PostConstruct`) + `ensureBucket()` dans `upload()`.
+- **Dossier restreint : `TypeError: Cannot read properties of null (reading 'map')`** : le GED renvoyait
+  `taskAttachments = null` (jamais initialisé) → `.taskAttachments(List.of())` côté serveur + `?? []` défensif
+  côté `ged.service.ts`.
+- **« Mes tâches » (Accueil)** : deux sections « Prioritaires » (échéance ≤ aujourd'hui) / « Mes autres tâches ».
+- **Présence pas en temps réel dans le profil/l'en-tête** : `MembersService.byName`/`bySlug` figeaient la
+  présence à l'ouverture → recombinés avec le flux `presence$` (`combineLatest`) → suivent connexions/déco.
+- **« En train d'écrire » invisible** : le typing était **masqué** par un couplage à la présence
+  (`peerTyping = typingRaw && peer.online`) → **découplé** (`peerTyping = typingRaw`).
+- **🔑 Accusé de lecture (« lu ») jamais affiché** (`2642040`) : le front appelait `markRead(slug)` qui
+  **n'effaçait que le badge local** — le **vrai** `PATCH /messages/{id}/read` **n'était jamais émis**, donc
+  `readAt` restait `null`. Correctif : (a) `ConversationServiceImpl.markRead` **rediffuse** le message (avec
+  `readAt`) sur le topic → l'expéditeur voit « lu » sans recharger ; (b) nouvelle méthode front
+  `markMessageRead(id)` qui émet le PATCH réel, appelée à la réception live d'un message du pair **et** à
+  l'ouverture pour les messages reçus pendant l'absence (dédup par `Set`, serveur idempotent) ; (c) réception
+  live restructurée en 3 cas (MAJ par id / réconciliation de l'optimiste sans id / nouveau message du pair).
+
 ## ❓ EN ATTENTE DE VÉRIFICATION PAR L'UTILISATEUR
 
 - **Les 500 (`/users/me`, `/workspaces`, `/members`) et les 401 associés.** Hypothèse forte : **pas un bug de
@@ -213,9 +345,14 @@ docker exec nexawork-postgres psql -U postgres -tc \
 
 ## 🚦 DÉMARRAGE
 
-1. Lis les fichiers de référence ci-dessus.
-2. `git status` (commits à pousser — demande à l'utilisateur) et `docker compose ps`.
-3. **Fais construire et déployer le lot 4** (commandes en haut), **vérifie les jars**, puis demande à
-   l'utilisateur de tester.
-4. Corrige méthodiquement : **mesurer → localiser → corriger à la racine → compiler → commiter → indiquer
+1. **Reprends d'abord la « TÂCHE EN COURS » ci-dessus** (pédagogie WebSocket + revue du schéma `figure4_1`).
+   Demande à l'utilisateur de te **re-joindre l'image** `figure4_1.png` (elle était dans ses Téléchargements) si
+   tu dois l'analyser. Les faits WebSocket sont déjà vérifiés dans le code — inutile de re-fouiller, mais tu
+   **peux** citer les fichiers (`nexawork-frontend/nginx.conf`, `nexawork-gateway.yml`, `stomp-client.service.ts`).
+2. Lis les fichiers de référence (§ « PREMIÈRE ACTION »).
+3. `git status` (propre) + `git log --oneline -14` ; commits à pousser → demande à l'utilisateur
+   (`! git push origin backend/dev`). `docker compose ps` pour l'état réel.
+4. **Rebuild + test** : le lot 5 (temps réel) est commité mais **pas rebuild**. Front + `messaging-service` au
+   minimum. Le temps réel exige **deux comptes connectés**.
+5. Corrige méthodiquement : **mesurer → localiser → corriger à la racine → compiler → commiter → indiquer
    quoi rebuild**.

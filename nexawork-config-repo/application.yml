@@ -51,7 +51,13 @@ nexawork:
     token-validity-in-seconds: 900
 
 nexawork-cors:
-  allowed-origins: "${CORS_ORIGINS:http://localhost:4200}"
+  # Filtre CORS commun (commons/WebConfigurer) appliqué par CHAQUE microservice servlet.
+  # Chaque service résout ${CORS_ORIGINS} avec SON propre env (défaut localhost) — donc
+  # pour un test multi-machines, on fixe « * » ici, en un seul point, plutôt que
+  # d'injecter la variable dans les 7 services. `setAllowedOriginPatterns(["*"])`
+  # accepte le joker même avec credentials.
+  # ⚠️ TEST uniquement — EN PRODUCTION : remettre l'URL réelle du frontend.
+  allowed-origins: "*"
   allowed-methods: "*"
   allowed-headers: "*"
   exposed-headers: "Authorization,Content-Disposition"
