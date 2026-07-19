@@ -218,6 +218,7 @@ public class TaskServiceImpl implements TaskService {
         if (Boolean.TRUE.equals(target.getIsFinal())) {
             eventPublisher.publishLivrableValidated(new LivrableValidatedEvent(
                     saved.getId(), saved.getTitle(), project.getId(), project.getName(),
+                    project.getOrganisationId(),
                     caller.userId(),
                     saved.getAssigneeType() == AssigneeType.USER ? saved.getAssigneeId() : null));
         }
@@ -282,6 +283,7 @@ public class TaskServiceImpl implements TaskService {
         eventPublisher.publishTaskAssigned(new TaskAssignedEvent(
                 task.getId(), task.getTitle(),
                 task.getProject().getId(), task.getProject().getName(),
+                task.getProject().getOrganisationId(),
                 task.getAssigneeId(), caller.userId()));
     }
 

@@ -58,6 +58,40 @@ public interface MessageRepository extends JpaRepository<Message, UUID> {
     List<Message> findByConversationIdAndAttachmentUrlIsNotNullAndIsDeletedFalseOrderBySentAtDesc(UUID conversationId);
 
     /**
+     * Vrai nombre de messages non lus d'une conversation pour l'appelant :
+     * messages reçus (envoyés par l'autre participant) encore sans {@code readAt}.
+     * Remplace l'ancien booléen {@code conversation_participants.is_read}, jamais
+     * remis à jour après la création (badge figé à « 1 »).
+     */
+    @Query("""
+            SELECT COUNT(m) FROM Message m
+            WHERE m.conversationId = :conversationId
+              AND m.isDeleted = false
+              AND m.senderUserId <> :userId
+              AND m.readAt IS NULL
+            """)
+    long countUnreadInConversation(@Param("conversationId") UUID conversationId,
+                                   @Param("userId") UUID userId);
+
+    /** Messages d'un canal non postés par l'appelant (canal jamais ouvert = tout est non lu). */
+    @Query("""
+            SELECT COUNT(m) FROM Message m
+            WHERE m.channel.id = :channelId AND m.isDeleted = false AND m.senderUserId <> :userId
+            """)
+    long countChannelMessagesFromOthers(@Param("channelId") UUID channelId,
+                                        @Param("userId") UUID userId);
+
+    /** Messages d'un canal postés APRÈS la dernière lecture, par d'autres que l'appelant. */
+    @Query("""
+            SELECT COUNT(m) FROM Message m
+            WHERE m.channel.id = :channelId AND m.isDeleted = false
+              AND m.senderUserId <> :userId AND m.sentAt > :since
+            """)
+    long countChannelUnreadSince(@Param("channelId") UUID channelId,
+                                 @Param("userId") UUID userId,
+                                 @Param("since") LocalDateTime since);
+
+    /**
      * Recherche globale (§4.8) : messages dont le contenu contient le terme, dans
      * les **fils accessibles à l'appelant** — canaux du workspace (visibilité REF F
      * appliquée en aval) ou conversations dont il est participant.

@@ -1,12 +1,14 @@
-import { Injectable, Signal, inject, signal } from '@angular/core';
+import { Injectable, Signal, computed, inject, signal } from '@angular/core';
 import { EMPTY, Observable, forkJoin, map, of, switchMap } from 'rxjs';
-import { delay, filter } from 'rxjs/operators';
+import { delay, filter, tap } from 'rxjs/operators';
 import { BaseHttpService } from '@core/http/base-http.service';
+import { SILENT } from '@core/http/http-context';
 import { FilesHttpService } from '@core/http/files.http.service';
 import { StompClientService } from '@core/ws/stomp-client.service';
 import { Conversation, ConversationMessage, ConversationResponse } from '@core/models/conversation.models';
 import { MessageResponse } from '@core/models/channel.models';
 import { messageBody, messageFiles } from './channels.service';
+import { MentionRef } from '@core/models/mention.models';
 import { CONVERSATIONS_BY_WORKSPACE, CONVERSATION_THREADS, DEFAULT_CONVERSATION_THREAD } from '@core/mock/conversations';
 import { parseRichText } from '@core/util/mention.util';
 import { avatarColorFor, initials, slugName } from '@core/util/ui.util';
@@ -21,6 +23,12 @@ import { Member } from '@core/models/member.models';
 export abstract class ConversationsService {
   /** Conversations of the active workspace (sidebar + list). */
   abstract list(): Observable<Conversation[]>;
+  /**
+   * Vue réactive des conversations courantes. À la différence de `list()` (un
+   * fetch), ce signal reflète les mutations d'état de lecture : ouvrir une
+   * conversation vide son badge **sans rechargement** (la sidebar la lit).
+   */
+  abstract readonly items: Signal<Conversation[]>;
   /** Message thread of one conversation (by peer slug). */
   abstract thread(id: string): Observable<ConversationMessage[]>;
   /** Live stream of new messages of one conversation (STOMP). */
@@ -29,9 +37,11 @@ export abstract class ConversationsService {
    * Send a message to the peer identified by the route slug, with optional file
    * attachments (téléversées au File Service puis rattachées, une par message).
    */
-  abstract sendMessage(id: string, content: string, files?: File[]): Observable<void>;
+  abstract sendMessage(id: string, content: string, files?: File[], mentions?: MentionRef[]): Observable<void>;
   /** Marque comme lus les messages reçus de la conversation. */
   abstract markRead(id: string): void;
+  /** Accusé de lecture d'un message reçu (`PATCH /messages/{id}/read`) — temps réel. */
+  abstract markMessageRead(messageId: string): void;
   /** Signale au pair que je suis (ou non) en train d'écrire (STOMP, volatile). */
   abstract sendTyping(id: string, typing: boolean): void;
   /** Flux « le pair est en train d'écrire » (true/false) — temps réel. */
@@ -52,17 +62,22 @@ export class ConversationsMockService extends ConversationsService {
   private readonly _deletedByOther: ReadonlySet<string> = new Set(['equipe-design']);
   private readonly _deletedByMe = signal<ReadonlySet<string>>(new Set());
   readonly deletedIds = this._deletedByMe.asReadonly();
+  private readonly _items = signal<Conversation[]>([]);
+  readonly items = this._items.asReadonly();
 
   list(): Observable<Conversation[]> {
     const wsId = this.session.activeWorkspaceId();
-    return of(CONVERSATIONS_BY_WORKSPACE[wsId] ?? []).pipe(delay(80));
+    return of(CONVERSATIONS_BY_WORKSPACE[wsId] ?? []).pipe(delay(80), tap(l => this._items.set(l)));
   }
   thread(id: string): Observable<ConversationMessage[]> {
     return of(CONVERSATION_THREADS[id] ?? DEFAULT_CONVERSATION_THREAD).pipe(delay(80));
   }
   live(_id: string): Observable<ConversationMessage> { return EMPTY; }
-  sendMessage(_id: string, _content: string, _files?: File[]): Observable<void> { return of(void 0); }
-  markRead(_id: string): void { /* no-op en mock */ }
+  sendMessage(_id: string, _content: string, _files?: File[], _mentions?: MentionRef[]): Observable<void> { return of(void 0); }
+  markRead(id: string): void {
+    this._items.update(list => list.map(c => c.id === id ? { ...c, unread: 0 } : c));
+  }
+  markMessageRead(_messageId: string): void { /* no-op en mock */ }
   sendTyping(_id: string, _typing: boolean): void { /* no-op en mock */ }
   typing(_id: string): Observable<boolean> { return EMPTY; }
   deleteForMe(id: string): void {
@@ -81,6 +96,8 @@ export class ConversationsHttpService extends BaseHttpService implements Convers
 
   /** Conversations courantes indexées par slug du pair. */
   private readonly cache = signal<Map<string, Conversation>>(new Map());
+  /** Vue réactive : `markRead` mute le cache → la sidebar vide le badge sans recharger. */
+  readonly items = computed(() => [...this.cache().values()]);
   private readonly _deletedByMe = signal<ReadonlySet<string>>(new Set());
   readonly deletedIds = this._deletedByMe.asReadonly();
 
@@ -106,7 +123,9 @@ export class ConversationsHttpService extends BaseHttpService implements Convers
       }).pipe(map(({ page, dir }) => {
         const meId = this.session.user()?.id;
         const byId = new Map(dir.map(m => [m.userId, m]));
-        return page.messages.map(msg => toConversationMessage(msg, meId, byId));
+        // Le backend pagine du plus récent au plus ancien (curseur) : on ré-inverse
+        // pour l'affichage chronologique (anciens en haut, nouveaux en bas).
+        return page.messages.map(msg => toConversationMessage(msg, meId, byId)).reverse();
       }));
     }));
   }
@@ -124,20 +143,20 @@ export class ConversationsHttpService extends BaseHttpService implements Convers
     }));
   }
 
-  sendMessage(id: string, content: string, files: File[] = []): Observable<void> {
+  sendMessage(id: string, content: string, files: File[] = [], mentions: MentionRef[] = []): Observable<void> {
     const text = content.trim();
     if (!text && files.length === 0) return of(void 0);
     return this.ensureConversation(id).pipe(switchMap(conv => {
       if (!conv?.uuid) return of(void 0);
       const endpoint = `/conversations/${conv.uuid}/messages`;
       if (files.length === 0) {
-        return this.post$<MessageResponse>('messaging', endpoint, { content: text }).pipe(map(() => void 0));
+        return this.post$<MessageResponse>('messaging', endpoint, { content: text, mentions }).pipe(map(() => void 0));
       }
       // Téléverse tous les fichiers puis envoie UN SEUL message qui les porte tous.
       const workspaceId = this.session.activeWorkspaceId();
       return forkJoin(files.map(f => this.filesSvc.upload('conversation-msg', f, { workspaceId, conversationId: conv.uuid })))
         .pipe(switchMap(stored =>
-          this.post$<MessageResponse>('messaging', endpoint, messageBody(text, stored)).pipe(map(() => void 0))));
+          this.post$<MessageResponse>('messaging', endpoint, messageBody(text, stored, mentions)).pipe(map(() => void 0))));
     }));
   }
 
@@ -164,10 +183,7 @@ export class ConversationsHttpService extends BaseHttpService implements Convers
   }
 
   markRead(id: string): void {
-    // Efface le badge « non lu » localement à l'ouverture. L'accusé de lecture
-    // serveur se fait par message (`PATCH /messages/{id}/read`) ; il sera émis
-    // à la réception de chaque message quand le flux STOMP portera les ids —
-    // différé ici pour éviter un aller-retour par message à l'ouverture.
+    // Efface le badge « non lu » localement à l'ouverture de la conversation.
     const conv = this.cache().get(id);
     if (conv && conv.unread > 0) {
       this.cache.update(m => {
@@ -176,6 +192,17 @@ export class ConversationsHttpService extends BaseHttpService implements Convers
         return next;
       });
     }
+  }
+
+  /**
+   * Accusé de lecture d'UN message (`PATCH /messages/{id}/read`). C'est cet appel
+   * — jusqu'ici jamais émis — qui pose `readAt` côté serveur ; le serveur en informe
+   * alors l'expéditeur en temps réel (son message passe « lu »). Appelé à la
+   * réception d'un message du pair. Silencieux : un accusé raté n'alarme personne.
+   */
+  markMessageRead(messageId: string): void {
+    if (!messageId) return;
+    this.patch$<unknown>('messaging', `/messages/${messageId}/read`, {}, SILENT()).subscribe({ error: () => {} });
   }
 
   deleteForMe(id: string): void {
@@ -219,8 +246,10 @@ function toConversation(c: ConversationResponse, meId: string | undefined, byId:
     name,
     color: peer?.color ?? avatarColorFor(peerId),
     initials: initials(name),
+    photoUrl: peer?.photoUrl,
     msg: '',
-    unread: c.isRead ? 0 : 1,
+    // Vrai compteur (repli sur l'ancien booléen si l'image backend ne l'envoie pas encore).
+    unread: c.unreadCount ?? (c.isRead ? 0 : 1),
     time: '',
     uuid: c.id,
     peerUserId: peerId,
@@ -232,10 +261,12 @@ function toConversationMessage(msg: MessageResponse, meId: string | undefined, _
   const mine = msg.senderUserId === meId;
   const files = messageFiles(msg);
   return {
+    id: msg.id,
     me: mine,
     parts: parseRichText(msg.content),
     time: formatTime(msg.sentAt),
     read: mine ? !!msg.readAt : undefined,
+    unreadByMe: !mine && !msg.readAt,
     files,
   };
 }

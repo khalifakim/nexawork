@@ -45,7 +45,8 @@ export class AvatarComponent {
   /** Presence-dot ring color (matches the surface the avatar sits on). */
   @Input() ring = '#fff';
   /** Optional photo URL. When set, replaces the initials disk. */
-  @Input() photoUrl: string | null = null;
+  /** `undefined` accepté : les modèles portent une photo optionnelle (`photoUrl?`). */
+  @Input() photoUrl: string | null | undefined = null;
 
   get fontSize(): number { return Math.max(9, Math.round(this.size * 0.4)); }
 

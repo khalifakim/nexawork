@@ -301,6 +301,247 @@ Aucun backend neuf (endpoints `/statuses`, `/transitions`, `/workflow`, `/overvi
 - **Limites connues I2c** (levées en I3) : filtre Gantt « Assigné à », responsable « membre spécifique » du Workflow,
   et « Responsable » des échéances attendent l'annuaire des membres.
 
+---
+
+## 2bis · Corrections post-test (session navigateur)
+
+### Lot du 2026-07-13 — canaux, mentions, « Mes tâches » (frontend uniquement)
+**Rebuild requis : `frontend` seul.** Aucun changement backend, aucune migration.
+
+| # | Symptôme constaté | Cause racine | Correctif |
+| :-: | :- | :- | :- |
+| 1 | Canal créé (lecture seule) → toast « Ce canal est privé, vous n'y avez pas accès » **à son créateur** | `ChannelsService.create()` était **optimiste** : POST en *fire-and-forget* puis navigation immédiate. Le `channelAccessGuard` rechargeait la liste **avant** que le POST ne soit commité → slug absent → « canal privé » (REF F, doctrine 404-not-403) | `create()` renvoie un `Observable<Channel>` résolu sur la réponse serveur ; le modal ne navigue qu'après persistance (bouton « Création… »), et amorce le cache slug→UUID |
+| 2 | *(trouvé en corrigeant #1)* Un canal **de projet** naissait canal **d'organisation** | Le `projectId` n'était **jamais transmis** au POST (le backend `CreateChannelRequest` l'accepte pourtant) | `CreateChannelPayload.projectId` + `ShellBus.openNewChannel(scope, project)` ; le « + » sidebar et le bouton « Créer un canal » de l'onglet Canaux portent le projet |
+| 3 | *(idem)* Le groupe « Canaux Projets » de la sidebar ne s'affichait **jamais** en backend réel | Il se reposait sur `Channel.project` (**nom**), que le payload ne porte pas — seul `projectId` existe | Le nom du projet propriétaire est résolu depuis la liste des projets (déjà chargée par la sidebar). Le filtre « projet archivé » compare désormais des `projectId`, non des slugs de nom |
+| 4 | Mention `@@tâche` non cliquable (500 / rien) | La mention porte la **clé lisible** (`MOB-101`), pas l'UUID — or tous les points d'ouverture appelaient `cardById()` avec cette clé | `TasksService.cardByRef()` : UUID → lecture directe ; clé → résolution via `GET project /search?q=` (qui indexe `task_key` et applique déjà R15), puis lecture. Branché sur `app-shell`, `projet-shell`, `mes-taches`, `mentions-recues`. *(`@personne`, `@@@document` et `#canal` se résolvaient déjà par nom/slug.)* |
+| 5 | « Mes tâches » : section **« Sans échéance »** alors qu'une échéance est saisie | `AccueilHttpService.myTasks()` inventait 4 sections (retard / semaine / mois / sans échéance) via `dueBucket()`, qui **rend `undefined` au-delà de 31 j** → la tâche tombait dans « Sans échéance ». Contraire à **V5.1 §5.1** (« Aujourd'hui et en retard », « pas de ligne Non planifiées ») | Deux sections **Aujourd'hui** + **En retard**. ⚠️ Conséquence assumée (conforme §5.1) : une tâche à échéance plus lointaine **n'apparaît pas** sur cet écran |
+| 6 | Colonne mono = **UUID** de la tâche ; colonne « Projet » = sa clé | `toMyTaskRow()` mettait `taskKey` dans `proj`, et le template affichait `t.id` | `MyTaskRow.key` (clé lisible) affichée en mono ; `proj` = **nom du projet**, résolu depuis la liste des projets (`TaskResponse` ne le porte pas) |
+| 7 | Clic sur une tâche de « Mes tâches » → **500** + `GET /projects/undefined/statuses` | La fiche recevait une carte **fabriquée à la main** (sans `projectId` ni `statusId`) → `loadBoard(undefined)` | La ligne ouvre la **vraie** carte (`cardById`). Même correction dans « Mentions reçues », qui fabriquait aussi la sienne |
+
+### Lot du 2026-07-13 (soir) — WebSocket, présence, canaux auto, réunions
+**Rebuild requis : `api-gateway`, `meeting-service`, `frontend`.** Aucune migration.
+
+| # | Symptôme constaté | Cause racine (**mesurée**) | Correctif |
+| :-: | :- | :- | :- |
+| 8 | **WebSocket en échec permanent** (`/ws/notifications`, `/ws/messaging`) | **L'image `api-gateway` datait de 4 jours** : le correctif « `/ws/**` en liste blanche » (commit `79c9916`, du matin même) **n'avait jamais été construit**. Mesuré : handshake → **401**. *(Piège n°1 du handoff, en vrai.)* | **Rebuild** de `api-gateway`. **Toujours vérifier l'âge de l'image avant de conclure à un bug de code.** |
+| 9 | Même public, le handshake **n'apporte aucune identité** → `/user/queue/notifications` muet, **présence jamais alimentée** | Les deux services lisent l'identité dans l'en-tête **`X-User-Id` posé par le gateway**. Or un chemin public **saute le filtre JWT** → aucun en-tête. Et un **WebSocket natif ne peut pas porter `Authorization`** : le jeton n'atteignait donc jamais le serveur. Aucun `ChannelInterceptor` ne lisait la trame CONNECT. **Résultat : session STOMP sans `Principal`.** | Le jeton voyage en **query string** (`?access_token=`), seul canal disponible. Le gateway le valide sur `/ws/**` et **propage les en-têtes d'identité** — sans jamais rejeter (le chemin reste public → pas de boucle de reconnexion). Front : `webSocketFactory` reconstruit l'URL **à chaque reconnexion** (un `brokerURL` figé rouvrirait avec un jeton périmé). |
+| 10 | **Tous les membres « hors ligne »** dans les conversations | `MembersHttpService.directory()` **ne croisait jamais** `/presence/online` : `online` restait à `false` partout (fiche profil, en-tête de conversation, page Membres). Seule `online()` (2 vues) interrogeait la présence. | Flux de présence **partagé et rafraîchi toutes les 20 s** (un seul appel pour tous les abonnés) ; `directory()` le fusionne, `online()` devient un **flux vivant** (les vues suivent connexions/déconnexions sans rechargement). Un échec vaut « personne en ligne » et ne casse aucune vue. |
+| 11 | Canaux **#général / #annonces** « non créés » à la création d'un projet | **Faux problème** : les logs et la base montrent que le consumer `project.created` **les a bien créés**. Ils étaient **invisibles** : le groupe « Canaux Projets » de la sidebar ne s'affichait jamais (cf. #3 du lot précédent). | Rien à corriger côté backend — **résolu par le correctif #3**. |
+| 12 | Réunion : **409 Conflict** sur toute création | `create()` posait `joinedAt = now()` sur l'hôte → **REF A le comptait « déjà en appel » avant même d'entrer dans la salle**. La salle ne s'ouvrant jamais, l'appel restait `ACTIVE` **indéfiniment** → 409 sur toute création suivante, **sans aucun moyen d'en sortir**. | L'hôte est convié (`invitedExplicitly`) mais **`joinedAt` reste nul** : il n'entre qu'en rejoignant réellement (`join()`). + le front **quitte l'appel à la fermeture de la fenêtre** (`fetch keepalive` — une requête Angular est annulée avec le document). |
+| 13 | Réunion bloquée sur **« Connexion à la salle… »** | Le voile de chargement n'était levé qu'à l'événement `videoConferenceJoined`. Tant qu'il ne venait pas (autorisation caméra, salle d'attente, jeton refusé), **notre overlay masquait l'iframe JaaS** — qui pouvait très bien fonctionner dessous. | L'iframe est révélée **dès qu'elle est montée** ; les erreurs de chargement deviennent de vraies erreurs affichées. |
+| 14 | « Invités internes » : **liste vide** | Le modal était **encore entièrement mock** (5 personnes codées en dur) et n'émettait **ni `memberIds` ni les emails externes**. | Membres **réels** (`MembersService.others()`), `memberIds` transmis → le backend notifie les conviés (`meeting.participant.invited`). Emails externes → `POST /calls/{id}/guests` (lien à usage unique **envoyé par email**, consumer déjà en place). |
+| 15 | Invité externe : **le lien de l'email ne menait nulle part** | La route **`/guest/{token}` n'existait pas** dans le SPA → repli `**` → login. L'invité n'a pourtant pas de compte. | **Page publique `salle-invite`** (`GET /guest/{token}` → JWT JaaS non modérateur). Montage JaaS mutualisé (`core/util/jitsi.util.ts`) entre membre et invité. |
+| 16 | Pas d'indicateur pendant la création ; salle ouverte **dans** l'app | — | Bouton « Création… » ; la salle s'ouvre dans une **fenêtre dédiée** (`/salle/:id`, hors shell), l'app restant utilisable derrière. |
+| 17 | Bannière « Appel en cours » invisible pour les autres participants | Elle était pilotée par un **signal local** (`session.startCall`), posé uniquement dans la fenêtre de la salle → invisible partout ailleurs. Le popover affichait en plus des **participants mock** (« Sarah, Moussa et 3 autres »). | Bannière tenue par le **serveur** : `GET /calls/active` (n'expose que les appels dont l'appelant est hôte ou convié) interrogé toutes les 15 s. Avatars mock supprimés ; « Quitter » appelle réellement `leave`. |
+
+> **⚠️ Le swap remonte pendant un `docker compose build frontend`** (le build Angular consomme ~1-2 Go dans le
+> conteneur, en plus des 14 services). Mesuré ce soir : swap **1 → 744 Mo**, et une **famine Hikari à 19:07**
+> (`Connection is not available, request timed out after 43 s`) — exactement le mécanisme décrit en §4. Ce n'est
+> pas une régression du correctif mémoire : c'est le **build** qui pousse la VM en swap. Éviter de tester
+> pendant un build. *(Connexions PostgreSQL vérifiées : 8 — le pool tient.)*
+
+> **`GET /tasks/{id}` renvoie 500 sur un id non-UUID** (`Invalid UUID string: 1PT-1`, vu en logs — c'était le
+> symptôme des mentions de tâche). Le frontend n'envoie plus de clé, mais le service **devrait répondre 400** :
+> `MethodArgumentTypeMismatchException` n'est pas mappée dans `GlobalControllerExceptionHandler` (commons).
+> Non corrigé : la classe est partagée → **rebuild des 9 services** pour un cas désormais sans appelant.
+
+### Lot du 2026-07-13 (nuit) — mentions rattachées, canaux privés réels, 400 vs 500
+**Rebuild requis : `messaging-service`, `notification-service`, `project-service`, `frontend`** + **`rabbitmq-init`**
+(nouvelle queue `nexawork.notification.mention`). Aucune migration.
+
+| # | Symptôme | Cause racine | Correctif |
+| :-: | :- | :- | :- |
+| 18 | **« Mentions reçues » (§5.3) toujours vide**, aucune notification de mention | `MessageMention.targetId` n'était **jamais** renseigné : `MentionParser` n'extrait que le **texte** mentionné — les utilisateurs, tâches, documents et canaux appartiennent à **d'autres domaines**, le Messaging ne peut pas les résoudre. Or `listReceived()` filtre sur `targetId = utilisateur courant` → la vue ne pouvait rien trouver, **jamais**. | Le **client** connaît la cible à la saisie (son catalogue de mentions est déjà réel). `SendMessageRequest.mentions` porte `{type, targetId, targetText}` ; `MessageAssembler` les rattache aux mentions que le **parser** trouve réellement dans le texte — **le contenu reste la source de vérité** sur ce qui est mentionné, la requête n'apporte que l'identifiant. |
+| 19 | Aucune notification quand on est mentionné | Le Messaging ne publiait **aucun événement** (documenté tel quel). | Nouvel événement **`message.mention`** + `MessagingEventPublisher` + queue **`nexawork.notification.mention`** + consumer. Le lien ouvre le canal / la conversation d'origine. ⚠️ Le **nom de l'auteur n'est pas transmis** : la Gateway ne propage que l'`userId` et aucun service ne résout les noms — on ne l'invente pas, le corps dit « Vous avez été mentionné dans #… ». |
+| 20 | Canal privé : **les bénéficiaires n'atteignaient jamais le serveur** | `create()` **et** `setRestriction()` envoyaient tous deux `memberUserIds: []`, et `ChannelGrant` ne portait qu'un **nom** (pas d'id). Le picker était en outre **entièrement mock** (5 personnes + 3 équipes en dur). Le modal « Gérer les accès » laissait croire à un partage inexistant, et rouvrait toujours **une liste vide**. | `ChannelGrant` porte un **id réel** ; le picker liste les **membres réels** et les **équipes réelles du projet** ; les bénéficiaires partent vraiment. Une **équipe est déployée en ses membres** (le Messaging ne stocke que des `userId` — il ignore la composition des projets). Le modal **relit** les accès existants (`GET /channels/{id}/access`). |
+| 21 | `GET /tasks/{id}` → **500** sur un id non-UUID | `MethodArgumentTypeMismatchException` n'était pas mappée dans `GlobalControllerExceptionHandler` (**commons**) : une erreur d'appelant sortait en **panne serveur** (`Invalid UUID string: 1PT-1`). | Mappée en **400**. ⚠️ La classe étant partagée, le mapping n'est effectif que dans les services **reconstruits** (`project-service`, `messaging`, `notification` ici) ; les autres l'auront à leur prochain build. |
+
+### Lot du 2026-07-14 — JaaS, email invité, temps réel, nom de l'auteur — ✅ **déployé** (vérifié dans les jars, **non retesté en navigateur**)
+Commits `8ceaae5`, `139aecb`, `4f6de6f`.
+**Images reconstruites** : `api-gateway`, `meeting-service`, `messaging-service`, `notification-service`, `frontend`.
+⚠️ **`api-gateway` faisait partie du lot** (il pose `X-User-Name`) — il manquait à la liste de rebuild annoncée dans le handoff.
+Aucune migration.
+
+**Vérification bytecode (piège n°1) — faite le 2026-07-14, tout vert :**
+- `meeting/security/GatewayIdentityFilter.class` → `X-User-Name` présent ✅
+- `meeting/services/JitsiTokenService.class` → `.audience().single(…)` présent ✅
+- `messaging/security/GatewayIdentityFilter.class` → `X-User-Name` présent ✅
+- `gateway/security/JwtAuthenticationFilter.class` → `X-User-Name` présent ✅
+
+| # | Symptôme | Cause racine | Correctif |
+| :-: | :- | :- | :- |
+| 22 | Jitsi refuse le jeton : **« Invalid 'aud' value. It should be 'jitsi' »** | JJWT sérialise `.audience().add("jitsi")` en **tableau** `["jitsi"]`, or JaaS exige la **chaîne** `"jitsi"`. | `.audience().single("jitsi")` (`JitsiTokenService`). |
+| 23 | **L'email d'invité externe n'arrivait jamais** (le lien était pourtant bien généré) | `config-repo/nexawork-notification.yml` n'avait **pas** le `mail.smtp.ssl.trust` que `nexawork-auth.yml` possède → le **proxy TLS intercepteur** faisait échouer le handshake (« Could not convert socket to TLS »). Même cause racine que les emails Auth (I1d). | `mail.smtp.ssl.trust: ${SMTP_SSL_TRUST:*}` ajouté. ⚠️ **À retirer en prod** (sans proxy). |
+| 24 | **L'appel restait `ACTIVE` indéfiniment** → 409 sur toute création suivante | `leave()` ne faisait que marquer le départ du participant : **plus personne dans la salle n'y clôturait l'appel**. | `leave()` **clôt** l'appel quand plus aucun participant n'est présent (`end()` partage le même code). |
+| 25 | Clic sur la bannière « Appel en cours » **sans effet** | `window.open` échoue **en silence** quand le popup est bloqué. | Détection du retour `null` → **toast** invitant à autoriser les popups. |
+| 26 | **Nom de l'auteur jamais affiché** (notifications, `caller.displayName()` retombait sur « Utilisateur ») | Le JWT porte bien `displayName`, mais la **Gateway ne le propageait à aucun service** — d'où le ⚠️ du point #19 (« on ne l'invente pas »). | En-tête **`X-User-Name`** posé par la Gateway (**URL-encodé** : un en-tête HTTP n'est pas sûr en UTF-8 — « Moussa Bâ » arriverait mutilé) + lu par les **6 `GatewayIdentityFilter`**. |
+| 27 | `There is no underlying STOMP connection` | `publish()` émettait alors que la connexion s'établit de façon **asynchrone**. | Les trames émises trop tôt sont **mises en attente** et rejouées à `onConnect`. |
+| 28 | **🔑 Vraie cause du « pas de temps réel »** : le fil devenait muet jusqu'au rechargement de la page | `subscribeIfPossible()` refusait de réabonner une destination déjà présente dans `subs`. Or **les abonnements meurent avec la socket** : après une coupure ils n'étaient **jamais** réarmés. | `subs` est **vidée à `onWebSocketClose`** → réabonnement effectif à la reconnexion. |
+| 29 | Présence : passage « hors ligne » avec jusqu'à 20 s de retard | Seul un **sondage de 20 s** alimentait la présence. | Le Notification Service **diffuse** connexions/déconnexions sur **`/topic/presence`** ; le sondage ne sert plus que de **rattrapage**. |
+| 30 | Notification de mention : ni auteur, ni ancrage sur le message | Cf. #26 (nom absent) ; le lien ouvrait le canal **sans y défiler**. | La notification porte le **nom de l'auteur** et un lien **ancré** (`?message=<uuid>`) : la vue ouvre le canal/la conversation, **y défile** et **encadre** le message. |
+
+### Lot du 2026-07-14 (matin) — cycle de vie des appels, JaaS, appel entrant
+**Rebuild requis : `meeting-service`, `notification-service`, `frontend`.**
+⚠️ **`nexawork-config-repo/nexawork-meeting.yml` a changé** (bloc `nexawork.meeting`) → **recréer `config-server`
+puis `meeting-service`** (le config-repo est monté en volume, mais le serveur de config doit le relire).
+Aucune migration. Builds Angular dev + prod verts, `mvn compile` vert.
+
+| # | Symptôme | Cause racine (**mesurée**) | Correctif |
+| :-: | :- | :- | :- |
+| 31 | « Supprimer définitivement l'historique » : **tout réapparaît au rechargement** | `historique.component.ts` **ne parlait jamais au backend**. `hide()` et `remove()` poussaient l'id dans un **signal local** (`this.removed.update(…)`) et affichaient un toast affirmant « supprimée définitivement ». `MeetingsHttpService.hide()`/`remove()` existaient et étaient corrects — **jamais appelés**. Le masquage était atteint du même mal. | Les deux appellent le serveur. Le masquage local n'est appliqué **qu'après** confirmation : sinon la ligne disparaîtrait de l'écran d'un utilisateur à qui **REF B** vient de refuser la suppression (403). |
+| 32 | Un appel lancé **reste « en cours » indéfiniment** (mesuré : **~4 h**, `00:16` → `04:12`) | `leave()` ne clôt l'appel que lorsqu'un participant **entré** en repart. Si l'hôte crée l'appel et **n'entre jamais** dans la salle — exactement ce que provoquait le rejet JaaS (#33) — **personne ne déclenche jamais la clôture**. L'appel reste `ACTIVE` à vie : bannière perpétuelle, et **REF A** refusant toute réunion suivante. | **`CallSweeper`** (`@Scheduled`, 5 min) : clôt tout appel `ACTIVE` dont la **salle est vide** depuis > **15 min** (compté depuis le départ du dernier présent, ou depuis le début si personne n'est jamais entré), et **plafond dur de 12 h**. Paramétré dans le config-repo. Le balayage tourne **hors requête HTTP** → il ne touche jamais `CallerContext` (l'identité vit dans le SecurityContext du thread de la requête). Une exception y est rattrapée : non rattrapée, elle **annulerait les exécutions suivantes** de la tâche. |
+| 33 | **« Authentication failed. Sorry, you're not allowed to join this call. »** | **Ce n'est pas un bug de notre code.** Jeton réellement généré puis décodé : `iss=chat`, `sub`=AppID, `aud="jitsi"` (chaîne), `room`, `kid`, RS256, `moderator`, `lobby_bypass` — **conforme à la spécification JaaS**. Clé privée = RSA 2048 **valide**. URL du tenant = `https://8x8.vc`. Dérive d'horloge = **1 s** (elle aurait pu faire rejeter `nbf`). ⇒ **8x8 refuse une signature pourtant correcte** : la **clé publique enregistrée dans la console JaaS ne correspond pas** à la clé privée qui signe. | **Action côté console 8x8** (hors code). Empreinte SHA-256 de la clé publique dérivée du `.env` : `3d1604bc2968dc2cac4eb3080c1be0368a016c4e067850d60a37423461999858`. **Instrumentation ajoutée** : `errorOccurred` de l'IFrame API est désormais écouté — les erreurs JaaS restaient **enfermées dans l'iframe**, sans jamais remonter à NexaWork. |
+| 34 | L'utilisateur doit **ressaisir son nom** (« Join Meeting ») alors qu'il est déjà authentifié | Deux causes cumulées : `openJitsiRoom` était appelé **sans `displayName`** (`userInfo` absent), et `prejoinPageEnabled` est une option **DÉPRÉCIÉE**, ignorée par Jitsi — l'écran de pré-connexion s'affichait donc quoi qu'il arrive. | `prejoinConfig: { enabled: false }` (option courante ; l'ancien nom est conservé pour un tenant plus ancien) + `userInfo: { displayName, email }` issus de la session. |
+| 35 | Un membre convié pouvait tomber en **salle d'attente** | `lobbyBypass` valait `isHost || invitedExplicitly` : un membre authentifié **non convié explicitement** qui rejoignait devait être admis manuellement. | Tout membre **authentifié** entre directement (il s'est déjà authentifié sur la plateforme, et l'appel n'est de toute façon visible que de son hôte et de ses conviés — cf. `activeCalls()`). **L'invité externe reste en salle d'attente** (décision utilisateur, conforme V5.1 §14.5) : il n'a pas de compte, et un lien qui fuite ne doit pas ouvrir la salle. |
+| 36 | Le modérateur ne peut pas **mettre fin à l'appel pour tous** | Le bouton « raccrocher » de JaaS ne fait que **quitter** la salle. Aucun bouton NexaWork n'exposait `POST /calls/{id}/end` (l'endpoint existait, avec son contrôle hôte/admin). | Bouton **combiné rouge « Terminer pour tous »** dans la salle, **visible du seul créateur** (`room.hostUserId === session.user().id` — `hostUserId` ajouté à `CallRoom`). Deux gestes : `endConference` (chasse les participants de la salle JaaS) **et** `end` côté serveur, qui **fait foi** — le serveur est appelé même si la commande JaaS échoue. Icône `phoneOff` ajoutée au jeu d'icônes. |
+| 37 | L'invité ne voit qu'une **notification** et un bouton « Appel en cours » | Rien ne surgissait à l'écran : il fallait repérer la pastille du header. | **Modal d'appel entrant** (façon Teams / WhatsApp) monté au niveau du **shell** : `IncomingCallService` se greffe sur la file STOMP personnelle — l'invitation `MEETING_INVITED` y est **déjà poussée en temps réel**, aucun sondage n'est ajouté. **Décliner ne met pas fin à l'appel** : il ferme le modal seul, et la bannière « Appel en cours » reste disponible pour rejoindre plus tard. Les appels déclinés sont mémorisés — sans quoi la notification **rejouée à la reconnexion STOMP** ferait resurgir un modal tout juste écarté. Le payload backend porte désormais `topic` et `actorName` (le modal n'a donc pas à analyser le corps du message, qui est du texte d'affichage). |
+
+> ⚠️ **#33 est le nœud du bloc.** Tant que 8x8 refuse le jeton, l'hôte n'entre jamais dans la salle — ce qui
+> **alimentait directement #32** (appel jamais clos). Les correctifs #34/#35/#36/#37 ne seront réellement
+> exerçables qu'une fois la clé publique corrigée dans la console JaaS.
+
+#### Rotation de la clé JaaS — 2026-07-14 (en attente de test navigateur)
+L'ancienne clé (`kid …/c66d9e`, créée le 17/06) était **enregistrée sous la bonne app** — le `kid` correspondait.
+Ce qui n'a **jamais pu être prouvé**, c'est que la clé **publique stockée par 8x8** derrière ce `kid` soit la
+jumelle de la clé **privée** du `.env` : la console n'affiche pas la clé publique, et 8x8 n'expose aucun endpoint
+public pour la lire (`api.jaas.8x8.vc` **n'existe pas** — vérifié : l'hôte ne résout pas, alors que `8x8.vc`
+répond 200 ; la connectivité sortante n'est donc pas en cause).
+
+**Méthode retenue** — au lieu de laisser JaaS générer la paire (auquel cas la correspondance reste invérifiable) :
+1. paire RSA 2048 générée **localement**, dans `.secrets/` (**hors dépôt**) ;
+2. **clé publique téléversée** dans la console → nouveau `kid` **`…/228bdd`** ;
+3. clé privée injectée dans `.env` en **base64 pur, sans en-têtes ni sauts de ligne** —
+   `JitsiTokenService.loadPrivateKey()` retire de toute façon les en-têtes **et tous les espaces** avant de
+   décoder. Ce format **supprime tout échappement** : ni `sed`, ni `perl`, ni `awk` de ce poste ne parvenaient à
+   produire des `\n` littéraux fiables dans un `.env` (le shell les convertissait en vrais sauts de ligne, et la
+   valeur se retrouvait tronquée à 44 caractères — silencieusement).
+4. **Correspondance prouvée** : l'empreinte SHA-256 de la clé publique dérivée du `.env` est identique à celle du
+   fichier téléversé (`a8b90be2678c863d2a73278341dcbbeba11614bb7d5f5a531f7602e355791b2a`).
+
+⚠️ **L'ancienne clé `c66d9e` est conservée dans la console volontairement** : si les réunions échouent *encore*
+après cette rotation, c'est que la cause n'était **pas** la clé — information décisive, qu'une suppression
+prématurée détruirait.
+
+🔒 **`.gitignore`** : `.env` seul était ignoré → une sauvegarde `.env.backup-*` portant les **mêmes secrets** a
+bel et bien été commitée (localement, jamais poussée) avant d'être retirée. Corrigé : **`.env.*`** et
+**`.secrets/`** sont désormais ignorés.
+
+### Lot du 2026-07-14 (matin, 2) — « Invalid typ », routage des notifs, historique, profil
+**Rebuild requis : `meeting-service`, `notification-service`, `frontend`.** Aucune migration.
+Builds Angular dev + prod verts, `mvn compile` vert. **Non testé en navigateur.**
+
+| # | Symptôme | Cause racine (**mesurée**) | Correctif |
+| :-: | :- | :- | :- |
+| 38 | Salle : **« Invalid typ »** puis fermeture — *après* avoir affiché le nom et le bouton | 🎉 **La signature était acceptée** (la rotation de clé a bien réglé #33). Erreur suivante : **l'en-tête du JWT ne portait que `kid` et `alg`** — pas de **`typ`**, que JaaS exige. JJWT ne pose **pas** `typ: JWT` de lui-même dès qu'on personnalise l'en-tête. | `.header().add("kid", …).add("typ", "JWT")`. |
+| 39 | Clic sur une notification de réunion → ouvre les **conversations** | **`CALL_ENDED` n'avait aucune `targetUrl`** (`null`, vérifié dans la réponse de l'API). Le frontend retombe alors sur un routage par **catégorie d'icône**, où `CALL_ENDED` est classé `message` → conversations. Et `MEETING_INVITED` pointait sur **`/app/reunions/{id}`, une route qui n'existe pas** (seule `/app/reunions/historique/{id}` est déclarée). | Les deux pointent sur `/app/reunions/historique/{callId}` → la réunion s'ouvre sur son fil. |
+| 40 | « Supprimer/Masquer » **ne fait rien** ET **ouvre la réunion** | Les deux symptômes n'en font qu'un : la **ligne entière est cliquable** (`(click)="open(m.id)"`) et le menu ⋯ vit **dedans**. Le clic finissait par la faire **naviguer** → la navigation **détruit le composant**, ce qui **annule la requête HTTP en vol**. La suppression ne « ratait » pas : elle n'avait jamais eu le temps de partir. | `stopPropagation` sur chaque action **et** verrou `actionClick` dans `open()`. Le verrou est indispensable *en plus* : les actions ferment le menu, donc tester `menu() !== null` dans `open()` serait déjà trop tard. |
+| 41 | Historique **vide** pendant le chargement | `workspaceSignal` n'expose aucun état de chargement → liste vide, indiscernable d'un historique réellement vide. | Bascule sur **`workspaceQuery`** (qui expose déjà `loading` — il existait, il n'était pas utilisé ici) + **squelette** de 3 lignes et compteur « Chargement… ». |
+| 42 | « Les anciennes notifications disparaissent d'une session à l'autre » | **Aucun bug.** Vérifié en base **et** via l'API : les notifications sont **persistées** (PostgreSQL, table `notifications`) et `GET /notifications` les renvoie bien (11 en base, toutes `read`, aucune `is_hidden`). Le filtre du header est sur « Tout » par défaut. L'impression venait vraisemblablement de l'**affichage vide pendant le chargement** (#41). | Rien à corriger. ⚠️ **Divergence relevée au passage** : `list()` filtre par destinataire **mais pas par workspace**, alors que l'entité porte `workspace_id` — les notifications d'un espace restent visibles depuis un autre. **4 des 8 consumers ne posent même pas `workspaceId`** (1 ligne à `NULL` en base) : filtrer aujourd'hui les ferait disparaître. **À traiter à part.** |
+| 43 | Pas de bouton « terminer pour tous » **hors de la salle** | Le bouton n'existait que dans la salle : il fallait ouvrir la réunion pour la clore. | Bouton **combiné rouge** dans le popover « Appel en cours » du header, à côté de la fermeture, **visible du seul créateur**. `OngoingCall.hostUserId` ajouté (le header ignorait qui était modérateur). |
+| 44 | Profil : « Enregistrer » **reste désactivé** après ajout/retrait de photo | `dirty()` comparait `photoUrl()` à `p().photoDataUrl`, **ce qui ne pouvait pas marcher** : `uploadPhoto()` met à jour le profil **immédiatement** (aperçu instantané) → les deux valeurs deviennent égales au même instant. Après l'upload, pire : `p()` porte l'URL hébergée et la vue la data URL → la comparaison serait vraie *en permanence*. | Signal **`photoTouched`** : on suit l'**intention** de l'utilisateur, pas l'égalité des valeurs. Le **retrait persiste** désormais aussi : `PATCH /users/me/profile` **ignore les champs nuls** (payload atomique) — envoyer `null` n'effaçait rien → on envoie la **chaîne vide**. |
+
+> 🐛 **Piège de template payé ici** : un **backtick** dans un commentaire HTML **à l'intérieur d'un template
+> literal TypeScript** termine la chaîne → cascade d'erreurs TS incompréhensibles (`TS18004`, `NG1002`…) très
+> loin de la vraie ligne. **Jamais de backtick dans un commentaire de template.**
+
+### Lot du 2026-07-14 (midi) — notifications : scope workspace, historique complet, suppression
+**Rebuild requis : `project-service`, `notification-service`, `frontend`.** Aucune migration
+(`workspace_id` existait déjà sur `notifications` — il n'était simplement **jamais renseigné** par 3 consumers).
+Build Angular prod vert, `mvn compile` vert. **Non testé en navigateur.**
+
+| # | Symptôme | Cause racine (**mesurée**) | Correctif |
+| :-: | :- | :- | :- |
+| 45 | Les notifications **ne sont pas cloisonnées par workspace** | `list()` filtrait par **destinataire seulement**. Surtout : **3 des consumers in-app ne posaient pas `workspaceId`** (`TASK_ASSIGNED`, `MENTION` sur commentaire, `LIVRABLE_VALIDATED`) — **parce que leurs événements ne le portaient pas** : `TaskAssignedEvent`/`TaskCommentedEvent`/`LivrableValidatedEvent` ne transportent que `projectId`, jamais l'organisation. Le Notification Service **ne pouvait pas** le deviner. | Correction **à la source** : `organisationId` ajouté aux 3 événements côté **`project-service`** (`project.getOrganisationId()`, déjà porté par l'entité `Project`), propagé aux 3 consumers. `list()` **et** le compteur de la cloche sont désormais **scopés au workspace actif** (`X-Org-Id`). |
+| 46 | Les anciennes notifications disparaîtraient du scope | Un filtre strict par workspace ferait **disparaître d'un coup** les notifications antérieures (elles n'ont pas de `workspace_id`). Mesuré : **1 ligne héritée** à `NULL`. | Repli **`OR workspace_id IS NULL`** dans la requête : rien n'est perdu, et toute notification **nouvelle** porte son workspace. |
+| 47 | Les notifications « anciennes » semblaient perdues | **Elles étaient bien persistées** (déjà vérifié en #42), mais le frontend appelait `GET /notifications` **sans paramètre** → taille de page serveur par défaut = **20**. Au-delà, les plus anciennes étaient **tronquées**. | Le client demande explicitement `size=100` (maximum admis par le serveur). |
+| 48 | Impossible de **supprimer** une notification | Le backend n'exposait que `markRead` et `hide` (masquage) ; **aucun DELETE**. Et le menu de la cloche n'offrait **aucune action** par notification. | **`DELETE /notifications/{id}`** (garde `requireMine` : 404 si inconnue, 403 si celle d'un autre) + bouton **corbeille** sur chaque ligne du menu, révélé au survol. La ligne n'est retirée qu'**après** confirmation du serveur ; `stopPropagation` empêche le clic d'ouvrir la notification (la navigation annulerait le DELETE — même piège qu'en #40). |
+
+### Lot du 2026-07-14 (après-midi) — canaux invisibles, accès aux appels, lobby, temps réel des canaux
+**Rebuild requis : `messaging-service`, `meeting-service`, `frontend`.** Aucune migration.
+Build Angular prod vert, `mvn compile` vert. **Non testé en navigateur.**
+
+| # | Symptôme | Cause racine (**mesurée**) | Correctif |
+| :-: | :- | :- | :- |
+| 49 | 🔴 **Les canaux `#général`/`#annonces` d'un projet ne s'affichent jamais** | **Mon diagnostic précédent (#3, #11 : « faux problème, c'est la sidebar ») était FAUX.** Les canaux **sont bien créés** (vérifié en base : 4 canaux `is_system=true` sur les 2 projets), mais **l'API ne les renvoie pas** : `listChannels(null)` — l'appel de la sidebar, sans `projectId` — ne retournait **que les `GLOBAL_ORG`**. Mesuré : `GET /channels` renvoyait **1 seul canal** sur 5. Les canaux de projet n'atteignaient donc **jamais** le frontend. | Sans `projectId`, l'endpoint renvoie **tous** les canaux du workspace (`findByOrganisationId`), le guard REF F filtrant ensuite la visibilité. Les droits sont **hérités du projet** (canal public de projet = visible de ses membres — `canView`). |
+| 50 | 🔴 **Un membre NON convié peut rejoindre un appel** | `join()` créait un participant **à la volée** pour quiconque connaissait l'identifiant (`orElseGet`). Mesuré : `POST /calls/{id}/join` répondait **200** pour un membre non convié. Il ne *voyait* pas l'appel (`/calls/active` renvoie bien `[]` ✅) mais pouvait y entrer en forgeant la requête. | `join()` exige d'être **hôte ou convié explicitement** → **404** (et non 403 : ne pas révéler l'existence de la réunion, comme `loadInOrg`). |
+| 51 | Invité externe : la **salle d'attente ne s'active jamais** | Le backend émet bien `lobby_bypass` (vrai pour les membres, faux pour l'invité), **mais ce claim ne sert à rien tant que le lobby n'est pas ACTIVÉ dans la salle** — et il ne l'était nulle part. Sans lobby, **tout le monde entre directement**, y compris l'invité externe. | Le **modérateur** arme le lobby (`toggleLobby` à `videoConferenceJoined` — la config seule ne suffit pas côté JaaS). Les membres conviés le traversent grâce à `lobby_bypass` ; l'invité externe y reste et le modérateur reçoit sa demande d'admission. |
+| 52 | Accès d'un intrus au lien d'invité | *(Vérifié — déjà correct.)* Le lien porte un **token à usage unique** vérifié en base (`ExternalGuest`), refusé s'il est déjà utilisé ou si l'appel n'est pas actif. Quelqu'un qui n'a pas été invité **n'a pas de token** : aucun accès. | Rien à corriger. |
+| 53 | Aucune notification quand quelqu'un **publie dans un canal** | Le message était bien diffusé en temps réel (`/topic/channels/{id}`), **mais seulement aux abonnés du canal ouvert**. `MESSAGE_RECEIVED` n'était **jamais produit** : seules les *mentions* déclenchaient une notification. Qui n'avait pas le canal à l'écran n'apprenait rien. | Nouvel événement **`ChannelActivityEvent`** diffusé en STOMP, **routé selon REF F** : canal **privé** → file personnelle de chaque membre ; canal **public** → topic du workspace. Sans cette distinction, l'extrait d'un message privé **fuiterait** vers tout le workspace. Le front l'affiche dans la cloche (auteur + canal), et le clic **ouvre le canal ancré sur le message**. |
+
+> ⚠️ **L'activité de canal n'est PAS persistée** (contrairement aux mentions/tâches/réunions). Le Messaging
+> **ne connaît pas les membres d'un canal public** — la composition des projets appartient au Project Service —
+> il ne peut donc pas dresser la liste des destinataires qu'exigerait une notification en base, une par
+> personne. C'est un **signal volatile** : on ne l'invente pas. Une notification persistée par destinataire
+> supposerait que le Messaging interroge le Project Service (appel inter-services, aujourd'hui absent de
+> l'architecture). **À trancher si la persistance de ces notifications devient une exigence.**
+
+### Lot du 2026-07-14 (soir) — partage de fichiers JaaS, sortie naturelle, invitation en cours d'appel
+**Rebuild requis : `meeting-service`, `frontend`.** Aucune migration.
+Build Angular prod vert, `mvn compile` vert. **Non testé en navigateur.**
+
+| # | Symptôme | Cause racine (**mesurée**) | Correctif |
+| :-: | :- | :- | :- |
+| 54 | 🔴 **Un `docker compose build` ne suffit PAS** — le correctif du routage des notifs (#39) était en ligne dans l'**image**, mais **pas en service** | Le conteneur `notification-service` tournait **encore l'image de 06h21** : l'image avait bien été reconstruite, mais le conteneur **jamais recréé**. Vérifié en comparant `docker inspect <conteneur>.Image` au `docker images` : **deux SHA différents**. Idem `project-service`. | **`docker compose up -d --no-deps --force-recreate <service>` est obligatoire après un build.** ⚠️ **Nouvelle commande de contrôle à réflexe** (à ajouter aux pièges) : comparer le SHA de l'image du conteneur à celui de l'image locale — un build « réussi » peut n'être utilisé par personne. |
+| 55 | Notifications de réunion **déjà en base** mal routées | Les 9 notifications existantes portaient un `target_url` **vide** (ou `/app/reunions/{id}`, **route inexistante**). Le correctif du consumer ne vaut que pour les notifications **futures**. | **Réparation en base** (`UPDATE`) : les 9 pointent désormais sur `/app/reunions/historique/{callId}`. Vérifié : plus aucune URL de réunion invalide. |
+| 56 | Chat Jitsi : **« Not allowed to upload files. Ask a moderator for permission rights »** | Le partage de fichiers **est** pris en charge par JaaS, mais il s'agit d'une **permission portée par le JWT**, pas d'un réglage de console : sans le drapeau `file-upload` dans `context.features`, JaaS refuse. Notre jeton ne déclarait que `livestreaming`/`recording`/`transcription`/`outbound-call` — tous à `false`. | `features.file-upload = true` (+ `send-groupchat`, `create-polls`, refusés pour la même raison). Accordé à **tout participant**, invité externe compris — il est déjà passé par l'admission du modérateur. |
+| 57 | Le bouton « Terminer pour tous » **masque la liste des participants** | Notre bouton flottait **par-dessus l'iframe** JaaS. | **Supprimé des deux endroits** (salle + popover du header), sur demande. On s'en remet au « raccrocher » **natif** de Jitsi : quitter suffit. Le comportement voulu était **déjà** celui du serveur — `leave()` ne clôt l'appel qu'au départ du **dernier** participant, donc le modérateur peut partir et revenir sans couper la réunion des autres ; le `CallSweeper` rattrape le cas où le navigateur ne prévient pas. |
+| 58 | Impossible d'inviter **pendant** une réunion | Aucun point d'entrée : le modal d'invitation n'existait qu'à la création. | Le bouton **« Inviter » de Jitsi est détourné** vers **notre** modal (`buttonsWithNotifyClick` + `preventExecution: true` → `toolbarButtonClicked`) : la fenêtre native, qui ignore nos membres et nos invitations par email, ne s'ouvre plus. Le modal `creer-reunion` gagne un **mode `invite`** (réutilisé, pas dupliqué : même sélecteur membres + emails, sans le champ titre). Membres → `inviteParticipants` (→ modal d'appel entrant) ; externes → `inviteGuest` (lien à usage unique par email). |
+
+### Lot du 2026-07-14 (soir, 2) — M5 sort de « perspective » : fichiers partagés en réunion
+**Rebuild requis : `meeting-service`, `frontend`.** ⚠️ **MIGRATION `V4__meeting_files_jaas.sql`.**
+Build Angular prod vert, `mvn compile` vert. **Non testé en navigateur.**
+
+**Décision (2026-07-14, utilisateur)** : **M5 repasse DANS le périmètre livré** (il était en perspective, V5.1 §14.4)
+— le partage de fichiers étant déjà porté par JaaS, autant le livrer. **M6 (enregistrement) reste en perspective**
+(facturé 0,01 $/min, conservation 24 h, carte bancaire requise).
+
+| # | Sujet | Constat (**mesuré**) | Correctif |
+| :-: | :- | :- | :- |
+| 59 | Chat de réunion (M2) | ✅ **Fonctionne déjà** — vérifié : `meeting_messages` contient une ligne réelle. | Rien. `send-groupchat` conservé à `true` dans le JWT : c'est lui qui autorise le chat que M2 persiste. |
+| 60 | **Fichiers partagés (M5)** | La table `meeting_files` existait (V1) **mais aucune entité, aucun endpoint**. Pire : son schéma **ne collait pas** — il exigeait un `file_id` **non nul** vers notre File Service (MinIO), or **JaaS héberge le fichier lui-même** ; NexaWork n'en reçoit que des métadonnées (événement `fileUploaded` de l'IFrame API). | **Migration `V4`** : `file_id` devient nullable, ajout de `jaas_file_id`/`file_name`/`file_size`/`shared_by_name` (`shared_by` nullable — un invité **externe** n'a pas d'UUID). Entité `MeetingFile`, repository, `POST/GET /calls/{id}/files` (réservé aux participants). Front : `fileUploaded` → `captureFile()`. ⚠️ **Le binaire n'appartient pas à NexaWork** : on trace **qui a partagé quoi et quand**, sans inventer un `file_id` qui ne pointerait sur rien, ni promettre un téléchargement qu'on ne peut pas servir. |
+| 61 | Doublons de fichiers | L'événement `fileUploaded` est reçu par **chaque participant** → le fichier serait enregistré autant de fois qu'il y a de personnes dans la salle. | Garde serveur sur `jaasFileId` (l'enregistrement est idempotent). |
+| 62 | 🔴 **La page « Historique discussion » d'une réunion était TOUJOURS vide** | `toThread()` renvoyait **`docs: []` et `messages: []` EN DUR** : le fil du chat et les documents, pourtant **persistés côté serveur**, n'étaient **jamais chargés**. La zone « Documents partagés · 0 » existait, définitivement vide. | La vue charge réellement le chat (`GET /calls/{id}/messages`) **et** les fichiers (`GET /calls/{id}/files`). |
+
+**Coût JaaS (vérifié sur la grille officielle 8x8)** — plan **Developer gratuit : 25 utilisateurs actifs/mois**.
+Gratuit : visio, **chat**, partage d'écran, salle d'attente, **partage de fichiers** (aucune facturation à l'usage).
+Facturé à la minute : **enregistrement 0,01 $**, RTMP 0,01 $, **transcription/CC 0,06 $**, SIP 0,06 $.
+→ Ces quatre drapeaux restent à **`false`** dans le JWT : **aucun frais ne peut être déclenché par accident.**
+Les onglets **sondages** et **CC** ont été retirés (drapeau JWT **et** masquage de l'interface — le drapeau seul
+laisse l'onglet affiché, grisé).
+
+### Lot du 2026-07-14 (nuit) — l'invité externe partage et voit les fichiers comme un membre
+**Rebuild requis : `meeting-service`, `api-gateway`, `frontend`.** ⚠️ **`nexawork-config-repo/nexawork-meeting.yml`
+modifié** → recréer `config-server` **puis** `meeting-service`. Aucune migration (V5 suffit).
+Build Angular prod vert, `mvn compile` vert. **Non testé en navigateur.**
+
+| # | Sujet | Difficulté (**réelle**) | Solution |
+| :-: | :- | :- | :- |
+| 63 | L'invité externe ne voyait **ni ne partageait** aucun fichier | Il **n'a pas de compte**, donc **pas de JWT** — or **toutes** les routes du File Service exigent une identité (`CallerContext.userId()` lève sinon). Il ne peut donc **pas** téléverser ni télécharger lui-même. | Le **Meeting Service relaie** : routes **publiques** `GET/POST /guest/{token}/files` et `GET /guest/{token}/files/{id}/download`, authentifiées par le **token d'invitation**. Un `RestClient` interne (modèle du GED → Project) appelle le File Service en **forgeant les en-têtes d'identité** sur le réseau interne. |
+| 64 | Quelle identité forger ? | Le File Service exige un `userId` ; l'invité n'en a pas. | On emprunte celle de **l'hôte de la réunion** (c'est lui qui, en invitant, engage sa responsabilité) — **on n'invente aucun utilisateur**. La **paternité réelle** du partage est conservée à part : `MeetingFile.sharedBy` reste **NUL** et `sharedByName` porte le nom de l'invité. |
+| 65 | 🔴 Le token d'invité est **à usage unique** | `access()` marque `used = true` à l'entrée dans la salle. Réutiliser cette garde aurait **refusé tous les appels suivants** : l'invité n'aurait jamais pu lister ni partager un fichier. | `resolveGuest()` **n'exige pas** un token vierge (il a justement servi à entrer) ; la garde qui compte est que **la réunion soit encore ACTIVE**. Un token périmé ne donne donc accès à rien. |
+| 66 | 🔴 Piège de liste blanche (**déjà payé une fois**) | La Gateway déclarait `/guest/*` — or l'`AntPathMatcher` `*` ne matche **qu'un seul segment**. `/guest/{token}/files` serait parti en **401**, exactement comme `/invitations/{token}/accept` en I1. | Ajout explicite de `/guest/*/files` et `/guest/*/files/*/download`. |
+| 67 | Un fichier d'une **autre** réunion | Le token ne doit pas devenir un passe-partout. | `requireFileOfCall()` : le fichier doit appartenir à **la réunion de l'invité** — 404 sinon. |
+
+**Résultat** : l'invité externe a **le même panneau** que les membres (liste des fichiers, **qui** a partagé, taille,
+téléchargement, bouton de partage) et les fichiers qu'il envoie atterrissent **dans MinIO** comme les autres.
+
+### Lot du 2026-07-14 (nuit, 2) — photo de profil : toute la chaîne était cassée
+**Rebuild requis : `file-service`, `api-gateway`, `frontend`.** Aucune migration.
+Build Angular prod vert, `mvn compile` vert. **Non testé en navigateur.**
+
+**Trois défauts distincts, chacun suffisant à tout casser :**
+
+| # | Défaut | Constat (**mesuré**) | Correctif |
+| :-: | :- | :- | :- |
+| 68 | 🔴 **L'avatar est un `<img src>` vers une route PROTÉGÉE** | Un navigateur **ne joint aucun en-tête `Authorization`** à une balise `<img>`. `photoUrl` pointait sur `/files/{id}/download` (JWT requis) → **401** → image cassée. C'est le « on distingue qu'une image est présente, mais son affichage est anormal ». | Nouvelle route **publique** `GET /files/{id}/avatar` (liste blanche Gateway), servie **`inline`** (et non `attachment`, qui ferait *télécharger* l'image). ⚠️ **Elle ne sert QUE les avatars** : garde sur le **bucket** (`nexawork-users`) — un id de document GED ou de pièce jointe est refusé en **404**, sans révéler son existence. Une photo de profil n'est de toute façon pas un secret (visible de tout le workspace). |
+| 69 | 🔴 **`users.photo_url` était VIDE en base** — alors que le binaire était bien dans MinIO | Vérifié : `nexawork-users/users/{userId}/avatar-….png` **existe**, mais `photo_url = ''`. Cause : `update()` traitait une photo locale **absente** comme un **retrait** et envoyait `photoUrl: ''`. Or la vue Profil initialise son signal photo **avant** que `GET /users/me` ne réponde → **n'importe quel enregistrement** (changer son nom, sa fonction…) **effaçait la photo**, silencieusement. | Le retrait devient **explicite** (`removePhoto`), jamais déduit. Et la vue **se réaligne** sur le profil quand il arrive (sans écraser une saisie en cours) — c'est aussi ce qui faisait « disparaître » la photo au rechargement. |
+| 70 | 🔴 **`photoUrl` n'était JAMAIS repris de la réponse serveur** | `toMember()` (annuaire) ignorait purement le champ, pourtant présent dans `MemberResponse`. Aucune vue ne pouvait donc afficher de photo, **même corrigée** — et `Member`/`WorkspaceMemberAdmin` ne portaient pas le champ. | `photoUrl` ajouté aux **view-models** et repris dans les **deux mappings** (annuaire + membres admin). |
+
+**Vues câblées** (la photo s'affiche, initiales en repli) : conversations (en-tête d'interlocuteur), **canaux** (auteur de chaque message), **commentaires** de tâche, **membres** (Paramètres), **fiche profil**, « actifs maintenant », nouveau message, et l'avatar du header.
+Le **design est conservé** : la forme existante (cercle ou carré arrondi) est gardée, l'image la remplit (`object-fit: cover`).
+
+`AvatarDirectoryService` (neuf) centralise la résolution `userId → photo/nom` pour les vues qui ne connaissent qu'un UUID (le Messaging et le Project Service ne résolvent ni noms ni photos).
+
 ## 3 · Décisions/gaps (voir plan §5)
 
 **✅ Tranchés**
@@ -346,6 +587,36 @@ ira en prod. Le frontend est servi par **nginx** qui fait aussi **reverse-proxy*
   (6 s pour l'établir). Normal, sous le timeout de 20 s. Les suivantes sont instantanées.
 
 ## 4 · Notes d'environnement (à connaître pour builder/tester)
+
+- **🔴 « Le serveur ne répond pas » — cause racine trouvée et corrigée (2026-07-13).** Le diagnostic
+  précédent (« absence de `-Xmx` ») était **incomplet** : borner le tas était nécessaire mais très
+  insuffisant. Mesure de la VM Docker (4,9 Go) : `used 3870 Mo, free 95 Mo, **SWAP 1034 Mo**`.
+  **Aucun OOM au `dmesg`** — le noyau ne tuait personne, il **swappait**, ce qui est pire :
+  1. les JVM se figeaient (Hikari : `Thread starvation or clock leap detected`, housekeeper delta **1 min 17 s**) ;
+  2. les clients PostgreSQL coupaient → `Broken pipe` / `connection to client lost` / `exit code 2` ;
+  3. le postmaster y voyait un **crash** → `terminating any other active server processes` → récupération ;
+  4. la récupération n'aboutissait **jamais** (`syncing data directory` > 50 s, disque saturé par le swap)
+     → `last known up` figé sur **3 crashs successifs** → **boucle de crash** → toutes les requêtes échouent.
+  - **Cause n°1 (la plus grosse) : Hikari n'était configuré nulle part.** Son défaut est
+    `maximum-pool-size=10` **ET `minimum-idle=10`** → chaque service gardait **10 connexions ouvertes en
+    permanence**. Or **1 connexion = 1 processus PostgreSQL (~7 Mo)** : 9 services = **90 processus (~630 Mo)**
+    maintenus **même application au repos**, pour un `max_connections` de 100. → `application.yml` (partagé) :
+    pool **5 max / 1 idle** + recyclage. **Vérifié après reset : 8 connexions** (était ~90).
+  - **Cause n°2 : `-Xmx` ne borne que le tas.** Le metaspace, les piles de threads, le code JIT et les buffers
+    directs s'y ajoutent (`project-service` **mesuré à 458 Mo** pour `Xmx=256m`), et **rien ne bornait le
+    conteneur**. → `Xmx` 256→192m, metaspace 192→160m, `-Xss512k`, **JIT C1 seul** (`-XX:TieredStopAtLevel=1` :
+    ~2× moins de CPU — décisif sur une machine 2 cœurs qui porte 9 services), `+ExitOnOutOfMemoryError`.
+  - **`mem_limit` sur les 13 conteneurs** (garde-fous, pas des rations : plafond 448m pour ~300m réels),
+    **768m garantis à PostgreSQL** (il ne doit plus jamais être la victime), **`restart: unless-stopped`**
+    (une panne se répare seule au lieu de rester à terre).
+  - **Résultat mesuré** : `used` **3870 → 2537 Mo**, `swap` **1034 → 121 Mo**, `available` **794 → 2130 Mo**.
+  - ⚠️ **`RABBITMQ_VM_MEMORY_HIGH_WATERMARK` est DÉPRÉCIÉE** — sa seule présence fait **refuser le démarrage**
+    de l'image `rabbitmq:3-management`. Inutile : RabbitMQ lit la limite du cgroup, `mem_limit` suffit.
+  - ⚠️ **Démarrage à froid lent** : 9 JVM qui bootent ensemble sur 2 cœurs **dépassent la période de grâce
+    de 5 min** des healthchecks → les services passent par un état `unhealthy` **transitoire**. Ce n'est pas
+    une panne : attendre. Compter **~30 min** pour une stack complète repartie de zéro.
+  - ⚠️ **Zombie au `docker compose down`** : les conteneurs créés **avant** l'ajout de `init: true` peuvent
+    refuser de s'arrêter (`PID ... is zombie and can not be killed`). → `docker rm -f <conteneur>`.
 
 - **🔴 springdoc / Swagger — le piège n°1 de cette machine.** `SPRINGDOC_ENABLED` est **désactivé par défaut**
   (`docker-compose.yml` : `${SPRINGDOC_ENABLED:-false}`). Son initialisation a été **mesurée à 81 s**

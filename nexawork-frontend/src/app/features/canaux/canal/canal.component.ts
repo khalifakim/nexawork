@@ -1,7 +1,7 @@
-import { ChangeDetectionStrategy, Component, ElementRef, Input, ViewChild, computed, effect, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, Input, ViewChild, computed, effect, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop';
-import { map, switchMap } from 'rxjs/operators';
+import { map, switchMap, tap } from 'rxjs/operators';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 import { CommentComposerComponent } from '@shared/ui/comment-composer/comment-composer.component';
 import { MentionChipComponent, MentionChipEvent } from '@shared/ui/mention-chip/mention-chip.component';
@@ -10,6 +10,7 @@ import { ThreadMediaPanelComponent, SharedMediaItem } from '@shared/overlays/thr
 import { ThreadMentionsPanelComponent, ThreadMention, MentionKind } from '@shared/overlays/thread-mentions-panel/thread-mentions-panel.component';
 import { ShellBus } from '@layouts/app-shell/shell.bus';
 import { ChannelsService } from '@core/services/channels.service';
+import { ProjectCatalogService } from '@core/services/project-catalog.service';
 import { ArchivedProjectsService } from '@core/services/archived-projects.service';
 import { ChannelFile, ChannelMessage } from '@core/models/channel.models';
 import { chipTabFor, RichPart } from '@core/util/mention.util';
@@ -39,7 +40,7 @@ type ChMsg = ChannelMessage;
         } @else {
           <span class="hash">#</span>
         }
-        <span class="ch__n">{{ name() }}</span>
+        <span class="ch__n">{{ displayName() }}</span>
         @if (isPrivate()) {
           <span class="pill pill--priv"><app-icon name="lock" [size]="12" />Privé</span>
         }
@@ -80,9 +81,21 @@ type ChMsg = ChannelMessage;
         <div class="msgs" #msgsEl>
           <div class="day"><div class="day__l"></div><span>Aujourd'hui</span><div class="day__l"></div></div>
           @for (m of visible(); track $index) {
-            <div class="msg" [class.msg--me]="m.mine">
+            @if (m.id && m.id === unreadSeparatorId()) {
+              <div class="unreadsep"><span>Messages non lus</span></div>
+            }
+            <div class="msg" [class.msg--me]="m.mine"
+                 [class.msg--focus]="m.id && m.id === focusMessageId()"
+                 [attr.data-mid]="m.id">
               @if (!m.mine) {
-                <span class="av" [style.background]="m.color" style="cursor:pointer" (click)="bus.openProfile(m.author)">{{ ini(m.author) }}</span>
+                <!-- Photo si l'annuaire en connaît une, initiales sinon. La forme
+                     (carré arrondi) est celle du design : on n'y touche pas. -->
+                <span class="av" [style.background]="m.authorPhotoUrl ? 'transparent' : m.color"
+                      style="cursor:pointer" (click)="bus.openProfile(m.author)">
+                  @if (m.authorPhotoUrl) {
+                    <img class="av__i" [src]="m.authorPhotoUrl" alt="" />
+                  } @else { {{ ini(m.author) }} }
+                </span>
               }
               <div class="b" [class.b--me]="m.mine">
                 <div class="h">
@@ -132,20 +145,26 @@ type ChMsg = ChannelMessage;
         }
       </div>
 
-      @if (readonly()) {
-        <div class="ro"><app-icon name="lock" [size]="16" /><span>{{ archived() ? 'Projet archivé — canal en lecture seule.' : 'Canal en lecture seule — écriture réservée aux administrateurs.' }}</span></div>
-      } @else {
+      @if (peerTyping()) {
+        <div class="typing">En train d'écrire…</div>
+      }
+
+      @if (canWrite()) {
         <div class="composer">
           <app-comment-composer
-            [placeholder]="'Écrire dans #' + name() + '…'"
-            (submitted)="onSend($event)" />
+            [placeholder]="'Écrire dans #' + displayName() + '…'"
+            (submitted)="onSend($event)"
+            (typing)="onTyping()" />
         </div>
+      } @else {
+        <div class="ro"><app-icon name="lock" [size]="16" /><span>{{ archived() ? 'Projet archivé — canal en lecture seule.' : 'Canal en lecture seule — écriture réservée aux administrateurs.' }}</span></div>
       }
     </div>
   `,
   styleUrl: './canal.component.scss',
 })
 export class CanalComponent {
+  private catalog = inject(ProjectCatalogService);
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   bus = inject(ShellBus);
@@ -159,12 +178,28 @@ export class CanalComponent {
   @Input() set channelId(v: string | null | undefined) { this._embeddedId.set(v ?? null); }
   private _embeddedId = signal<string | null>(null);
   private routeName = toSignal(this.route.paramMap.pipe(map(p => p.get('id') ?? 'annonces')), { initialValue: 'annonces' });
+  /**
+   * ⚠️ `name()` est en réalité l'**identifiant d'URL** du canal (`annonces-e2d7cff8`
+   * pour un canal de projet), pas son libellé. Tout le reste du composant s'en sert
+   * comme clé (résolution, droits, envoi de message) — on ne le renomme pas pour
+   * ne pas tout casser, mais **il ne doit JAMAIS être affiché** : voir `displayName`.
+   */
   name = computed<string>(() => this._embeddedId() ?? this.routeName());
 
   private channelsSvc = inject(ChannelsService);
   private filesSvc = inject(FilesHttpService);
 
   private channels = toSignal(this.channelsSvc.list(), { initialValue: [] });
+
+  /**
+   * Libellé affiché — le **vrai** nom du canal, résolu depuis la liste (« annonces »),
+   * jamais l'identifiant technique. Avant chargement de la liste, on retire le suffixe
+   * `-xxxxxxxx` (8 hex du projet) pour ne pas laisser fuiter l'id à l'écran.
+   */
+  displayName = computed<string>(() => {
+    const id = this.name();
+    return this.channels().find(c => c.id === id)?.name ?? id.replace(/-[0-9a-f]{8}$/, '');
+  });
   private archivedSvc = inject(ArchivedProjectsService);
   kind = computed<'bell' | 'hash'>(() => this.channels().find(c => c.id === this.name())?.kind ?? 'hash');
   /**
@@ -181,6 +216,11 @@ export class CanalComponent {
   /** Readonly = intrinsic channel flag OR belongs to an archived project. */
   readonly = computed(() => this.channelsSvc.isReadonly(this.name()) || this.archived());
   isPrivate = computed(() => this.channelsSvc.isPrivate(this.name()));
+  /**
+   * Droit d'écrire : `canWrite` calculé par le backend (REF D — l'admin peut
+   * écrire même dans un canal en lecture seule), sauf projet archivé (REF E).
+   */
+  canWrite = computed(() => this.channelsSvc.canWriteInReadonly(this.name(), false) && !this.archived());
 
   private slugifyProject(name: string): string {
     return name.trim().toLowerCase()
@@ -240,25 +280,93 @@ export class CanalComponent {
     return out;
   });
 
+  /**
+   * Message ciblé par une notification de mention (`?message=<uuid>`) : on le
+   * fait défiler dans la vue et on l'encadre, pour que l'utilisateur voie
+   * **exactement** où il a été mentionné.
+   */
+  protected focusMessageId = toSignal(
+    this.route.queryParamMap.pipe(map(q => q.get('message'))),
+    { initialValue: null },
+  );
+
   @ViewChild('msgsEl') private msgsEl?: ElementRef<HTMLDivElement>;
   @ViewChild('sinput') private searchInput?: ElementRef<HTMLInputElement>;
 
+  /** Id du 1ᵉʳ message non lu au chargement — place la séparation « Messages non lus ». */
+  unreadSeparatorId = signal<string | null>(null);
+
+  // ── Indicateur « en train d'écrire » (canal) — miroir des conversations ──────
+  private typingRaw = signal(false);
+  /** Vrai dès que quelqu'un (autre que moi) écrit dans le canal. Sans le nom (§#3). */
+  peerTyping = computed(() => this.typingRaw());
+  private typingTimer?: ReturnType<typeof setTimeout>;
+  private lastTypingSentAt = 0;
+  private stopTypingTimer?: ReturnType<typeof setTimeout>;
+
+  /** Frappe locale → publie « je tape » (throttlé) puis « j'ai arrêté » après 3 s. */
+  onTyping(): void {
+    const now = Date.now();
+    if (now - this.lastTypingSentAt > 2000) {
+      this.lastTypingSentAt = now;
+      this.channelsSvc.sendTyping(this.name(), true);
+    }
+    clearTimeout(this.stopTypingTimer);
+    this.stopTypingTimer = setTimeout(() => {
+      this.lastTypingSentAt = 0;
+      this.channelsSvc.sendTyping(this.name(), false);
+    }, 3000);
+  }
+
   constructor() {
+    // Quitter le canal libère le « fil actif ».
+    inject(DestroyRef).onDestroy(() => this.bus.activeThreadId.set(null));
     toObservable(this.name)
       .pipe(switchMap(id => this.channelsSvc.thread(id)), takeUntilDestroyed())
       .subscribe(thread => {
         this.msgs.set(thread);
         this.searchQ.set('');
+        // Séparation « Messages non lus » : 1ᵉʳ message d'autrui posté après ma dernière
+        // lecture (canal jamais ouvert → dès le premier message reçu).
+        const chan = this.channels().find(c => c.id === this.name());
+        const lastRead = chan?.lastReadAt ? new Date(chan.lastReadAt).getTime() : 0;
+        this.unreadSeparatorId.set(
+          thread.find(m => !m.mine && m.id && m.sentAt
+            && new Date(m.sentAt).getTime() > lastRead)?.id ?? null);
+        // Fil actif (anti-bruit notifs) + marque le canal lu (vide le badge, §6).
+        this.bus.activeThreadId.set(chan?.uuid ?? null);
+        this.channelsSvc.markRead(this.name());
+      });
+    // Indicateur de saisie d'un autre membre (STOMP). Retombe seul après 4 s.
+    toObservable(this.name)
+      .pipe(tap(() => this.typingRaw.set(false)), switchMap(id => this.channelsSvc.typing(id)), takeUntilDestroyed())
+      .subscribe(isTyping => {
+        this.typingRaw.set(isTyping);
+        clearTimeout(this.typingTimer);
+        if (isTyping) this.typingTimer = setTimeout(() => this.typingRaw.set(false), 4000);
       });
     // Réception temps réel : on n'ajoute que les messages des autres (mon propre
     // message est déjà affiché de façon optimiste à l'envoi, évitant un doublon).
     toObservable(this.name)
       .pipe(switchMap(id => this.channelsSvc.live(id)), takeUntilDestroyed())
       .subscribe(msg => { if (!msg.mine) this.msgs.update(list => [...list, msg]); });
+    // Défilement vers le message mentionné, une fois le fil peint.
+    effect(() => {
+      const id = this.focusMessageId();
+      const painted = this.visible().length;
+      if (!id || !painted) return;
+      requestAnimationFrame(() => {
+        const el = this.msgsEl?.nativeElement.querySelector(`[data-mid="${id}"]`);
+        el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      });
+    });
+
     // Pin the scroll to the bottom whenever the visible thread changes
     // (open a channel, switch channel, or send a new message).
     effect(() => {
       this.visible();
+      // Sauf si un message est ciblé (mention) : le ramener en bas l'effacerait.
+      if (this.focusMessageId()) return;
       // Wait one frame so the newly-appended DOM node is measurable.
       requestAnimationFrame(() => this.scrollToBottom());
     });
@@ -317,7 +425,10 @@ export class CanalComponent {
     this.msgs.update(list => [...list, { author: 'Akim Koné', color: '#F5A623', time, parts: payload.parts, mine: true, files }]);
     const text = payload.text ?? payload.parts.map(p => p.val).join('');
     const rawFiles = payload.files.map(f => f.file).filter((f): f is File => !!f);
-    this.channelsSvc.sendMessage(this.name(), text, rawFiles).subscribe();
+    // Mentions résolues en cibles réelles : sans elles, le backend ne peut
+    // rattacher la mention à personne (« Mentions reçues » resterait vide).
+    const mentions = this.catalog.resolveMentions(payload.parts);
+    this.channelsSvc.sendMessage(this.name(), text, rawFiles, mentions).subscribe();
   }
 
   onChipOpen(ev: MentionChipEvent): void {

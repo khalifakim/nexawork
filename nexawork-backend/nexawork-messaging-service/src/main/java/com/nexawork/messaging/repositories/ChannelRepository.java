@@ -15,7 +15,13 @@ public interface ChannelRepository extends JpaRepository<Channel, UUID> {
 
     List<Channel> findByOrganisationIdAndChannelType(UUID organisationId, ChannelType channelType);
 
+    /** Tous les canaux du workspace (org + projets) — la sidebar les veut tous. */
+    List<Channel> findByOrganisationId(UUID organisationId);
+
     List<Channel> findByProjectId(UUID projectId);
+
+    /** Supprime tous les canaux d'un projet (à la suppression du projet — cf. consumer). */
+    long deleteByProjectId(UUID projectId);
 
     /**
      * Recherche globale (§4.8) : canaux du workspace dont le nom contient le

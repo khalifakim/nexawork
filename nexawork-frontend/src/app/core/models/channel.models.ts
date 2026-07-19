@@ -2,7 +2,19 @@ import { RichPart } from '@core/util/mention.util';
 
 /** A channel in the sidebar, grouped by scope (organisation vs project). */
 export interface Channel {
-  id: string;          // slug used in the URL (e.g. 'general')
+  /**
+   * Identifiant d'URL — **unique**. Pour un canal d'organisation : le slug du nom
+   * (`general`). Pour un canal **de projet** : le slug **suffixé du projet**
+   * (`general-184da140`).
+   *
+   * 🔴 Sans ce suffixe, deux projets ayant chacun leur `#général` produisaient le
+   * **même id** : clés dupliquées dans la sidebar, cache écrasé (le second canal
+   * effaçait le premier), et route ambiguë. C'est ce qui rendait les canaux
+   * automatiques d'un projet invisibles ou inaccessibles.
+   */
+  id: string;
+  /** Slug du seul nom (`general`) — les liens de notification l'utilisent. */
+  slug?: string;
   name: string;
   scope: 'org' | 'project';
   kind: 'bell' | 'hash'; // announcement channel (bell) vs standard (#)
@@ -20,6 +32,10 @@ export interface Channel {
   memberCount?: number;
   /** Date du dernier message (ISO) — absent si le canal est vide. */
   lastActivityAt?: string;
+  /** Nombre de messages non lus pour l'appelant (badge, parité conversations §6). */
+  unread?: number;
+  /** Dernière lecture du canal (ISO) — sépare « lus / non lus » dans la vue. */
+  lastReadAt?: string;
 }
 
 /** Payload brut d'un canal (Messaging `GET /channels`). */
@@ -37,6 +53,8 @@ export interface ChannelResponse {
   canWrite: boolean;
   memberCount?: number;
   lastActivityAt?: string;
+  unreadCount?: number;
+  lastReadAt?: string;
   createdAt: string;
 }
 
@@ -92,7 +110,13 @@ export interface ChannelFile { id: number; name: string; size: number; /** Chemi
 
 /** A single message inside a channel. */
 export interface ChannelMessage {
+  /** UUID backend — sert à cibler un message (mention : « ouvrir et encadrer »). */
+  id?: string;
+  /** Date d'envoi (ISO) — sert à placer la séparation « Messages non lus ». */
+  sentAt?: string;
   author: string;
+  /** Photo de profil de l'auteur — résolue depuis l'annuaire (absente → initiales). */
+  authorPhotoUrl?: string;
   color: string;
   time: string;
   parts: RichPart[];
@@ -102,14 +126,24 @@ export interface ChannelMessage {
 
 /** Visibility restriction of a channel (private = restricted to specific grants). */
 export type ChannelAccessMode = 'open' | 'private';
-export interface ChannelGrant { type: 'user' | 'team'; name: string; }
+/** `id` = userId (membre) ou teamId (équipe) — c'est lui qui part au backend. */
+export interface ChannelGrant { type: 'user' | 'team'; id: string; name: string; }
 export interface ChannelRestriction { mode: ChannelAccessMode; grants: ChannelGrant[]; }
+
+/** Bénéficiaire explicite d'un canal privé (`GET /channels/{id}/access`). */
+export interface ChannelMemberResponse {
+  id: string;
+  userId: string;
+  accessLevel: 'READER' | 'EDITOR';
+}
 
 /** Payload used by the "Nouveau canal" modal. */
 export interface CreateChannelPayload {
   name: string;
   scope: 'org' | 'project';
   project?: string;
+  /** UUID du projet propriétaire quand `scope === 'project'` (sinon canal d'organisation). */
+  projectId?: string;
   kind: 'bell' | 'hash';
   readonly: boolean;
   restriction: ChannelRestriction;

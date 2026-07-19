@@ -1,21 +1,20 @@
-import { ChangeDetectionStrategy, Component, ElementRef, EventEmitter, HostListener, Input, Output, computed, inject, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy, Component, ElementRef, EventEmitter, HostListener, Input, Output,
+  computed, inject, signal,
+} from '@angular/core';
+import { toObservable, toSignal } from '@angular/core/rxjs-interop';
+import { of } from 'rxjs';
+import { switchMap } from 'rxjs/operators';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 import { ChannelAccessMode, ChannelGrant } from '@core/models/channel.models';
+import { MembersService } from '@core/services/members.service';
+import { ProjectsService } from '@core/services/projects.service';
+import { ProjectTeam } from '@core/models/project.models';
+import { Member } from '@core/models/member.models';
+import { avatarColorFor } from '@core/util/ui.util';
 
-interface Person { type: 'user' | 'team'; name: string; color: string; }
-
-const USERS: Person[] = [
-  { type: 'user', name: 'Sarah Diallo', color: '#F2693C' },
-  { type: 'user', name: 'Moussa Bâ',    color: '#6C70F0' },
-  { type: 'user', name: 'Aïda Ndiaye',  color: '#2BB673' },
-  { type: 'user', name: 'Yacine Sow',   color: '#E0497B' },
-  { type: 'user', name: 'Fatou Traoré', color: '#3AA9E0' },
-];
-const TEAMS: Person[] = [
-  { type: 'team', name: 'Design produit', color: '#6C70F0' },
-  { type: 'team', name: 'Développement',  color: '#2BB673' },
-  { type: 'team', name: 'QA & Tests',     color: '#E89A2C' },
-];
+/** Un bénéficiaire sélectionnable — `id` = userId ou teamId réel. */
+interface Person { type: 'user' | 'team'; id: string; name: string; color: string; }
 
 /**
  * Visibility block reused by « Nouveau canal » and « Gérer les accès ». Matches
@@ -57,7 +56,7 @@ const TEAMS: Person[] = [
           </div>
           @if (pickerOpen()) {
             <div class="picker__dd">
-              @for (p of suggestions(); track p.type + ':' + p.name) {
+              @for (p of suggestions(); track p.type + ':' + p.id) {
                 <button type="button" class="picker__row" (click)="add(p)">
                   <span class="chip" [class.chip--team]="p.type==='team'" [style.background]="p.color">{{ p.name[0] }}</span>
                   <span class="picker__n">{{ p.name }}</span>
@@ -72,7 +71,7 @@ const TEAMS: Person[] = [
 
         @if (grants.length) {
           <div class="grants">
-            @for (g of grants; track g.type + ':' + g.name) {
+            @for (g of grants; track g.type + ':' + g.id) {
               <div class="grant">
                 <span class="chip" [class.chip--team]="g.type==='team'" [style.background]="colorOf(g)">{{ g.name[0] }}</span>
                 <div class="grant__tx">
@@ -128,16 +127,40 @@ export class ChannelAccessFormComponent {
   @Input() mode: ChannelAccessMode = 'open';
   @Input() grants: ChannelGrant[] = [];
   @Input() scope: 'org' | 'project' = 'org';
+  /** Projet propriétaire (canal de projet) — ses équipes deviennent sélectionnables. */
+  @Input() set projectId(v: string | undefined) { this._projectId.set(v ?? null); }
 
   @Output() modeChange = new EventEmitter<ChannelAccessMode>();
   @Output() grantsChange = new EventEmitter<ChannelGrant[]>();
 
   private host: ElementRef<HTMLElement> = inject(ElementRef);
+  private membersSvc = inject(MembersService);
+  private projectsSvc = inject(ProjectsService);
 
   query = signal('');
   pickerOpen = signal(false);
+  private _projectId = signal<string | null>(null);
 
-  private pool: Person[] = [...TEAMS, ...USERS];
+  /** Membres réels de l'espace (la liste était codée en dur). */
+  private directory = toSignal(this.membersSvc.directory(), { initialValue: [] as Member[] });
+  /** Équipes réelles du projet — il n'y a pas d'équipe hors projet. */
+  private teams = toSignal(
+    toObservable(this._projectId).pipe(
+      switchMap(id => (id ? this.projectsSvc.teams(id) : of([] as ProjectTeam[]))),
+    ),
+    { initialValue: [] as ProjectTeam[] },
+  );
+
+  private pool = computed<Person[]>(() => [
+    ...this.teams().map(t => ({
+      type: 'team' as const, id: t.id, name: t.name, color: t.color ?? avatarColorFor(t.id),
+    })),
+    ...this.directory()
+      .filter(m => !!m.userId)
+      .map(m => ({
+        type: 'user' as const, id: m.userId!, name: m.name, color: m.color ?? avatarColorFor(m.userId!),
+      })),
+  ]);
 
   /** Ferme le picker au clic hors du bloc (le backdrop `fixed` capturait la molette). */
   @HostListener('document:mousedown', ['$event'])
@@ -156,12 +179,12 @@ export class ChannelAccessFormComponent {
 
   suggestions = computed<Person[]>(() => {
     const q = this.query().toLowerCase().trim();
-    const taken = new Set(this.grants.map(g => g.type + ':' + g.name));
-    return this.pool.filter(p => !taken.has(p.type + ':' + p.name) && p.name.toLowerCase().includes(q));
+    const taken = new Set(this.grants.map(g => g.type + ':' + g.id));
+    return this.pool().filter(p => !taken.has(p.type + ':' + p.id) && p.name.toLowerCase().includes(q));
   });
 
   colorOf(g: ChannelGrant): string {
-    return this.pool.find(p => p.type === g.type && p.name === g.name)?.color ?? '#86828e';
+    return this.pool().find(p => p.type === g.type && p.id === g.id)?.color ?? avatarColorFor(g.id);
   }
 
   setMode(m: ChannelAccessMode): void {
@@ -172,7 +195,7 @@ export class ChannelAccessFormComponent {
   onQuery(v: string): void { this.query.set(v); this.pickerOpen.set(true); }
 
   add(p: Person): void {
-    const next = [...this.grants, { type: p.type, name: p.name } as ChannelGrant];
+    const next: ChannelGrant[] = [...this.grants, { type: p.type, id: p.id, name: p.name }];
     this.grants = next;
     this.grantsChange.emit(next);
     // UX: reset la saisie ET fermeture du popup après une sélection.
@@ -181,7 +204,7 @@ export class ChannelAccessFormComponent {
   }
 
   remove(g: ChannelGrant): void {
-    const next = this.grants.filter(x => !(x.name === g.name && x.type === g.type));
+    const next = this.grants.filter(x => !(x.id === g.id && x.type === g.type));
     this.grants = next;
     this.grantsChange.emit(next);
   }

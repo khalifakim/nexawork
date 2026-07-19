@@ -121,3 +121,9 @@ log/
 **/generated-sources/
 **/generated-test-sources/
 src/main/generated/
+
+# Sauvegardes de .env : elles contiennent les MEMES secrets que .env
+.env.*
+
+# Cles JaaS (contient la cle PRIVEE) — ne doit jamais partir sur le remote
+.secrets/

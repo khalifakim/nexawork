@@ -19,10 +19,12 @@ import { ApercuDocumentComponent } from '@shared/overlays/apercu-document/apercu
 import { FicheTacheComponent } from '@features/projets/modals/fiche-tache/fiche-tache.component';
 import { GedAccessModalComponent } from '@shared/overlays/ged-access-modal/ged-access-modal.component';
 import { GedVersionsModalComponent } from '@shared/overlays/ged-versions-modal/ged-versions-modal.component';
+import { AppelEntrantComponent } from '@shared/overlays/appel-entrant/appel-entrant.component';
 import { ConfirmDialogComponent } from '@shared/overlays/confirm-dialog/confirm-dialog.component';
 import { SessionService } from '@core/services/session.service';
 import { UserProfileService } from '@core/services/user-profile.service';
 import { TasksService } from '@core/services/tasks.service';
+import { GedService } from '@core/services/ged.service';
 import { ChannelsService } from '@core/services/channels.service';
 import { ToastService } from '@core/services/toast.service';
 import { GedOverlayBus } from '@core/services/ged-overlay.bus';
@@ -43,7 +45,7 @@ const SECTION_TITLES: Record<string, string> = {
   selector: 'app-shell',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterOutlet, HeaderComponent, RailComponent, Sidebar2Component, IconComponent, InvitationModalComponent, RechercheGlobaleComponent, NouveauMessageComponent, NouveauCanalComponent, ModifierCanalComponent, GererAccesCanalComponent, WorkspaceCreateComponent, CreerProjetComponent, FicheProfilComponent, ApercuDocumentComponent, FicheTacheComponent, GedAccessModalComponent, GedVersionsModalComponent, ConfirmDialogComponent],
+  imports: [RouterOutlet, HeaderComponent, RailComponent, Sidebar2Component, IconComponent, InvitationModalComponent, RechercheGlobaleComponent, NouveauMessageComponent, NouveauCanalComponent, ModifierCanalComponent, GererAccesCanalComponent, WorkspaceCreateComponent, CreerProjetComponent, FicheProfilComponent, ApercuDocumentComponent, FicheTacheComponent, GedAccessModalComponent, GedVersionsModalComponent, ConfirmDialogComponent, AppelEntrantComponent],
   template: `
     <div class="shell">
       <app-header (search)="bus.openSearch()" />
@@ -62,7 +64,7 @@ const SECTION_TITLES: Record<string, string> = {
                             (invite)="bus.openInvite()"
                             (createProject)="bus.openCreateProject()"
                             (newMessage)="bus.openNewMessage()"
-                            (newChannel)="bus.openNewChannel($event)" />
+                            (newChannel)="bus.newChannel.set($event)" />
             </div>
           </aside>
         }
@@ -73,10 +75,13 @@ const SECTION_TITLES: Record<string, string> = {
     @if (bus.inviteOpen()) { <app-invitation (closed)="bus.inviteOpen.set(false)" /> }
     @if (bus.searchOpen()) { <app-recherche-globale (closed)="bus.searchOpen.set(false)" /> }
     @if (bus.newMessageOpen()) { <app-nouveau-message (closed)="bus.newMessageOpen.set(false)" /> }
-    @if (bus.newChannelScope(); as sc) { <app-nouveau-canal [scope]="sc" (closed)="bus.newChannelScope.set(null)" /> }
+    @if (bus.newChannel(); as nc) {
+      <app-nouveau-canal [scope]="nc.scope" [project]="nc.projectName ?? ''" [projectId]="nc.projectId"
+                         (closed)="bus.newChannel.set(null)" />
+    }
     @if (bus.createWorkspaceOpen()) { <app-workspace-create (closed)="bus.createWorkspaceOpen.set(false)" /> }
     @if (bus.editChannel(); as ec) { <app-modifier-canal [id]="ec.id" [initialName]="ec.name" [initialKind]="ec.kind" (closed)="bus.editChannel.set(null)" /> }
-    @if (bus.accessChannel(); as ac) { <app-gerer-acces-canal [id]="ac.id" [name]="ac.name" [scope]="ac.scope" (closed)="bus.accessChannel.set(null)" /> }
+    @if (bus.accessChannel(); as ac) { <app-gerer-acces-canal [id]="ac.id" [name]="ac.name" [scope]="ac.scope" [projectId]="ac.projectId" (closed)="bus.accessChannel.set(null)" /> }
     @if (bus.deleteChannel(); as dc) {
       <app-confirm-dialog [danger]="true" title="Supprimer le canal" [subtitle]="'#' + dc.name" icon="trash"
                           confirmLabel="Supprimer" [lines]="deleteLines"
@@ -85,10 +90,14 @@ const SECTION_TITLES: Record<string, string> = {
     }
     @if (bus.createProjectOpen()) { <app-creer-projet (closed)="bus.createProjectOpen.set(false)" (created)="onProjectCreated($event)" /> }
     @if (bus.profileName(); as pn) { <app-fiche-profil [name]="pn" (closed)="bus.profileName.set(null)" /> }
-    @if (bus.documentName(); as dn) { <app-apercu-document [name]="dn" (closed)="bus.documentName.set(null)" /> }
+    @if (bus.documentName(); as dn) { <app-apercu-document [name]="dn" [url]="documentUrl()" (closed)="bus.documentName.set(null)" /> }
     @if (taskCard(); as tc) { <app-fiche-tache [task]="tc" [loading]="taskLoading()" (closed)="bus.taskId.set(null)" (openTask)="switchTask($event)" (deleted)="onTaskDeleted($event)" /> }
     @if (ged.accessName(); as an) { <app-ged-access-modal [name]="an" [scope]="gedAccessScope()" (closed)="ged.accessName.set(null)" /> }
     @if (ged.versionsName(); as vn) { <app-ged-versions-modal [name]="vn" (closed)="ged.versionsName.set(null)" /> }
+
+    <!-- Appel entrant : monté au niveau du shell pour surgir quelle que soit la
+         page ouverte. Le composant se pilote lui-même via IncomingCallService. -->
+    <app-appel-entrant />
   `,
   styles: [`
     .shell { height: 100vh; display: flex; flex-direction: column; overflow: hidden; background: var(--nx-bg); }
@@ -105,6 +114,7 @@ const SECTION_TITLES: Record<string, string> = {
 export class AppShellComponent {
   private router = inject(Router);
   private tasksSvc = inject(TasksService);
+  private gedSvc = inject(GedService);
   private channelsSvc = inject(ChannelsService);
   private toast = inject(ToastService);
   bus = inject(ShellBus);
@@ -141,6 +151,10 @@ export class AppShellComponent {
     return 'org';
   });
 
+  /** URL du document mentionné (`@@@doc`), résolue pour l'aperçu réel. */
+  private _documentUrl = signal<string | undefined>(undefined);
+  documentUrl = this._documentUrl.asReadonly();
+
   /** Task detail opened from a @@mention outside a project (canal, conversation). */
   private _taskCard = signal<(TaskCard & { proj?: string }) | null>(null);
   taskCard = this._taskCard.asReadonly();
@@ -166,10 +180,20 @@ export class AppShellComponent {
     void this.webPush.enable();
 
     // Résout la carte du `@@mention` ouvert hors d'un projet (canal / conversation).
+    // La mention porte la clé lisible de la tâche (`MOB-101`), pas son UUID.
     effect(() => {
-      const id = this.bus.taskId();
-      if (!id) { this._taskCard.set(null); return; }
-      this.tasksSvc.cardById(id).subscribe(card => this._taskCard.set(card ?? null));
+      const ref = this.bus.taskId();
+      if (!ref) { this._taskCard.set(null); return; }
+      this.tasksSvc.cardByRef(ref).subscribe(card => this._taskCard.set(card ?? null));
+    });
+
+    // Résout le `@@@document` mentionné (nom → fichier réel) pour un aperçu du
+    // contenu, et non d'un simple libellé.
+    effect(() => {
+      const name = this.bus.documentName();
+      if (!name) { this._documentUrl.set(undefined); return; }
+      this._documentUrl.set(undefined);
+      this.gedSvc.findByName(name).subscribe(item => this._documentUrl.set(item?.url));
     });
 
     this.router.events.pipe(

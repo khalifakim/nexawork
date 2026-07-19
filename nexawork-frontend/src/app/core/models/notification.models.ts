@@ -39,4 +39,8 @@ export interface Notification {
   read?: boolean;
   kind: NotificationKind;
   target: string;        // task id / conversation slug / doc name / project slug
+  /** Type backend brut — le modal d'appel entrant ne réagit qu'à MEETING_INVITED. */
+  type: NotificationType;
+  /** Données structurées de l'événement (ex. `callId`/`topic` d'une invitation). */
+  payload?: Record<string, unknown>;
 }

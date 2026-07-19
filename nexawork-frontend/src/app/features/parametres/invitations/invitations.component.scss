@@ -12,3 +12,10 @@
 .rs:hover { background: var(--nx-surface-2); }
 .cx { width: 34px; height: 34px; flex: none; border: 1px solid #F2C4C0; border-radius: 9px; background: #fff; color: var(--nx-danger); cursor: pointer; display: flex; align-items: center; justify-content: center; }
 .cx:hover { background: rgba(245,86,78,.06); }
+
+/* Squelette de chargement */
+.sk { display: block; border-radius: 6px; background: linear-gradient(90deg, var(--nx-surface-3) 25%, var(--nx-surface-2) 37%, var(--nx-surface-3) 63%); background-size: 400% 100%; animation: invSkel 1.4s ease infinite; }
+.sk--ic { width: 36px; height: 36px; border-radius: 10px; flex: none; }
+.sk--l { width: 42%; height: 12px; margin-bottom: 6px; }
+.sk--s { width: 26%; height: 10px; }
+@keyframes invSkel { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }

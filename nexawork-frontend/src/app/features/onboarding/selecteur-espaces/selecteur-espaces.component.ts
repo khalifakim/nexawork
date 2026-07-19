@@ -2,17 +2,21 @@ import { ChangeDetectionStrategy, Component, OnInit, computed, inject } from '@a
 import { RouterLink } from '@angular/router';
 import { SessionService } from '@core/services/session.service';
 import { IconComponent } from '@shared/ui/icon/icon.component';
+import { LoaderComponent } from '@shared/ui/loader/loader.component';
 import { Workspace } from '@core/models/workspace.models';
 
 @Component({
   selector: 'app-selecteur-espaces',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, IconComponent],
+  imports: [RouterLink, IconComponent, LoaderComponent],
   template: `
     <h1 class="nxf-h1">Vos espaces de travail</h1>
     <p class="nxf-sub">Choisissez un espace à ouvrir ou créez-en un nouveau.</p>
 
+    @if (loading()) {
+      <app-loader label="Chargement de vos espaces…" [minHeight]="220" />
+    } @else {
     <div class="grp">Créés par moi</div>
     @for (w of mine(); track w.id) {
       <div class="ws">
@@ -40,6 +44,7 @@ import { Workspace } from '@core/models/workspace.models';
     <button class="create" routerLink="/auth/workspace/name">
       <app-icon name="plus" [size]="16" [stroke]="2" />Créer un espace de travail
     </button>
+    }
   `,
   styles: [`
     .grp { font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--nx-text-400); margin-bottom: 12px; }
@@ -61,6 +66,7 @@ export class SelecteurEspacesComponent implements OnInit {
 
   readonly mine = computed(() => this.session.workspaces().filter(w => w.role === 'OWNER'));
   readonly joined = computed(() => this.session.workspaces().filter(w => w.role !== 'OWNER'));
+  readonly loading = this.session.workspacesLoading;
 
   ngOnInit(): void {
     this.session.loadWorkspaces();

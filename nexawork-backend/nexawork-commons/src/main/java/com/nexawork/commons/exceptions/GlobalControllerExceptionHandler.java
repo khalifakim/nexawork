@@ -9,6 +9,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
@@ -123,6 +124,19 @@ public class GlobalControllerExceptionHandler {
     public Response<Object> unreadable(HttpMessageNotReadableException e) {
         log.error(e.getMessage());
         return Response.badRequest().setMessage("Corps de requête illisible ou malformé.");
+    }
+
+    /**
+     * Paramètre de chemin/requête au mauvais type — typiquement un identifiant qui
+     * n'est pas un UUID ({@code /tasks/MOB-101}). Sans ce mapping, la conversion
+     * échouait en {@code IllegalArgumentException} et sortait en <b>500</b> : une
+     * erreur d'appelant présentée comme une panne serveur.
+     */
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public Response<Object> typeMismatch(MethodArgumentTypeMismatchException e) {
+        log.error("Paramètre « {} » invalide : {}", e.getName(), e.getMessage());
+        return Response.badRequest().setMessage("Paramètre « " + e.getName() + " » invalide.");
     }
 
     @ResponseStatus(HttpStatus.PAYLOAD_TOO_LARGE)

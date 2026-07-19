@@ -24,6 +24,19 @@ import { IconComponent } from '@shared/ui/icon/icon.component';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [IconComponent],
   template: `
+    @if (loadingContext()) {
+      <!-- Chargement du contexte (nom de l'invitant, workspace, rôle) : sans loader,
+           l'écran restait figé sur des « … », donnant l'impression d'un blocage. -->
+      <div class="loadstate">
+        <span class="loadstate__spin"></span>
+        <p>Chargement de l'invitation…</p>
+      </div>
+    } @else if (loadError()) {
+      <div class="loadstate">
+        <app-icon name="warning" [size]="30" />
+        <p>Ce lien d'invitation n'est plus valide.</p>
+      </div>
+    } @else {
     <span class="tag">Invitation</span>
     <div class="card">
       <div class="card__av">{{ inviterInitials() }}</div>
@@ -114,10 +127,15 @@ import { IconComponent } from '@shared/ui/icon/icon.component';
         <button class="submit" [disabled]="!canSubmit() || busy()" (click)="submit()">Rejoindre l'espace</button>
       }
     }
+    }
   `,
   styles: [`
     :host { display: block; }
     .tag { font-size: 10.5px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--nx-indigo); }
+    .loadstate { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 40px 16px; text-align: center; color: var(--nx-text-500); }
+    .loadstate p { margin: 0; font-size: 13px; }
+    .loadstate__spin { width: 30px; height: 30px; border: 3px solid var(--nx-surface-3); border-top-color: var(--nx-indigo); border-radius: 50%; animation: invSpin .8s linear infinite; }
+    @keyframes invSpin { to { transform: rotate(360deg); } }
 
     .card { display: flex; align-items: center; gap: 10px; margin: 8px 0 10px; padding: 10px 12px; border: 1px solid var(--nx-border); border-radius: 10px; background: #fff; }
     .card__av { width: 34px; height: 34px; flex: none; border-radius: 50%; background: linear-gradient(135deg,#F5A623,#F2693C); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; }
@@ -178,6 +196,10 @@ export class RejoindreInvitationComponent implements OnInit {
   memberCount    = signal(0);
   private roleCode = signal<'ADMIN' | 'MEMBER'>('MEMBER');
 
+  /** Chargement du contexte de l'invitation (bandeau) — loader tant qu'il n'est pas prêt. */
+  loadingContext = signal(true);
+  loadError = signal(false);
+
   inviterInitials = computed(() => this.inviterName().split(/\s+/).map(w => w[0] ?? '').join('').slice(0, 2).toUpperCase() || '?');
   workspaceMono = computed(() => (this.workspaceName().trim()[0] ?? 'N').toUpperCase());
   roleLabel = computed(() => this.roleCode() === 'ADMIN' ? 'Administrateur' : 'Membre');
@@ -193,15 +215,19 @@ export class RejoindreInvitationComponent implements OnInit {
   });
 
   ngOnInit(): void {
-    if (!this.token) return;
-    this.auth.getInvitation(this.token).subscribe(ctx => {
-      this.inviterName.set(ctx.inviterDisplayName);
-      this.workspaceName.set(ctx.workspaceName);
-      this.workspaceColor.set(ctx.workspaceColor);
-      this.memberCount.set(ctx.memberCount);
-      this.roleCode.set(ctx.role);
-      this.email.set(ctx.email); // email invité pré-rempli
-      this.accountExists.set(!!ctx.accountExists);
+    if (!this.token) { this.loadingContext.set(false); this.loadError.set(true); return; }
+    this.auth.getInvitation(this.token).subscribe({
+      next: ctx => {
+        this.inviterName.set(ctx.inviterDisplayName);
+        this.workspaceName.set(ctx.workspaceName);
+        this.workspaceColor.set(ctx.workspaceColor);
+        this.memberCount.set(ctx.memberCount);
+        this.roleCode.set(ctx.role);
+        this.email.set(ctx.email); // email invité pré-rempli
+        this.accountExists.set(!!ctx.accountExists);
+        this.loadingContext.set(false);
+      },
+      error: () => { this.loadingContext.set(false); this.loadError.set(true); },
     });
   }
 

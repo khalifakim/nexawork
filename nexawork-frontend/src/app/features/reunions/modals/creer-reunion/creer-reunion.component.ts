@@ -1,15 +1,13 @@
-import { ChangeDetectionStrategy, Component, EventEmitter, Output, computed, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy, Component, EventEmitter, Input, Output, computed, inject, signal,
+} from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { IconComponent } from '@shared/ui/icon/icon.component';
+import { MembersService } from '@core/services/members.service';
+import { Member } from '@core/models/member.models';
 
-interface Person { n: string; c: string; role: string; email: string; }
-
-const MEMBERS: Person[] = [
-  { n: 'Sarah Diallo', c: '#F2693C', role: 'Chef de projet', email: 'sarah.diallo@nexa.io' },
-  { n: 'Moussa Bâ',    c: '#6C70F0', role: 'Développeur',    email: 'moussa.ba@nexa.io' },
-  { n: 'Aïda Ndiaye',  c: '#2BB673', role: 'Designer',       email: 'aida.ndiaye@nexa.io' },
-  { n: 'Yacine Sow',   c: '#E0497B', role: 'Dev backend',    email: 'yacine.sow@nexa.io' },
-  { n: 'Omar Cissé',   c: '#3AA9E0', role: 'QA',             email: 'omar.cisse@nexa.io' },
-];
+/** Un membre sélectionnable — `id` = userId réel (envoyé au backend). */
+interface Person { id: string; n: string; c: string; role: string; email: string; }
 
 /** « Nouvelle réunion » — modal de création, fidèle au prototype `meetingCreateModal`. */
 @Component({
@@ -22,19 +20,21 @@ const MEMBERS: Person[] = [
       <div class="card" (click)="$event.stopPropagation()">
         <!-- Header -->
         <div class="hd">
-          <span class="hd__ic"><app-icon name="video" [size]="20" [stroke]="1.8" /></span>
+          <span class="hd__ic"><app-icon [name]="mode === 'invite' ? 'userPlus' : 'video'" [size]="20" [stroke]="1.8" /></span>
           <div class="hd__t">
-            <div class="hd__title">Nouvelle réunion</div>
+            <div class="hd__title">{{ mode === 'invite' ? 'Inviter des participants' : 'Nouvelle réunion' }}</div>
             <div class="hd__sub">Invitez des membres ou des participants externes</div>
           </div>
           <button class="x" (click)="closed.emit()"><app-icon name="x" [size]="18" /></button>
         </div>
 
-        <!-- Titre -->
-        <div class="titlewrap">
-          <input class="titlein" [class.titlein--on]="title().trim()" [value]="title()"
-                 (input)="title.set($any($event.target).value)" placeholder="Titre de la réunion…" autofocus />
-        </div>
+        <!-- Titre : seulement à la création (une réunion en cours a déjà le sien). -->
+        @if (mode === 'create') {
+          <div class="titlewrap">
+            <input class="titlein" [class.titlein--on]="title().trim()" [value]="title()"
+                   (input)="title.set($any($event.target).value)" placeholder="Titre de la réunion…" autofocus />
+          </div>
+        }
 
         <!-- Onglets -->
         <div class="tabs">
@@ -52,30 +52,32 @@ const MEMBERS: Person[] = [
             <div class="srch">
               <div class="srch__bar" [class.srch__bar--on]="q()">
                 <app-icon name="search" [size]="16" />
-                <input [value]="q()" (input)="q.set($any($event.target).value)" placeholder="Rechercher par nom ou email…" />
+                <input [value]="q()" (focus)="pickerOpen.set(true)"
+                       (input)="q.set($any($event.target).value); pickerOpen.set(true)"
+                       placeholder="Rechercher par nom ou email…" />
               </div>
-              @if (suggestions().length) {
+              @if (pickerOpen() && suggestions().length) {
                 <div class="dd">
-                  @for (m of suggestions(); track m.n) {
-                    <button class="dd__row" (click)="addMember(m.n)">
+                  @for (m of suggestions(); track m.id) {
+                    <button class="dd__row" (click)="addMember(m)">
                       <span class="dd__av" [style.background]="m.c">{{ ini(m.n) }}</span>
                       <span class="dd__tx"><span class="dd__n">{{ m.n }}</span><span class="dd__e">{{ m.email }}</span></span>
                       <span class="dd__add">+ Ajouter</span>
                     </button>
                   }
                 </div>
-              } @else if (q()) {
+              } @else if (pickerOpen() && q()) {
                 <div class="dd dd--empty">Aucun membre trouvé</div>
               }
             </div>
 
             @if (internal().length) {
               <div class="chips">
-                @for (n of internal(); track n) {
+                @for (m of internal(); track m.id) {
                   <div class="chip">
-                    <span class="chip__av" [style.background]="colorOf(n)">{{ ini(n) }}</span>
-                    <span class="chip__n">{{ n }}</span>
-                    <button class="chip__x" (click)="removeMember(n)"><app-icon name="x" [size]="11" [stroke]="2.4" /></button>
+                    <span class="chip__av" [style.background]="m.c">{{ ini(m.n) }}</span>
+                    <span class="chip__n">{{ m.n }}</span>
+                    <button class="chip__x" (click)="removeMember(m.id)"><app-icon name="x" [size]="11" [stroke]="2.4" /></button>
                   </div>
                 }
               </div>
@@ -116,7 +118,13 @@ const MEMBERS: Person[] = [
           <div class="ft__btns">
             <button class="ft__cancel" (click)="closed.emit()">Annuler</button>
             <button class="ft__ok" [disabled]="!canCreate()" (click)="create()">
-              <app-icon name="video" [size]="16" [stroke]="1.9" />Créer la réunion
+              @if (busy) {
+                <span class="ft__spin"></span>{{ mode === 'invite' ? 'Envoi…' : 'Création…' }}
+              } @else if (mode === 'invite') {
+                <app-icon name="userPlus" [size]="16" [stroke]="1.9" />Inviter
+              } @else {
+                <app-icon name="video" [size]="16" [stroke]="1.9" />Créer la réunion
+              }
             </button>
           </div>
         </div>
@@ -175,27 +183,53 @@ const MEMBERS: Person[] = [
     .ft__cancel:hover { background: var(--nx-surface-2); }
     .ft__ok { display: flex; align-items: center; gap: 8px; height: 42px; padding: 0 24px; border: none; border-radius: 11px; background: var(--nx-indigo); color: #fff; font-family: inherit; font-size: 14px; font-weight: 700; cursor: pointer; box-shadow: 0 6px 18px rgba(91,95,233,.28); }
     .ft__ok:disabled { background: #cfcbc2; box-shadow: none; cursor: default; }
+    .ft__spin { width: 15px; height: 15px; border: 2px solid rgba(255,255,255,.35); border-top-color: #fff; border-radius: 50%; animation: nxspin .7s linear infinite; }
+    @keyframes nxspin { to { transform: rotate(360deg); } }
   `],
 })
 export class CreerReunionComponent {
+  /** Création en cours : le bouton passe en « Création… » (l'appel dure ~1-2 s). */
+  @Input() busy = false;
+  /**
+   * `create` : nouvelle réunion (titre requis).
+   * `invite` : convier des participants à une réunion DÉJÀ en cours — même
+   * sélecteur (membres + emails externes), sans titre. Réutilisé plutôt que
+   * dupliqué : c'est exactement le même travail de sélection.
+   */
+  @Input() mode: 'create' | 'invite' = 'create';
   @Output() closed = new EventEmitter<void>();
-  @Output() created = new EventEmitter<{ title: string; invites: number }>();
+  @Output() created = new EventEmitter<{ title: string; memberIds: string[]; emails: string[] }>();
+
+  private membersSvc = inject(MembersService);
 
   tab = signal<'interne' | 'externe'>('interne');
   title = signal('');
   q = signal('');
-  internal = signal<string[]>([]);
+  internal = signal<Person[]>([]);
   external = signal<string[]>([]);
   extInput = signal('');
 
+  /** Membres réels du workspace (hors soi) — la liste était codée en dur. */
+  private people = toSignal(this.membersSvc.others(), { initialValue: [] as Member[] });
+
+  /** Liste déroulante ouverte : dès l'ouverture du modal, puis rouverte au focus. */
+  pickerOpen = signal(true);
+
+  /** Membres proposés — TOUS (hors déjà sélectionnés) quand la recherche est vide,
+   *  filtrés par nom/email sinon. La liste s'affiche donc dès l'ouverture (§14). */
   suggestions = computed<Person[]>(() => {
     const q = this.q().toLowerCase().trim();
-    if (!q) return [];
-    const sel = new Set(this.internal());
-    return MEMBERS.filter(m => !sel.has(m.n) && (m.n.toLowerCase().includes(q) || m.email.toLowerCase().includes(q)));
+    const sel = new Set(this.internal().map(p => p.id));
+    return this.people()
+      .filter(m => !!m.userId && !sel.has(m.userId))
+      .filter(m => !q || m.name.toLowerCase().includes(q) || (m.email ?? '').toLowerCase().includes(q))
+      .map(m => ({ id: m.userId!, n: m.name, c: m.color, role: m.role, email: m.email ?? '' }));
   });
   totalInvites = computed(() => this.internal().length + this.external().length);
-  canCreate = computed(() => this.title().trim().length > 0);
+  /** Création : un titre suffit. Invitation : il faut au moins un invité. */
+  canCreate = computed(() => !this.busy && (
+    this.mode === 'invite' ? this.totalInvites() > 0 : this.title().trim().length > 0
+  ));
 
   /** RFC-lite : local@domaine.tld — suffisant côté UI, la vraie validation reste serveur. */
   private static EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -216,10 +250,11 @@ export class CreerReunionComponent {
   });
 
   ini(n: string): string { return n.split(/\s+/).map(w => w[0]).join(''); }
-  colorOf(n: string): string { return MEMBERS.find(m => m.n === n)?.c ?? '#86828e'; }
 
-  addMember(n: string): void { this.internal.update(l => [...l, n]); this.q.set(''); }
-  removeMember(n: string): void { this.internal.update(l => l.filter(x => x !== n)); }
+  // Sélection : ajoute, vide le champ, ferme la liste (elle se rouvre au prochain
+  // focus) — pour enchaîner rapidement plusieurs ajouts (§14).
+  addMember(p: Person): void { this.internal.update(l => [...l, p]); this.q.set(''); this.pickerOpen.set(false); }
+  removeMember(id: string): void { this.internal.update(l => l.filter(x => x.id !== id)); }
   addExternal(): void {
     if (!this.canAddExternal()) return;
     const email = this.extInput().trim();
@@ -230,6 +265,10 @@ export class CreerReunionComponent {
 
   create(): void {
     if (!this.canCreate()) return;
-    this.created.emit({ title: this.title().trim(), invites: this.totalInvites() });
+    this.created.emit({
+      title: this.title().trim(),
+      memberIds: this.internal().map(p => p.id),
+      emails: this.external(),
+    });
   }
 }

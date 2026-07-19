@@ -5,6 +5,12 @@ export interface Member {
   color: string;
   role: string;
   email: string;
+  /**
+   * Photo de profil (URL **publique** `/files/{id}/avatar`). Absente → l'avatar
+   * rend les initiales sur `color`. C'est cette donnée qui alimente TOUTES les vues
+   * affichant un utilisateur (conversations, canaux, commentaires, recherche…).
+   */
+  photoUrl?: string;
   online: boolean;
   projects: string[];
 }
@@ -32,6 +38,8 @@ export interface WorkspaceMemberAdmin {
   name: string;
   email: string;
   color: string;
+  /** Photo de profil (URL publique) — absente → initiales. */
+  photoUrl?: string;
   role: 'OWNER' | 'ADMIN' | 'MEMBER';
   isOwner: boolean;
   active: boolean;       // !isDeactivated

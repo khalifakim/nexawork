@@ -23,6 +23,11 @@ public class CallerContext {
                 .orElseThrow(() -> new ForbiddenException("Aucun workspace actif dans la session."));
     }
 
+    /** Nom d'affichage de l'appelant (en-tête X-User-Name posé par la Gateway). */
+    public String displayName() {
+        return SecurityUtils.getCurrentDisplayName().orElse("Quelqu'un");
+    }
+
     public String orgRole() {
         return SecurityUtils.getCurrentOrgRole().orElse(null);
     }

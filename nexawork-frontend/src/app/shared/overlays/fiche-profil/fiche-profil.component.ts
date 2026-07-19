@@ -19,7 +19,7 @@ const EMPTY_MEMBER: Member = { name: '', color: '#86828E', role: '', email: '', 
     <div class="ov" (click)="closed.emit()">
       <div class="card" (click)="$event.stopPropagation()">
         <div class="head">
-          <app-avatar [name]="m().name" [color]="m().color" [size]="52" [online]="m().online" />
+          <app-avatar [name]="m().name" [color]="m().color" [size]="52" [online]="m().online" [photoUrl]="m().photoUrl" />
           <div class="t"><div class="nm">{{ m().name }}</div><div class="rl">{{ m().role }}</div></div>
           <button class="x" (click)="closed.emit()"><app-icon name="x" [size]="16" /></button>
         </div>

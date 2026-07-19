@@ -1,15 +1,20 @@
 import { Injectable, inject } from '@angular/core';
-import { Observable, Subject } from 'rxjs';
+import { Observable, Subject, merge } from 'rxjs';
 import { Client, IMessage, StompSubscription } from '@stomp/stompjs';
 import { Store } from '@ngrx/store';
 import { selectToken } from '@store/auth/auth.selectors';
 import { environment } from '@environment/environment';
+
+/** Au-delà, les trames les plus anciennes sont abandonnées (saisie = volatile). */
+const MAX_PENDING_FRAMES = 20;
 
 /** Une connexion STOMP vers un endpoint (messagerie ou notifications). */
 class StompConnection {
   private client?: Client;
   private readonly streams = new Map<string, Subject<IMessage>>();
   private readonly subs = new Map<string, StompSubscription>();
+  /** Trames émises avant l'établissement de la connexion — rejouées à `onConnect`. */
+  private readonly pending: { destination: string; body: string }[] = [];
 
   constructor(
     private readonly url: string,
@@ -29,9 +34,22 @@ class StompConnection {
     return subject.asObservable();
   }
 
+  /**
+   * Publie une trame. La connexion s'établit de façon **asynchrone** : publier
+   * avant qu'elle soit prête levait « There is no underlying STOMP connection »
+   * (typiquement `sendTyping` dès la première frappe). On met alors la trame en
+   * attente et on la rejoue à la connexion.
+   */
   publish(destination: string, body: unknown): void {
     this.ensureConnected();
-    this.client?.publish({ destination, body: JSON.stringify(body) });
+    const frame = { destination, body: JSON.stringify(body) };
+    if (this.client?.connected) {
+      this.client.publish(frame);
+      return;
+    }
+    // File bornée : la saisie est volatile, inutile de rejouer un historique.
+    this.pending.push(frame);
+    if (this.pending.length > MAX_PENDING_FRAMES) this.pending.shift();
   }
 
   get connected(): boolean { return !!this.client?.connected; }
@@ -39,7 +57,10 @@ class StompConnection {
   private ensureConnected(): void {
     if (this.client) return;
     this.client = new Client({
-      brokerURL: toWsUrl(this.url),
+      // `webSocketFactory` (et non `brokerURL`) : l'URL est reconstruite à CHAQUE
+      // (re)connexion, avec le jeton courant — après un refresh, un `brokerURL`
+      // figé rouvrirait la socket avec un jeton périmé.
+      webSocketFactory: () => new WebSocket(this.socketUrl()),
       connectHeaders: this.authHeaders(),
       reconnectDelay: 4000,
       heartbeatIncoming: 10000,
@@ -47,10 +68,30 @@ class StompConnection {
       onConnect: () => {
         // Réapplique tous les abonnements en attente / perdus à la (re)connexion.
         for (const dest of this.streams.keys()) this.subscribeIfPossible(dest);
+        // Rejoue les trames émises avant que la connexion soit prête.
+        const queued = this.pending.splice(0, this.pending.length);
+        for (const frame of queued) this.client?.publish(frame);
         this.onConnected?.(this);
+      },
+      onWebSocketClose: (evt) => {
+        // Les abonnements meurent avec la socket : sans cette purge, `subscribeIfPossible`
+        // les croyait encore actifs à la reconnexion et ne les réarmait jamais
+        // — le fil restait muet jusqu'au rechargement de la page.
+        this.subs.clear();
+        // Diagnostic : un `code` 1006 = handshake refusé (401/404), 1000 = normal.
+        console.warn('[STOMP] WebSocket fermé', this.url, '— code', evt?.code, '(1006 = handshake refusé côté serveur)');
+      },
+      // Diagnostic : rendre visibles les échecs jusqu'ici SILENCIEUX — c'est ce qui
+      // manquait pour comprendre pourquoi « le temps réel ne marche pas ».
+      onStompError: (frame) => {
+        console.error('[STOMP] erreur serveur', this.url, '—', frame.headers['message'], frame.body);
+      },
+      onWebSocketError: (evt) => {
+        console.error('[STOMP] erreur WebSocket', this.url, evt);
       },
     });
     this.client.activate();
+    console.info('[STOMP] connexion à', this.socketUrl().replace(/access_token=[^&]+/, 'access_token=***'));
   }
 
   private subscribeIfPossible(destination: string): void {
@@ -64,6 +105,19 @@ class StompConnection {
   private authHeaders(): Record<string, string> {
     const t = this.token();
     return t ? { Authorization: `Bearer ${t}` } : {};
+  }
+
+  /**
+   * URL du handshake, jeton compris. Le gateway laisse le handshake public (un
+   * WebSocket natif ne peut pas porter d'en-tête `Authorization`) mais lit
+   * `access_token` pour propager l'identité aux services — sans quoi la session
+   * STOMP n'a pas de Principal : ni file privée de notifications, ni présence.
+   */
+  private socketUrl(): string {
+    const base = toWsUrl(this.url);
+    const t = this.token();
+    if (!t) return base;
+    return base + (base.includes('?') ? '&' : '?') + 'access_token=' + encodeURIComponent(t);
   }
 }
 
@@ -111,6 +165,20 @@ export class StompClientService {
   /** Publie un message sur une destination applicative (`/app/...`). */
   publish(destination: string, body: unknown): void {
     this.messagingConn().publish(destination, body);
+  }
+
+  /**
+   * Activité des canaux — « quelqu'un a publié dans #… », pour ceux qui n'ont pas
+   * le canal ouvert. Deux sources, imposées par REF F côté serveur : le topic du
+   * workspace (canaux publics) et la file personnelle (canaux privés, dont on est
+   * membre). Sans le second, un message de canal privé fuiterait vers tout le
+   * workspace ; sans le premier, #général ne notifierait personne.
+   */
+  watchChannelActivity(organisationId: string): Observable<IMessage> {
+    return merge(
+      this.messagingConn().watch(`/topic/org/${organisationId}/channel-activity`),
+      this.messagingConn().watch('/user/queue/channel-activity'),
+    );
   }
 
   // ── Notifications (file personnelle + présence) ─────────────────────────────

@@ -28,3 +28,6 @@
 .foot span { display: flex; align-items: center; gap: 4px; }
 .k { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 5px; background: var(--nx-surface-2); border: 1px solid var(--nx-border); font-size: 11px; font-weight: 600; color: var(--nx-text-500); }
 .k + .k { margin-left: 2px; }
+
+/* Photo de profil d'un résultat « personne » (forme conservée). */
+.res__av--img { object-fit: cover; display: block; }

@@ -1,6 +1,10 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable, map, of } from 'rxjs';
+import { switchMap, timeout } from 'rxjs/operators';
 import { BaseHttpService } from '@core/http/base-http.service';
+import { FilesHttpService } from '@core/http/files.http.service';
+import { api } from '@core/http/api.config';
+import { SILENT } from '@core/http/http-context';
 import { environment } from '@environment/environment';
 
 /** Message du chat de réunion — vue d'affichage. */
@@ -21,6 +25,23 @@ interface MeetingMessageResponse {
   sentAt: string;
 }
 
+/** Fichier partagé pendant une réunion (M5). Le binaire est hébergé par JaaS. */
+export interface MeetingFileResponse {
+  id: string;
+  callId: string;
+  /** Réf. StoredFile (MinIO) — le binaire appartient à NexaWork. */
+  fileId?: string;
+  /** URL de téléchargement servie par le File Service (exige le jeton). */
+  downloadUrl?: string;
+  fileName: string;
+  fileSize?: number;
+  contentType?: string;
+  sharedBy?: string;
+  sharedByName: string;
+  sharedAt: string;
+}
+
+
 /**
  * Chat de réunion persistant (M2, F5). Capte les messages échangés dans la salle
  * (via l'IFrame API JaaS) et les envoie au Meeting Service ; expose aussi le fil
@@ -28,6 +49,8 @@ interface MeetingMessageResponse {
  */
 @Injectable({ providedIn: 'root' })
 export class MeetingChatService extends BaseHttpService {
+  /** `fileApi` et non `files` : `files()` est déjà la méthode qui liste le fil. */
+  private readonly fileApi = inject(FilesHttpService);
 
   /**
    * Enregistre un message capté dans la salle. `payload` provient de l'IFrame
@@ -42,6 +65,66 @@ export class MeetingChatService extends BaseHttpService {
     void mine;
     this.post$<MeetingMessageResponse>('meeting', `/calls/${callId}/messages`, { content }).subscribe({
       error: () => {},
+    });
+  }
+
+  /**
+   * Partage un fichier dans la réunion (M5). Deux temps, comme partout ailleurs
+   * dans NexaWork (pièces jointes de tâche, GED) :
+   *   1. le binaire part au **File Service** (contexte `meeting-file`) → **MinIO** ;
+   *   2. sa **référence** est rattachée à l'appel.
+   *
+   * C'est ce qui rend le fichier **téléchargeable après la réunion** — le partage
+   * natif de JaaS, lui, téléverse chez 8x8 et ne nous rend jamais le binaire.
+   */
+  shareFile(callId: string, workspaceId: string, file: File): Observable<MeetingFileResponse> {
+    return this.fileApi.upload('meeting-file', file, { workspaceId, meetingId: callId }).pipe(
+      switchMap(stored => this.post$<MeetingFileResponse>('meeting', `/calls/${callId}/files`, {
+        fileId: stored.id,
+        downloadUrl: stored.downloadUrl,
+        fileName: stored.fileName,
+        fileSize: stored.size,
+        contentType: stored.contentType,
+      })),
+      // Borne dans le temps : un upload est « long-running » (exclu du timeout
+      // global), mais s'il n'aboutit pas — File Service saturé/absent — l'envoi
+      // ne doit PAS rester « en chargement » à l'infini. Au-delà, on échoue
+      // proprement et l'utilisateur récupère la main.
+      timeout({ each: 120_000 }),
+    );
+  }
+
+  /**
+   * Fichiers partagés pendant une réunion (relecture après l'appel + sondage dans
+   * la salle). **Silencieux** : sondé toutes les 6 s, il ne doit jamais afficher
+   * « le serveur ne répond pas » sur une lenteur passagère.
+   */
+  files(callId: string): Observable<MeetingFileResponse[]> {
+    if (environment.mock.meetings) return of([]);
+    return this.get$<MeetingFileResponse[]>('meeting', `/calls/${callId}/files`, undefined, SILENT());
+  }
+
+  // ── Invité externe (M5) ───────────────────────────────────────────────────
+  // Il voit et partage exactement comme un membre, mais il n'a **pas de JWT** :
+  // c'est son token d'invitation qui l'authentifie, et le Meeting Service relaie
+  // les octets vers/depuis le File Service pour son compte (routes publiques).
+
+  guestFiles(token: string): Observable<MeetingFileResponse[]> {
+    return this.get$<MeetingFileResponse[]>('meeting', `/guest/${token}/files`);
+  }
+
+  guestShareFile(token: string, file: File): Observable<MeetingFileResponse> {
+    const form = new FormData();
+    form.append('file', file);
+    return this.http
+      .post<{ payload: MeetingFileResponse }>(api('meeting', `/guest/${token}/files`), form)
+      .pipe(map(r => r.payload));
+  }
+
+  /** Le téléchargement passe par le Meeting Service : l'URL du File Service exigerait un JWT. */
+  guestDownload(token: string, meetingFileId: string): Observable<Blob> {
+    return this.http.get(api('meeting', `/guest/${token}/files/${meetingFileId}/download`), {
+      responseType: 'blob',
     });
   }
 

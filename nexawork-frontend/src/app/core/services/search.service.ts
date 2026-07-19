@@ -53,12 +53,15 @@ export class SearchHttpService extends BaseHttpService implements SearchService 
     if (!term) return of([]);
     const params = { q: term };
 
-    return forkJoin([
-      this.get$<SearchHitResponse[]>('project', '/search', params).pipe(catchError(() => of([]))),
-      this.get$<SearchHitResponse[]>('ged', '/search', params).pipe(catchError(() => of([]))),
-      this.get$<SearchHitResponse[]>('messaging', '/search', params).pipe(catchError(() => of([]))),
-      this.get$<SearchHitResponse[]>('auth', '/search', params).pipe(catchError(() => of([]))),
-    ]).pipe(map(groups => groups.flat().map(toResult)));
+    // Un domaine en échec ne fait pas échouer la recherche entière, mais l'erreur
+    // est désormais VISIBLE en console (elle était totalement avalée) : c'est ce
+    // qui manquait pour diagnostiquer une recherche « qui ne renvoie rien ».
+    const domain = (svc: 'project' | 'ged' | 'messaging' | 'auth') =>
+      this.get$<SearchHitResponse[]>(svc, '/search', params).pipe(
+        catchError(err => { console.error(`[recherche] échec ${svc}/search :`, err); return of<SearchHitResponse[]>([]); }));
+
+    return forkJoin([domain('project'), domain('ged'), domain('messaging'), domain('auth')])
+      .pipe(map(groups => groups.flat().map(toResult)));
   }
 }
 

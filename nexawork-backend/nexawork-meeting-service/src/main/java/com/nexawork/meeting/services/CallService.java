@@ -44,4 +44,15 @@ public interface CallService {
 
     /** Supprime définitivement un appel (REF B : ADMIN+OWNER seul → 403 sinon). */
     void delete(UUID callId);
+
+    /**
+     * Clôt les appels ACTIVE dont la salle est vide depuis trop longtemps, ou qui
+     * dépassent la durée maximale. Appelé par un ordonnanceur, **hors requête HTTP** :
+     * l'implémentation ne doit donc jamais toucher {@code CallerContext} (l'identité
+     * vit dans le SecurityContext du thread de la requête, absent ici).
+     */
+    void sweepStaleCalls();
+
+    /** Diagnostic de la configuration JaaS (administrateurs — 403 sinon). */
+    com.nexawork.meeting.dtos.responses.JaasDiagnosticResponse jaasDiagnostic();
 }

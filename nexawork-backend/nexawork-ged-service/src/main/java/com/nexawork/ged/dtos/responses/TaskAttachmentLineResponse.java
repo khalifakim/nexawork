@@ -17,6 +17,8 @@ public class TaskAttachmentLineResponse {
 
     private UUID attachmentId;
     private UUID taskId;
+    /** Identifiant lisible de la tâche (PREFIX-NNN) — affiché dans la GED. */
+    private String taskKey;
     private String taskTitle;
     private String fileName;
     private String fileUrl;

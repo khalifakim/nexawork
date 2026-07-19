@@ -14,6 +14,8 @@ export interface CallRoom {
   id: string;
   roomName: string;
   topic: string;
+  /** Créateur de l'appel = modérateur. Lui seul peut le clore pour tout le monde. */
+  hostUserId: string;
   /** Domaine JaaS (base de l'IFrame API). */
   jitsiUrl: string;
   /** JWT signé (identité + droits + lobby_bypass). */
@@ -43,8 +45,20 @@ export interface GuestInviteResponse {
   guestLink: string;
 }
 
-/** A document shared during a meeting. */
-export interface MeetingDoc { name: string; meta: string; color: string; icon: string; }
+/** Accès d'un invité externe à la salle (`GET /guest/{token}` — page publique). */
+export interface GuestAccess {
+  callId: string;
+  topic: string;
+  displayName: string;
+  jitsiUrl: string;
+  jwt: string;
+}
+
+/**
+ * A document shared during a meeting. `url` = téléchargement depuis MinIO
+ * (le binaire appartient à NexaWork, cf. M5) — absent tant que rien n'a été partagé.
+ */
+export interface MeetingDoc { name: string; meta: string; color: string; icon: string; url?: string; }
 
 /** A message in a meeting's (read-only) discussion thread. */
 export interface MeetingMessage { author: string; color: string; time: string; text: string; }

@@ -9,7 +9,7 @@ import { WorkspaceService } from '@core/services/workspace.service';
 import { WorkspaceMemberAdmin } from '@core/models/member.models';
 
 type WsRole = 'Propriétaire' | 'Administrateur' | 'Membre';
-interface Row { memberId: string; name: string; email: string; role: WsRole; color: string; me?: boolean; active: boolean; }
+interface Row { memberId: string; name: string; email: string; role: WsRole; color: string; photoUrl?: string; me?: boolean; active: boolean; }
 
 const ROLE_FR: Record<string, WsRole> = { OWNER: 'Propriétaire', ADMIN: 'Administrateur', MEMBER: 'Membre' };
 
@@ -41,7 +41,7 @@ const ROLE_FR: Record<string, WsRole> = { OWNER: 'Propriétaire', ADMIN: 'Admini
       <div class="set-card">
         @for (m of visible(); track m.email; let i = $index) {
           <div class="mrow" [class.mrow--first]="i===0" [class.mrow--inactive]="!m.active">
-            <app-avatar [name]="m.name" [color]="m.active ? m.color : '#C9C5BD'" [size]="38" />
+            <app-avatar [name]="m.name" [color]="m.active ? m.color : '#C9C5BD'" [size]="38" [photoUrl]="m.photoUrl" />
             <div class="b">
               <div class="n">
                 {{ m.name }}
@@ -148,7 +148,7 @@ export class ParamMembresComponent implements OnInit {
     const myId = this.session.user()?.id;
     this.workspaceService.members(this.session.activeWorkspaceId()).subscribe(list =>
       this.all.set(list.map((m: WorkspaceMemberAdmin) => ({
-        memberId: m.memberId, name: m.name, email: m.email, role: ROLE_FR[m.role], color: m.color,
+        memberId: m.memberId, name: m.name, email: m.email, role: ROLE_FR[m.role], color: m.color, photoUrl: m.photoUrl,
         me: m.userId === myId, active: m.active,
       }))));
   }

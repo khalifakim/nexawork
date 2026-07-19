@@ -61,3 +61,5 @@
 .toast__x { width: 24px; height: 24px; flex: none; margin-left: 4px; border: none; border-radius: 6px; background: transparent; color: rgba(255,255,255,.6); cursor: pointer; display: flex; align-items: center; justify-content: center; }
 @keyframes nxFadeIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
 
+
+.pill--warn { color: #E89A2C; background: rgba(232,154,44,.14); }

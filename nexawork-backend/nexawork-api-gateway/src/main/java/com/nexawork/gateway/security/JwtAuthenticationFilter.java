@@ -14,6 +14,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 
 /**
@@ -43,6 +45,8 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
     public static final String HEADER_USER_ID = "X-User-Id";
     public static final String HEADER_ORG_ID = "X-Org-Id";
     public static final String HEADER_ORG_ROLE = "X-Org-Role";
+    /** Nom d'affichage — porté par le JWT, il n'était propagé à aucun service. */
+    public static final String HEADER_USER_NAME = "X-User-Name";
 
     private final JwtTokenValidator tokenValidator;
     private final PublicPathMatcher publicPathMatcher;
@@ -59,11 +63,24 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
                     headers.remove(HEADER_USER_ID);
                     headers.remove(HEADER_ORG_ID);
                     headers.remove(HEADER_ORG_ROLE);
+                    headers.remove(HEADER_USER_NAME);
                 })
                 .build();
 
         if (publicPathMatcher.isPublic(path)) {
-            return chain.filter(exchange.mutate().request(sanitizedRequest).build());
+            // Handshake WebSocket : le navigateur ne peut PAS poser d'en-tête
+            // Authorization sur un WebSocket natif. Le chemin reste donc public
+            // (jamais de 401 → pas de boucle de reconnexion), mais si un jeton
+            // valide accompagne la requête (?access_token=), on propage l'identité
+            // en aval : sans elle, les services n'ont aucun Principal de session
+            // → le push privé /user/queue/… et la présence Redis restent muets.
+            ServerHttpRequest downstream = isWebSocketHandshake(path)
+                    ? resolveQueryToken(sanitizedRequest)
+                            .flatMap(tokenValidator::validateAndParse)
+                            .map(claims -> withIdentityHeaders(sanitizedRequest, claims))
+                            .orElse(sanitizedRequest)
+                    : sanitizedRequest;
+            return chain.filter(exchange.mutate().request(downstream).build());
         }
 
         Optional<String> bearer = resolveBearerToken(sanitizedRequest);
@@ -78,6 +95,16 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
 
         ServerHttpRequest authenticatedRequest = withIdentityHeaders(sanitizedRequest, claims.get());
         return chain.filter(exchange.mutate().request(authenticatedRequest).build());
+    }
+
+    private boolean isWebSocketHandshake(String path) {
+        return path.startsWith("/ws/");
+    }
+
+    /** Jeton porté par la query string — seul canal disponible pour un WebSocket natif. */
+    private Optional<String> resolveQueryToken(ServerHttpRequest request) {
+        String token = request.getQueryParams().getFirst("access_token");
+        return token == null || token.isBlank() ? Optional.empty() : Optional.of(token.trim());
     }
 
     private Optional<String> resolveBearerToken(ServerHttpRequest request) {
@@ -99,6 +126,7 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
         String userId = claims.get("userId", String.class);
         String organisationId = claims.get("organisationId", String.class);
         String orgRole = claims.get("orgRole", String.class);
+        String displayName = claims.get("displayName", String.class);
 
         return request.mutate()
                 .headers(headers -> {
@@ -110,6 +138,12 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
                     }
                     if (orgRole != null) {
                         headers.set(HEADER_ORG_ROLE, orgRole);
+                    }
+                    if (displayName != null && !displayName.isBlank()) {
+                        // Un en-tête HTTP n'est pas sûr en UTF-8 : « Moussa Bâ » doit
+                        // être encodé, sinon le nom arrive mutilé côté service.
+                        headers.set(HEADER_USER_NAME,
+                                URLEncoder.encode(displayName, StandardCharsets.UTF_8));
                     }
                 })
                 .build();

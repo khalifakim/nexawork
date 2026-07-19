@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, ElementRef, ViewChild, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, ViewChild, computed, effect, inject, signal } from '@angular/core';
 import { AvatarComponent } from '@shared/ui/avatar/avatar.component';
 import { UserProfileService } from '@core/services/user-profile.service';
 import { ToastService } from '@core/services/toast.service';
@@ -73,13 +73,44 @@ export class ParamProfilComponent {
 
   displayName = computed(() => `${this.firstName()} ${this.lastName()}`.trim() || 'Akim Koné');
 
+  /**
+   * La photo compte comme une modification du formulaire à part entière.
+   *
+   * Comparer `photoUrl()` à `p().photoDataUrl` ne pouvait PAS marcher : `uploadPhoto()`
+   * met à jour le profil **immédiatement** (aperçu instantané), si bien que les deux
+   * valeurs devenaient égales au même instant et que `dirty` ne basculait jamais. Et
+   * après l'upload, `p()` porte l'URL hébergée alors que la vue garde la data URL —
+   * la comparaison serait alors vraie *en permanence*. On suit donc l'intention de
+   * l'utilisateur, pas l'égalité des valeurs.
+   */
+  private photoTouched = signal(false);
+  /** Retrait EXPLICITE — jamais déduit d'une photo locale absente (cf. UserProfileService). */
+  private photoRemoved = signal(false);
+
   dirty = computed(() => {
     const cur = this.p();
-    return this.firstName() !== cur.firstName
+    return this.photoTouched()
+      || this.firstName() !== cur.firstName
       || this.lastName() !== cur.lastName
-      || this.role() !== cur.role
-      || this.photoUrl() !== cur.photoDataUrl;
+      || this.role() !== cur.role;
   });
+
+  /**
+   * Le profil est chargé de façon **asynchrone** (`GET /users/me`) : ces signaux
+   * sont initialisés AVANT sa réponse et resteraient donc vides au rechargement de
+   * la page — d'où « la photo n'apparaît pas ». On les réaligne à l'arrivée du
+   * profil, **sans jamais écraser une saisie en cours** (`dirty`).
+   *
+   * Déclaré APRÈS `dirty` : un champ de classe n'existe pas avant sa ligne.
+   */
+  private readonly syncFromProfile = effect(() => {
+    const cur = this.p();
+    if (this.dirty()) return;
+    this.firstName.set(cur.firstName);
+    this.lastName.set(cur.lastName);
+    this.role.set(cur.role);
+    this.photoUrl.set(cur.photoDataUrl);
+  }, { allowSignalWrites: true });
 
   onPick(ev: Event): void {
     const input = ev.target as HTMLInputElement;
@@ -95,6 +126,8 @@ export class ParamProfilComponent {
     reader.onload = () => {
       const dataUrl = reader.result as string;
       this.photoUrl.set(dataUrl);
+      this.photoTouched.set(true);
+      this.photoRemoved.set(false);
       // Persistance réelle : upload File Service (avatar) → photoUrl du profil.
       this.profileSvc.uploadPhoto(file, dataUrl);
     };
@@ -102,15 +135,24 @@ export class ParamProfilComponent {
     input.value = '';
   }
 
-  removePhoto(): void { this.photoUrl.set(null); }
+  removePhoto(): void {
+    this.photoUrl.set(null);
+    this.photoTouched.set(true);
+    this.photoRemoved.set(true);
+  }
 
   save(): void {
+    const removed = this.photoRemoved();
     this.profileSvc.update({
       firstName: this.firstName().trim() || 'Akim',
       lastName: this.lastName().trim() || 'Koné',
       role: this.role().trim(),
-      photoDataUrl: this.photoUrl(),
-    });
+      // La photo n'est écrite QUE si l'utilisateur y a touché : sinon on laisserait
+      // un aperçu périmé écraser l'URL hébergée déjà en base.
+      ...(this.photoTouched() ? { photoDataUrl: this.photoUrl() } : {}),
+    }, { removePhoto: removed });
+    this.photoTouched.set(false);
+    this.photoRemoved.set(false);
     this.toast.show({ message: 'Profil mis à jour' });
   }
 }

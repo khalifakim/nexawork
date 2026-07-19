@@ -5,19 +5,13 @@ import { IconComponent } from '@shared/ui/icon/icon.component';
 import { KanbanStore } from '@features/projets/kanban/kanban.store';
 import { TasksService } from '@core/services/tasks.service';
 import { ProjectsService } from '@core/services/projects.service';
+import { MembersService } from '@core/services/members.service';
 import { ToastService } from '@core/services/toast.service';
+import { forkJoin } from 'rxjs';
+import { avatarColorFor } from '@core/util/ui.util';
 
 interface Step { id: string; name: string; color: string; }
 interface TransRow { id: string; from: Step; to: Step; }
-
-const ME = { name: 'Akim Koné', c: '#F5A623' };
-const MEMBERS = [
-  ME,
-  { name: 'Moussa Bâ',   c: '#5B5FE9' },
-  { name: 'Aïda Ndiaye', c: '#E0497B' },
-  { name: 'Fatou Sarr',  c: '#3AA9E0' },
-  { name: 'Yacine Sow',  c: '#2BB673' },
-];
 
 const ROLE_OPTS: [string, string][] = [
   ['Tous',            'Tous les membres'],
@@ -166,12 +160,24 @@ const IC_FILTER     = '<path d="M3 6h18M6 12h12M10 18h4"/>';
                   </button>
                 }
                 <div class="tc-pp__sep"></div>
-                <div class="tc-pp__lbl">Membre spécifique <span class="tc-pp__soon">— bientôt (I3)</span></div>
-                <input class="tc-pp__q" placeholder="Rechercher un membre…" disabled
+                <div class="tc-pp__lbl">Membre spécifique</div>
+                <input class="tc-pp__q" placeholder="Rechercher un membre…"
                        [value]="transQuery()"
-                       (click)="$event.stopPropagation()" />
+                       (click)="$event.stopPropagation()"
+                       (input)="transQuery.set($any($event.target).value)" />
                 <div class="tc-pp__list">
-                  <div class="tc-pp__empty">Annuaire des membres bientôt disponible</div>
+                  @for (m of filteredMembers(); track m.id) {
+                    <button class="tc-pp__i" [class.tc-pp__i--sel]="roleFor(t.id) === m.name"
+                            (click)="selectMember(t.id, m)">
+                      <span class="tc__av" [style.background]="m.c">{{ ini(m.name) }}</span>
+                      <span class="tc-pp__n">{{ m.name }}</span>
+                      @if (roleFor(t.id) === m.name) {
+                        <app-icon name="checkBig" [size]="15" style="color:#5B5FE9;display:flex" />
+                      }
+                    </button>
+                  } @empty {
+                    <div class="tc-pp__empty">Aucun membre dans ce projet.</div>
+                  }
                 </div>
               </div>
             }
@@ -382,9 +388,9 @@ export class WorkflowComponent implements OnInit {
   private store = inject(KanbanStore);
   private tasksSvc = inject(TasksService);
   private projectsSvc = inject(ProjectsService);
+  private membersSvc = inject(MembersService);
   private toast = inject(ToastService);
 
-  readonly ME         = ME;
   readonly ROLE_OPTS  = ROLE_OPTS;
   readonly IC_ROLE    = IC_ROLE;
   readonly IC_FILTER  = IC_FILTER;
@@ -400,23 +406,35 @@ export class WorkflowComponent implements OnInit {
   private transList = signal<TransRow[]>([]);
   transitions = () => this.transList();
 
-  /** responsibleType par id de transition ('Tous' | 'Chef de projet'). */
+  /** responsibleType par id de transition ('Tous' | 'Chef de projet' | nom du membre). */
   roles      = signal<Record<string, string>>({});
+  /** userId du responsable quand un membre spécifique est choisi (par id de transition). */
+  private responsibleUserIds = signal<Record<string, string>>({});
   transOpen  = signal<string | null>(null);
   transQuery = signal('');
   busy       = signal(false);
 
-  /**
-   * Annuaire membre du sélecteur « Membre spécifique » — vide en I2c (résolution
-   * des membres = I3). Les responsables par rôle (Tous / Chef de projet) sont, eux,
-   * pleinement fonctionnels.
-   */
-  filteredMembers = computed<{ name: string; c: string }[]>(() => []);
+  /** Membres réels du projet (sélecteur « Membre spécifique »). */
+  private projectMembers = signal<{ id: string; name: string; c: string }[]>([]);
+  filteredMembers = computed<{ id: string; name: string; c: string }[]>(() => {
+    const q = this.transQuery().toLowerCase().trim();
+    return this.projectMembers().filter(m => m.name.toLowerCase().includes(q));
+  });
 
   ngOnInit(): void {
     const pid = this.store.projectId();
     if (!pid) return;
     this.projectsSvc.byId(pid).subscribe(p => { if (p) this.enforce.set(p.enforceWorkflowOrder); });
+    // Membres réels du projet (résolus via l'annuaire).
+    forkJoin({ members: this.projectsSvc.members(pid), dir: this.membersSvc.directory() })
+      .subscribe(({ members, dir }) => {
+        const byId = new Map(dir.filter(m => m.userId).map(m => [m.userId!, m] as const));
+        this.projectMembers.set(members.map(pm => {
+          const m = byId.get(pm.userId);
+          return { id: pm.userId, name: m?.name ?? 'Membre', c: m?.color ?? avatarColorFor(pm.userId) };
+        }));
+        this.hydrateSpecificNames();
+      });
     this.tasksSvc.transitions(pid).subscribe(list => {
       const colorOf = (id: string) => this.store.columns().find(c => c.id === id)?.color ?? '#8E8AA0';
       this.transList.set(list.map(t => ({
@@ -424,8 +442,31 @@ export class WorkflowComponent implements OnInit {
         from: { id: t.fromStatusId, name: t.fromStatusName, color: colorOf(t.fromStatusId) },
         to:   { id: t.toStatusId,   name: t.toStatusName,   color: colorOf(t.toStatusId) },
       })));
-      this.roles.set(Object.fromEntries(list.map(t =>
-        [t.id, t.responsibleType === 'PROJECT_LEAD' ? 'Chef de projet' : 'Tous'])));
+      const roleMap: Record<string, string> = {};
+      const userMap: Record<string, string> = {};
+      for (const t of list) {
+        if (t.responsibleType === 'PROJECT_LEAD') roleMap[t.id] = 'Chef de projet';
+        else if (t.responsibleType === 'SPECIFIC_MEMBER' && t.responsibleUserId) {
+          userMap[t.id] = t.responsibleUserId;
+          roleMap[t.id] = ''; // résolu en nom une fois l'annuaire chargé
+        } else roleMap[t.id] = 'Tous';
+      }
+      this.roles.set(roleMap);
+      this.responsibleUserIds.set(userMap);
+      this.hydrateSpecificNames();
+    });
+  }
+
+  /** Renseigne le nom affiché des transitions « membre spécifique » une fois l'annuaire prêt. */
+  private hydrateSpecificNames(): void {
+    const byId = new Map(this.projectMembers().map(m => [m.id, m.name] as const));
+    if (!byId.size) return;
+    this.roles.update(r => {
+      const next = { ...r };
+      for (const [tid, uid] of Object.entries(this.responsibleUserIds())) {
+        next[tid] = byId.get(uid) ?? next[tid] ?? 'Tous';
+      }
+      return next;
     });
   }
 
@@ -444,7 +485,7 @@ export class WorkflowComponent implements OnInit {
   }
 
   memberColor(name: string): string {
-    return MEMBERS.find(m => m.name === name)?.c ?? '#5B5FE9';
+    return this.projectMembers().find(m => m.name === name)?.c ?? '#5B5FE9';
   }
 
   ini(name: string): string { return name.split(' ').map(w => w[0]).join(''); }
@@ -456,7 +497,17 @@ export class WorkflowComponent implements OnInit {
 
   setRole(key: string, role: string): void {
     this.roles.update(r => ({ ...r, [key]: role }));
+    // Choix d'un rôle → efface un éventuel « membre spécifique ».
+    this.responsibleUserIds.update(u => { const n = { ...u }; delete n[key]; return n; });
     this.transOpen.set(null);
+  }
+
+  /** Sélectionne un membre spécifique comme responsable d'une transition. */
+  selectMember(key: string, m: { id: string; name: string }): void {
+    this.roles.update(r => ({ ...r, [key]: m.name }));
+    this.responsibleUserIds.update(u => ({ ...u, [key]: m.id }));
+    this.transOpen.set(null);
+    this.transQuery.set('');
   }
 
   save(): void {
@@ -465,11 +516,13 @@ export class WorkflowComponent implements OnInit {
     this.busy.set(true);
     this.tasksSvc.updateWorkflow(pid, {
       enforceWorkflowOrder: this.enforce(),
-      transitions: this.transList().map(t => ({
-        transitionId: t.id,
-        responsibleType: this.roleFor(t.id) === 'Chef de projet' ? 'PROJECT_LEAD' : 'ALL',
-        allowedRoles: [],
-      })),
+      transitions: this.transList().map(t => {
+        const userId = this.responsibleUserIds()[t.id];
+        const role = this.roleFor(t.id);
+        const responsibleType = userId ? 'SPECIFIC_MEMBER'
+          : role === 'Chef de projet' ? 'PROJECT_LEAD' : 'ALL';
+        return { transitionId: t.id, responsibleType, responsibleUserId: userId, allowedRoles: [] };
+      }),
     }).subscribe({
       next: () => { this.toast.show({ message: 'Workflow enregistré' }); this.closed.emit(); },
       error: () => this.busy.set(false),

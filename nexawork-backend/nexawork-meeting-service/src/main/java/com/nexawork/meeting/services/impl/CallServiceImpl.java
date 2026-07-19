@@ -4,6 +4,7 @@ import com.nexawork.commons.exceptions.ConflictException;
 import com.nexawork.commons.exceptions.ResourceNotFoundException;
 import com.nexawork.meeting.dtos.requests.CreateCallRequest;
 import com.nexawork.meeting.dtos.responses.CallResponse;
+import com.nexawork.meeting.dtos.responses.JaasDiagnosticResponse;
 import com.nexawork.commons.exceptions.ForbiddenException;
 import com.nexawork.meeting.entities.Call;
 import com.nexawork.meeting.entities.CallParticipant;
@@ -13,6 +14,7 @@ import com.nexawork.meeting.events.publishers.CallEndedEvent;
 import com.nexawork.meeting.events.publishers.MeetingEventPublisher;
 import com.nexawork.meeting.events.publishers.MeetingParticipantInvitedEvent;
 import com.nexawork.meeting.properties.JitsiProperties;
+import com.nexawork.meeting.properties.MeetingProperties;
 import com.nexawork.meeting.repositories.CallParticipantRepository;
 import com.nexawork.meeting.repositories.CallRepository;
 import com.nexawork.meeting.repositories.MeetingHiddenRepository;
@@ -49,6 +51,7 @@ public class CallServiceImpl implements CallService {
     JitsiTokenService tokenService;
     MeetingEventPublisher eventPublisher;
     JitsiProperties jitsiProperties;
+    MeetingProperties meetingProperties;
     CallerContext caller;
 
     @Override
@@ -65,10 +68,14 @@ public class CallServiceImpl implements CallService {
                 .startedAt(LocalDateTime.now())
                 .build());
 
-        // L'hôte est participant modérateur, entré immédiatement (invité explicitement).
+        // L'hôte est participant modérateur, convié explicitement — mais PAS encore
+        // « entré » : il ne l'est qu'en rejoignant réellement la salle (join()).
+        // Poser joinedAt ici le faisait compter comme « déjà en appel » (REF A) dès
+        // la création : si la salle ne s'ouvrait pas, il restait bloqué en 409
+        // ALREADY_IN_CALL sur toute création suivante, sans aucun moyen de sortir.
         participantRepository.save(CallParticipant.builder()
                 .call(call).userId(host)
-                .joinedAt(LocalDateTime.now()).invitedExplicitly(true).build());
+                .invitedExplicitly(true).build());
 
         // Membres internes conviés dès la création (Lot M1, optionnel).
         if (request.getMemberIds() != null && !request.getMemberIds().isEmpty()) {
@@ -98,29 +105,56 @@ public class CallServiceImpl implements CallService {
                             "ALREADY_IN_CALL : vous êtes déjà dans un appel (" + p.getCall().getId() + ").");
                 });
 
+        boolean isHost = call.getHostUserId().equals(me);
+
+        // Seuls l'hôte et les membres CONVIÉS entrent. Auparavant, un participant
+        // était créé à la volée pour quiconque connaissait l'identifiant de l'appel
+        // (`orElseGet`) : un membre du workspace non convié — qui ne voit pourtant
+        // pas l'appel dans `activeCalls()` — pouvait le rejoindre en forgeant la
+        // requête. Mesuré : `join` répondait 200. On répond 404 (et non 403) pour
+        // ne pas révéler l'existence de la réunion, comme le fait déjà `loadInOrg`.
         CallParticipant participant = participantRepository.findByCallIdAndUserId(callId, me)
-                .orElseGet(() -> CallParticipant.builder()
-                        .call(call).userId(me).invitedExplicitly(false).build());
+                .orElseThrow(() -> new ResourceNotFoundException("Appel introuvable."));
+        if (!isHost && !Boolean.TRUE.equals(participant.getInvitedExplicitly())) {
+            throw new ResourceNotFoundException("Appel introuvable.");
+        }
         participant.setJoinedAt(LocalDateTime.now());
         participant.setLeftAt(null);
         participantRepository.save(participant);
 
-        boolean isHost = call.getHostUserId().equals(me);
-        // M3 : l'hôte et les membres conviés explicitement entrent directement ;
-        // un membre non convié qui atteint la salle passe par la salle d'attente.
-        boolean lobbyBypass = isHost || Boolean.TRUE.equals(participant.getInvitedExplicitly());
+        // Tout membre CONVIÉ entre directement dans la salle (façon WhatsApp) : il
+        // s'est déjà authentifié sur la plateforme et a été invité explicitement,
+        // une validation manuelle du modérateur n'apporterait rien.
+        // Seul l'INVITÉ EXTERNE, qui n'a pas de compte, passe par la salle
+        // d'attente (GuestService : lobbyBypass = false).
         String token = tokenService.generateToken(call.getRoomName(), me,
-                caller.displayName(), null, isHost, lobbyBypass);
+                caller.displayName(), null, isHost, true);
         return toResponse(call, token);
     }
 
+    /**
+     * Quitte l'appel. **L'appel se clôt de lui-même** quand plus personne n'est
+     * présent : sans cela il restait `ACTIVE` indéfiniment (bannière « Appel en
+     * cours » perpétuelle, et REF A refusant toute réunion suivante).
+     */
     @Override
     public void leave(UUID callId) {
         UUID me = caller.userId();
+        Call call = loadInOrg(callId);
         participantRepository.findByCallIdAndUserId(callId, me).ifPresent(p -> {
             p.setLeftAt(LocalDateTime.now());
             participantRepository.save(p);
         });
+
+        if (call.getStatus() != CallStatus.ACTIVE) {
+            return;
+        }
+        // Plus aucun participant entré et non reparti → la réunion est finie.
+        boolean someoneStillIn = participantRepository.findByCallId(callId).stream()
+                .anyMatch(p -> p.getJoinedAt() != null && p.getLeftAt() == null);
+        if (!someoneStillIn) {
+            endCall(call);
+        }
     }
 
     @Override
@@ -131,6 +165,11 @@ public class CallServiceImpl implements CallService {
             throw new com.nexawork.commons.exceptions.ForbiddenException(
                     "Seul l'hôte ou un administrateur peut terminer l'appel.");
         }
+        endCall(call);
+    }
+
+    /** Clôture effective : statut, sortie de tous les présents, événement `call.ended`. */
+    private void endCall(Call call) {
         if (call.getStatus() == CallStatus.ENDED) {
             return;
         }
@@ -140,7 +179,7 @@ public class CallServiceImpl implements CallService {
         callRepository.save(call);
 
         // Tous les participants encore présents quittent.
-        participantRepository.findByCallId(callId).stream()
+        participantRepository.findByCallId(call.getId()).stream()
                 .filter(p -> p.getLeftAt() == null)
                 .forEach(p -> { p.setLeftAt(now); participantRepository.save(p); });
 
@@ -149,7 +188,7 @@ public class CallServiceImpl implements CallService {
         eventPublisher.publishCallEnded(new CallEndedEvent(
                 call.getId(), call.getTopic(), call.getRoomName(),
                 call.getOrganisationId(), call.getHostUserId(), durationSeconds));
-        log.info("Appel {} terminé (durée {}s)", callId, durationSeconds);
+        log.info("Appel {} terminé (durée {}s)", call.getId(), durationSeconds);
     }
 
     @Override
@@ -188,16 +227,45 @@ public class CallServiceImpl implements CallService {
         notifyInvited(call, userIds);
     }
 
+    /**
+     * Appels « en cours » de l'appelant (bannière). Un appel ne compte que si
+     * **au moins un participant est réellement présent** (joined, pas encore left) :
+     * sans cela, un appel créé puis abandonné (hôte qui ne rejoint jamais, ou
+     * fermeture sans {@code leave} propre) restait ACTIVE → bannière perpétuelle,
+     * visible même après reconnexion (§13). Au passage, on **clôt** les appels
+     * ACTIVE que plus personne n'occupe (nettoyage paresseux) — avec une période de
+     * grâce pour ne pas fermer un appel à peine créé dont l'hôte ouvre la salle.
+     */
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public List<CallResponse> activeCalls() {
         UUID me = caller.userId();
-        return callRepository.findByOrganisationIdOrderByCreatedAtDesc(caller.organisationId()).stream()
-                .filter(c -> c.getStatus() == CallStatus.ACTIVE)
+        LocalDateTime now = LocalDateTime.now();
+        List<Call> calls = callRepository.findByOrganisationIdOrderByCreatedAtDesc(caller.organisationId());
+        for (Call c : calls) {
+            if (c.getStatus() != CallStatus.ACTIVE || anyoneCurrentlyIn(c.getId())) {
+                continue;
+            }
+            // Personne dedans : clôture si passé la grâce de 2 min (le temps que l'hôte
+            // rejoigne), OU appel anormalement vieux (filet de sécurité, ex. crash).
+            boolean pastGrace = c.getCreatedAt() == null || c.getCreatedAt().isBefore(now.minusMinutes(2));
+            boolean tooOld = c.getCreatedAt() != null && c.getCreatedAt().isBefore(now.minusHours(12));
+            if (pastGrace || tooOld) {
+                endCall(c);
+            }
+        }
+        return calls.stream()
+                .filter(c -> c.getStatus() == CallStatus.ACTIVE && anyoneCurrentlyIn(c.getId()))
                 .filter(c -> c.getHostUserId().equals(me)
                         || participantRepository.findByCallIdAndUserId(c.getId(), me).isPresent())
                 .map(c -> toResponse(c, null))
                 .toList();
+    }
+
+    /** Vrai si au moins un participant est actuellement dans l'appel (joined, pas left). */
+    private boolean anyoneCurrentlyIn(UUID callId) {
+        return participantRepository.findByCallId(callId).stream()
+                .anyMatch(p -> p.getJoinedAt() != null && p.getLeftAt() == null);
     }
 
     @Override
@@ -218,6 +286,79 @@ public class CallServiceImpl implements CallService {
         }
         callRepository.delete(call); // cascade DB : participants, invités, chat, fichiers, masquages
         log.info("Appel {} supprimé par {}", callId, caller.userId());
+    }
+
+    /**
+     * Filet de sécurité du cycle de vie (cf. {@link CallService#sweepStaleCalls()}).
+     * {@code leave()} ne clôt l'appel que lorsqu'un participant *entré* en repart :
+     * si l'hôte crée l'appel et n'entre jamais dans la salle, plus personne ne
+     * déclenche jamais la clôture et l'appel reste ACTIVE à vie. Ce balayage est
+     * le seul mécanisme qui rattrape ce cas.
+     */
+    @Override
+    public void sweepStaleCalls() {
+        LocalDateTime now = LocalDateTime.now();
+        Duration abandonAfter = Duration.ofMinutes(meetingProperties.getAbandonTimeoutMinutes());
+        Duration maxDuration = Duration.ofHours(meetingProperties.getMaxDurationHours());
+
+        for (Call call : callRepository.findByStatus(CallStatus.ACTIVE)) {
+            LocalDateTime start = call.getStartedAt() != null ? call.getStartedAt() : call.getCreatedAt();
+
+            if (start != null && Duration.between(start, now).compareTo(maxDuration) > 0) {
+                log.info("Appel {} clos d'office : durée maximale de {} h dépassée.",
+                        call.getId(), meetingProperties.getMaxDurationHours());
+                endCall(call);
+                continue;
+            }
+
+            List<CallParticipant> participants = participantRepository.findByCallId(call.getId());
+            boolean someoneStillIn = participants.stream()
+                    .anyMatch(p -> p.getJoinedAt() != null && p.getLeftAt() == null);
+            if (someoneStillIn) {
+                continue;
+            }
+
+            // Salle vide : depuis le départ du dernier présent, ou — si personne
+            // n'est jamais entré — depuis le début de l'appel.
+            LocalDateTime emptySince = participants.stream()
+                    .map(CallParticipant::getLeftAt)
+                    .filter(java.util.Objects::nonNull)
+                    .max(LocalDateTime::compareTo)
+                    .orElse(start);
+
+            if (emptySince != null && Duration.between(emptySince, now).compareTo(abandonAfter) > 0) {
+                log.info("Appel {} clos d'office : salle vide depuis plus de {} min.",
+                        call.getId(), meetingProperties.getAbandonTimeoutMinutes());
+                endCall(call);
+            }
+        }
+    }
+
+    /**
+     * Diagnostic JaaS. Réservé aux administrateurs : la clé publique n'est pas un
+     * secret, mais la configuration du tenant n'a pas à circuler auprès de tous.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public JaasDiagnosticResponse jaasDiagnostic() {
+        if (!caller.isWorkspaceAdmin()) {
+            throw new ForbiddenException("Diagnostic réservé aux administrateurs et au propriétaire.");
+        }
+        String appId = jitsiProperties.getAppId();
+        String kid = jitsiProperties.getApiKeyId();
+        return JaasDiagnosticResponse.builder()
+                .appId(appId)
+                .apiKeyId(kid)
+                .kidMatchesAppId(appId != null && kid != null && kid.startsWith(appId + "/"))
+                .keySizeBits(tokenService.keySizeBits())
+                .publicKeyFingerprint(tokenService.publicKeyFingerprint())
+                .publicKeyPem(tokenService.publicKeyPem())
+                .serverTimeUtc(java.time.Instant.now().toString())
+                // Salle factice : le jeton n'ouvre aucune réunion réelle, il sert
+                // uniquement à faire lire ses claims (jwt.io).
+                .sampleToken(tokenService.generateToken("diagnostic-" + generateRoomName(),
+                        caller.userId(), caller.displayName(), null, true, true))
+                .build();
     }
 
     // ─── Helpers ────────────────────────────────────────────────────────────────

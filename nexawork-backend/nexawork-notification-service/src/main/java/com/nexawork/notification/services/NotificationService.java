@@ -14,4 +14,7 @@ public interface NotificationService {
     void markRead(UUID id);
 
     void hide(UUID id);
+
+    /** Supprime définitivement une notification (l'utilisateur, depuis son menu). */
+    void delete(UUID id);
 }

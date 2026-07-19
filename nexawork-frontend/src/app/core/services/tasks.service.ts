@@ -5,15 +5,20 @@ import { delay } from 'rxjs/operators';
 import { BaseHttpService } from '@core/http/base-http.service';
 import { SKIP_ERROR_TOAST } from '@core/http/http-context';
 import { FilesHttpService, StoredFile } from '@core/http/files.http.service';
+import { MentionRef } from '@core/models/mention.models';
 import {
   AttachmentResponse, CommentResponse, CreateStatusPayload, CreateTaskPayload, KanbanColumn,
   ProjectOverviewResponse, StatusResponse, SubTask, SubTaskResponse, TaskAttachment, TaskCard,
   TaskComment, TaskResponse, Transition, TransitionResponse, UpdateStatusPayload, UpdateTaskPayload,
   WorkflowUpdatePayload,
 } from '@core/models/task.models';
+import { SearchHitResponse } from '@core/models/search.models';
 import { MOCK_STATUSES, MOCK_TASKS } from '@core/mock/tasks';
 import { toCard, toColumn } from '@core/util/task-display.util';
 import { SessionService } from './session.service';
+
+/** Distingue un UUID backend d'une clé lisible de tâche (`MOB-101`). */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Colonnes + cartes groupées par statut — tout ce qu'il faut pour peindre un board. */
 export interface BoardData {
@@ -32,6 +37,11 @@ export abstract class TasksService {
   abstract loadBoard(projectId: string): Observable<BoardData>;
   /** Résout une carte par son id (mention `@@tâche` ouverte hors du board). */
   abstract cardById(id: string): Observable<TaskCard | undefined>;
+  /**
+   * Résout une carte par UUID **ou** par clé lisible (`MOB-101`). Une mention
+   * `@@tâche` porte la clé, pas l'UUID : c'est ce que voit et tape l'utilisateur.
+   */
+  abstract cardByRef(ref: string): Observable<TaskCard | undefined>;
   abstract createTask(projectId: string, req: CreateTaskPayload): Observable<TaskCard>;
   abstract updateTask(id: string, patch: UpdateTaskPayload): Observable<TaskCard>;
   abstract deleteTask(id: string): Observable<void>;
@@ -47,7 +57,7 @@ export abstract class TasksService {
   // ── Commentaires (avec pièces jointes) ──────────────────────────────────────
   abstract comments(taskId: string): Observable<TaskComment[]>;
   /** Poste un commentaire ; les fichiers sont d'abord poussés au File Service. */
-  abstract addComment(taskId: string, projectId: string, content: string, files: File[]): Observable<TaskComment>;
+  abstract addComment(taskId: string, projectId: string, content: string, files: File[], mentions?: MentionRef[]): Observable<TaskComment>;
   abstract removeComment(taskId: string, commentId: string): Observable<void>;
 
   // ── Pièces jointes de la tâche ──────────────────────────────────────────────
@@ -135,6 +145,12 @@ export class TasksMockService extends TasksService {
     return of(t ? toCard(t, colors[t.statusId]) : undefined).pipe(delay(40));
   }
 
+  cardByRef(ref: string): Observable<TaskCard | undefined> {
+    const t = this.tasks.find(x => x.id === ref || x.taskKey === ref);
+    const colors = colorIndex(this.statuses);
+    return of(t ? toCard(t, colors[t.statusId]) : undefined).pipe(delay(40));
+  }
+
   createTask(projectId: string, req: CreateTaskPayload): Observable<TaskCard> {
     const statusId = req.statusId ?? this.statuses.find(s => s.isInitial)?.id ?? this.statuses[0].id;
     const status = this.statuses.find(s => s.id === statusId)!;
@@ -197,7 +213,7 @@ export class TasksMockService extends TasksService {
   }
 
   comments(taskId: string): Observable<TaskComment[]> { return of((this.cmts[taskId] ?? []).map(c => ({ ...c }))).pipe(delay(40)); }
-  addComment(taskId: string, _projectId: string, content: string, files: File[]): Observable<TaskComment> {
+  addComment(taskId: string, _projectId: string, content: string, files: File[], _mentions?: MentionRef[]): Observable<TaskComment> {
     const c: TaskComment = {
       id: 'c' + (++this.seq), taskId, authorUserId: 'me', content, createdAt: new Date().toISOString(),
       attachments: files.map((f, i) => ({ id: 'ca' + this.seq + i, name: f.name, url: '#', size: f.size, contentType: f.type })),
@@ -292,6 +308,23 @@ export class TasksHttpService extends BaseHttpService implements TasksService {
     return this.get$<TaskResponse>('project', `/tasks/${id}`).pipe(map(t => toCard(t)));
   }
 
+  /**
+   * UUID → lecture directe. Clé lisible (`MOB-101`) → résolution par la recherche
+   * du Project Service (elle indexe `task_key` et applique déjà la visibilité R15),
+   * puis lecture de la tâche.
+   */
+  cardByRef(ref: string): Observable<TaskCard | undefined> {
+    const key = ref.trim();
+    if (!key) return of(undefined);
+    if (UUID_RE.test(key)) return this.cardById(key);
+    return this.get$<SearchHitResponse[]>('project', '/search', { q: key }).pipe(
+      switchMap(hits => {
+        const hit = hits.find(h => h.type === 'taches' && h.mono?.toLowerCase() === key.toLowerCase());
+        return hit ? this.cardById(hit.id) : of(undefined);
+      }),
+    );
+  }
+
   createTask(projectId: string, req: CreateTaskPayload): Observable<TaskCard> {
     return this.post$<TaskResponse>('project', `/projects/${projectId}/tasks`, req).pipe(map(t => toCard(t)));
   }
@@ -326,10 +359,12 @@ export class TasksHttpService extends BaseHttpService implements TasksService {
   comments(taskId: string): Observable<TaskComment[]> {
     return this.get$<CommentResponse[]>('project', `/tasks/${taskId}/comments`).pipe(map(rs => rs.map(toComment)));
   }
-  addComment(taskId: string, projectId: string, content: string, files: File[]): Observable<TaskComment> {
+  addComment(taskId: string, projectId: string, content: string, files: File[], mentions: MentionRef[] = []): Observable<TaskComment> {
     const post = (stored: StoredFile[]) => this.post$<CommentResponse>('project', `/tasks/${taskId}/comments`, {
       content,
       attachments: stored.map(s => ({ fileName: s.fileName, fileUrl: s.downloadUrl, fileSize: s.size, contentType: s.contentType })),
+      // Seules les mentions de personnes portent un destinataire à notifier.
+      mentions: mentions.filter(m => m.type === 'USER').map(m => ({ targetId: m.targetId, targetText: m.targetText })),
     }).pipe(map(toComment));
 
     if (files.length === 0) return post([]);

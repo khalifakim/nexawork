@@ -64,17 +64,24 @@ delete_queue_if_exists nexawork.messaging.call-ended
 echo "Notification queues :"
 declare_queue_binding nexawork.notification.member-invited      member.invited
 declare_queue_binding nexawork.notification.task-assigned       task.assigned
+declare_queue_binding nexawork.notification.task-commented     task.commented
 declare_queue_binding nexawork.notification.livrable-validated  livrable.validated
 declare_queue_binding nexawork.notification.call-ended          call.ended
 declare_queue_binding nexawork.notification.external-guest      external.guest.invited
+declare_queue_binding nexawork.notification.mention             message.mention
+declare_queue_binding nexawork.notification.message-created     message.created
+declare_queue_binding nexawork.notification.document-shared     document.shared
+declare_queue_binding nexawork.notification.member-added        project.member-added
+declare_queue_binding nexawork.notification.comment-mention     comment.mention
 declare_queue_binding nexawork.notification.meeting-invite      meeting.participant.invited
 
 # ── Queue GED Service (1) — V5.1 §7.4 ─────────────────────────────────────────
 echo "GED queues :"
 declare_queue_binding nexawork.ged.project-created              project.created
 
-# ── Queue Messaging Service (1) — V5.1 §7.4 ───────────────────────────────────
+# ── Queues Messaging Service (2) — V5.1 §7.4 ──────────────────────────────────
 echo "Messaging queues :"
 declare_queue_binding nexawork.messaging.project-created        project.created
+declare_queue_binding nexawork.messaging.project-deleted        project.deleted
 
 echo "Toutes les queues et bindings RabbitMQ créés."

@@ -37,17 +37,34 @@ import { ME } from '@core/util/ui.util';
         </div>
       }
 
+      @if (error) {
+        <div class="err"><app-icon name="alert" [size]="15" />{{ error }}</div>
+      }
+
       <div footer>
-        <button class="ghost" (click)="closed.emit()">Annuler</button>
-        <button class="primary" [disabled]="!file()" (click)="doImport()">Importer</button>
+        <button class="ghost" [disabled]="busy" (click)="closed.emit()">Annuler</button>
+        <button class="primary" [disabled]="!file() || busy" (click)="doImport()">
+          @if (busy) { <span class="btnspin"></span>Import en cours… } @else { Importer }
+        </button>
       </div>
     </app-modal-shell>
   `,
-  styleUrl: '../_ged-modal.shared.scss',
+  styles: [`
+    .err { display: flex; align-items: center; gap: 7px; margin-top: 12px; padding: 9px 11px; border-radius: 8px;
+      background: rgba(245,86,78,.1); color: var(--nx-danger); font-size: 12.5px; font-weight: 600; }
+    .btnspin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid rgba(255,255,255,.4); border-top-color: #fff;
+      display: inline-block; margin-right: 8px; vertical-align: -2px; animation: bsp .7s linear infinite; }
+    @keyframes bsp { to { transform: rotate(360deg); } }
+  `],
+  styleUrls: ['../_ged-modal.shared.scss'],
 })
 export class ImporterFichierComponent {
   /** R16 — scope propagated to the share picker (workspace vs project members). */
   @Input() scope: 'org' | 'project' = 'org';
+  /** Piloté par le parent : upload en cours (loader + boutons désactivés). */
+  @Input() busy = false;
+  /** Message d'erreur d'upload affiché par le parent (le modal reste ouvert). */
+  @Input() error = '';
   @Output() closed = new EventEmitter<void>();
   @Output() imported = new EventEmitter<{ file: File; name: string; restricted: boolean }>();
 

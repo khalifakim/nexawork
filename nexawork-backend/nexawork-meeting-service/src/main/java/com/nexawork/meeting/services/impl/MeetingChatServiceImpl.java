@@ -3,11 +3,15 @@ package com.nexawork.meeting.services.impl;
 import com.nexawork.commons.exceptions.ForbiddenException;
 import com.nexawork.commons.exceptions.ResourceNotFoundException;
 import com.nexawork.meeting.dtos.requests.CreateMeetingMessageRequest;
+import com.nexawork.meeting.dtos.requests.ShareMeetingFileRequest;
+import com.nexawork.meeting.dtos.responses.MeetingFileResponse;
 import com.nexawork.meeting.dtos.responses.MeetingMessageResponse;
 import com.nexawork.meeting.entities.Call;
+import com.nexawork.meeting.entities.MeetingFile;
 import com.nexawork.meeting.entities.MeetingMessage;
 import com.nexawork.meeting.repositories.CallParticipantRepository;
 import com.nexawork.meeting.repositories.CallRepository;
+import com.nexawork.meeting.repositories.MeetingFileRepository;
 import com.nexawork.meeting.repositories.MeetingMessageRepository;
 import com.nexawork.meeting.security.CallerContext;
 import com.nexawork.meeting.services.MeetingChatService;
@@ -33,6 +37,7 @@ public class MeetingChatServiceImpl implements MeetingChatService {
     CallRepository callRepository;
     CallParticipantRepository participantRepository;
     MeetingMessageRepository messageRepository;
+    MeetingFileRepository fileRepository;
     CallerContext caller;
 
     @Override
@@ -52,6 +57,52 @@ public class MeetingChatServiceImpl implements MeetingChatService {
     public List<MeetingMessageResponse> list(UUID callId) {
         loadAsParticipant(callId);
         return messageRepository.findByCallIdOrderBySentAtAsc(callId).stream().map(this::toDto).toList();
+    }
+
+    /**
+     * Enregistre un fichier partagé dans la salle (M5). Le binaire a déjà été
+     * téléversé au **File Service** (contexte {@code meeting-file} → MinIO) :
+     * on ne persiste que sa référence. Le Meeting Service ne manipule aucun octet.
+     */
+    @Override
+    public MeetingFileResponse shareFile(UUID callId, ShareMeetingFileRequest request) {
+        Call call = loadAsParticipant(callId);
+        // Un même StoredFile ne doit être rattaché qu'une fois à l'appel (rejeu de
+        // la requête, double clic).
+        return fileRepository.findByCallIdAndFileId(callId, request.getFileId())
+                .map(this::toDto)
+                .orElseGet(() -> toDto(fileRepository.save(MeetingFile.builder()
+                        .call(call)
+                        .fileId(request.getFileId())
+                        .downloadUrl(request.getDownloadUrl())
+                        .fileName(request.getFileName())
+                        .fileSize(request.getFileSize())
+                        .contentType(request.getContentType())
+                        .sharedBy(caller.userId())
+                        .sharedByName(caller.displayName())
+                        .build())));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<MeetingFileResponse> files(UUID callId) {
+        loadAsParticipant(callId);
+        return fileRepository.findByCallIdOrderBySharedAtAsc(callId).stream().map(this::toDto).toList();
+    }
+
+    private MeetingFileResponse toDto(MeetingFile f) {
+        return MeetingFileResponse.builder()
+                .id(f.getId())
+                .callId(f.getCall().getId())
+                .fileId(f.getFileId())
+                .downloadUrl(f.getDownloadUrl())
+                .fileName(f.getFileName())
+                .fileSize(f.getFileSize())
+                .contentType(f.getContentType())
+                .sharedBy(f.getSharedBy())
+                .sharedByName(f.getSharedByName())
+                .sharedAt(f.getSharedAt())
+                .build();
     }
 
     /** Charge l'appel borné au workspace et vérifie que l'appelant en est participant. */

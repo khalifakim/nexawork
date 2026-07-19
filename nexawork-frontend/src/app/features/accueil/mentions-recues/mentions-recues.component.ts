@@ -3,7 +3,9 @@ import { Router } from '@angular/router';
 import { FicheTacheComponent } from '@features/projets/modals/fiche-tache/fiche-tache.component';
 import { AccueilService } from '@core/services/accueil.service';
 import { SessionService } from '@core/services/session.service';
+import { TasksService } from '@core/services/tasks.service';
 import { ReceivedMention as Mention } from '@core/models/accueil.models';
+import { TaskCard } from '@core/models/task.models';
 import { workspaceSignal } from '@core/util/workspace-signal';
 
 type FilterKey = 'Toutes' | 'Canaux' | 'Discussions' | 'Commentaires' | 'Non lues';
@@ -53,7 +55,11 @@ const TAB_ORDER: FilterKey[] = ['Toutes', 'Canaux', 'Discussions', 'Commentaires
               <span class="dot">
                 @if (!isRead(m.id)) { <span class="dot__b"></span> }
               </span>
-              <span class="av" [style.background]="m.c">{{ m.initials }}</span>
+              @if (m.photoUrl) {
+                <img class="av av--img" [src]="m.photoUrl" alt="" />
+              } @else {
+                <span class="av" [style.background]="m.c">{{ m.initials }}</span>
+              }
               <div class="b">
                 <div class="hh"><span class="a">{{ m.a }}</span><span class="v"> {{ m.verb }}</span></div>
                 <div class="snip" [class.snip--read]="isRead(m.id)">« {{ m.snip }} »</div>
@@ -77,7 +83,7 @@ const TAB_ORDER: FilterKey[] = ['Toutes', 'Canaux', 'Discussions', 'Commentaires
     </div>
 
     @if (openedTask()) {
-      <app-fiche-tache [task]="openedTask()!" (closed)="openedTask.set(null)" />
+      <app-fiche-tache [task]="openedTask()!" [anchorCommentId]="anchorComment()" (closed)="openedTask.set(null)" />
     }
   `,
   styleUrl: './mentions-recues.component.scss',
@@ -86,9 +92,12 @@ export class MentionsRecuesComponent {
   private router = inject(Router);
   private session = inject(SessionService);
   private accueil = inject(AccueilService);
+  private tasksSvc = inject(TasksService);
 
   filter      = signal<FilterKey>('Toutes');
-  openedTask  = signal<any>(null);
+  openedTask  = signal<TaskCard | null>(null);
+  /** Commentaire à ancrer dans la fiche ouverte (mention de commentaire). */
+  anchorComment = signal<string | null>(null);
   /** Ids the user marked read this session (on top of the mock's own `read` flag). */
   private readIds = signal<string[]>([]);
 
@@ -136,19 +145,15 @@ export class MentionsRecuesComponent {
   /** Route to the element a mention points at, per its serialisable target. */
   private goTo(m: Mention): void {
     switch (m.target.kind) {
-      case 'task':         this.openTaskById(m.target.id); break;
+      case 'task':         this.openTaskById(m.target.id, m.target.commentId); break;
       case 'conversation': this.router.navigate(['/app/conversations', m.target.slug]); break;
       case 'channel':      this.router.navigate(['/app/canaux', m.target.slug]); break;
     }
   }
 
-  private openTaskById(id: string): void {
-    this.openedTask.set({
-      id, title: 'Voir commentaire — ' + id,
-      desc: '', proj: 'Tâche',
-      prio: ['Haute', '#F5564E', '#FDECEB'],
-      tag: ['Commentaire', '#6C70F0'],
-      team: [], links: 0, comments: 1,
-    });
+  /** `ref` = UUID de la tâche, ou sa clé lisible quand la mention n'a pas d'id résolu. */
+  private openTaskById(ref: string, commentId?: string): void {
+    this.anchorComment.set(commentId ?? null);
+    this.tasksSvc.cardByRef(ref).subscribe(card => { if (card) this.openedTask.set(card); });
   }
 }

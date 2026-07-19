@@ -18,6 +18,9 @@ public class ConversationResponse {
     private UUID workspaceId;
     private String type;
     private List<UUID> participantUserIds;
+    /** Conserve la sémantique « tout est lu » (= {@code unreadCount == 0}). */
     private Boolean isRead;
+    /** Vrai nombre de messages non lus reçus par l'appelant (badge). */
+    private Long unreadCount;
     private LocalDateTime createdAt;
 }

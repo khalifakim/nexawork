@@ -90,8 +90,8 @@ function pickPrefixToken(word: string): { tab: MentionTab; query: string } | nul
             <app-icon name="smile" [size]="18" />
           </button>
           <span class="cc__sp"></span>
-          <button class="cc__send" title="Envoyer" (click)="send()">
-            <app-icon name="send" [size]="17" />
+          <button class="cc__send" title="Envoyer" [disabled]="sending" (click)="send()">
+            @if (sending) { <span class="cc__spin"></span> } @else { <app-icon name="send" [size]="17" /> }
           </button>
         </div>
 
@@ -157,6 +157,9 @@ function pickPrefixToken(word: string): { tab: MentionTab; query: string } | nul
       color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer;
       box-shadow: 0 4px 12px rgba(91,95,233,.28); }
     .cc__send:hover { filter: brightness(1.05); }
+    .cc__send:disabled { opacity: .7; cursor: default; }
+    .cc__spin { width: 15px; height: 15px; border-radius: 50%; border: 2px solid rgba(255,255,255,.4); border-top-color: #fff; animation: ccsp .7s linear infinite; }
+    @keyframes ccsp { to { transform: rotate(360deg); } }
     .cc__pop { position: absolute; z-index: 30; }
     .cc__pop--mention { left: 0; right: 0; bottom: calc(100% + 8px); }
     .cc__pop--emoji   { left: 0; right: 0; bottom: calc(100% + 8px); }
@@ -164,6 +167,8 @@ function pickPrefixToken(word: string): { tab: MentionTab; query: string } | nul
 })
 export class CommentComposerComponent {
   @Input() placeholder = 'Commentez, mentionnez avec @, @@, @@@ ou #…';
+  /** Piloté par le parent : envoi en cours (spinner + bouton désactivé). */
+  @Input() sending = false;
   @Output() submitted = new EventEmitter<{ parts: RichPart[]; files: AttachedFile[]; text: string }>();
   /** Émis à chaque frappe — alimente l'indicateur « est en train d'écrire ». */
   @Output() typing = new EventEmitter<void>();

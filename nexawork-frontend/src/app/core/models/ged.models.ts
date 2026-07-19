@@ -9,9 +9,11 @@ export interface GedItem {
   by?: string;
   system?: boolean;
   added?: string;
-  task?: { id: string; title: string };
+  task?: { id: string; key?: string; title: string };
   /** UUID backend (dossier ou fichier GED) — absent des fixtures mock. */
   id?: string;
+  /** Chemin de téléchargement File Service — permet l'aperçu et le téléchargement réels. */
+  url?: string;
   /** Restriction d'accès portée par le backend (open/private/shared). */
   restricted?: boolean;
   /** Projet d'appartenance (vide = GED d'organisation). */
@@ -55,6 +57,8 @@ export interface FileResponse {
 export interface TaskAttachmentLineResponse {
   attachmentId: string;
   taskId: string;
+  /** Identifiant lisible de la tâche (PREFIX-NNN). */
+  taskKey?: string;
   taskTitle: string;
   fileName: string;
   fileUrl: string;

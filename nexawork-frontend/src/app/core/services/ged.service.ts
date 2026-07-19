@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable, forkJoin, of, switchMap } from 'rxjs';
-import { map, delay } from 'rxjs/operators';
+import { map, delay, catchError } from 'rxjs/operators';
 import { BaseHttpService } from '@core/http/base-http.service';
 import { FilesHttpService } from '@core/http/files.http.service';
 import {
@@ -35,16 +35,21 @@ export abstract class GedService {
   // ── Bibliothèque (I5c) ──────────────────────────────────────────────────────
   /** Tous les fichiers d'un espace, à plat (racine + sous-dossiers). `null` = organisation. */
   abstract allFiles(projectId: string | null): Observable<GedItem[]>;
+  /**
+   * Résout un document par son NOM (mention `@@@document`) — renvoie l'élément
+   * complet (avec son URL de téléchargement) pour permettre l'aperçu réel.
+   */
+  abstract findByName(name: string): Observable<GedItem | undefined>;
   /** Documents dont l'appelant est l'auteur. */
   abstract myDocuments(): Observable<GedItem[]>;
   /** Documents partagés avec l'appelant (grants). */
   abstract sharedWithMe(): Observable<GedItem[]>;
   /** Corbeille de l'appelant (suppression logique). */
   abstract trash(): Observable<GedItem[]>;
-  /** Restaure un fichier depuis la corbeille. */
-  abstract restoreFile(fileId: string): Observable<void>;
-  /** Supprime définitivement un fichier de la corbeille. */
-  abstract purgeFile(fileId: string): Observable<void>;
+  /** Restaure un élément depuis la corbeille (fichier ou dossier). */
+  abstract restoreFile(fileId: string, isFolder?: boolean): Observable<void>;
+  /** Supprime définitivement un élément de la corbeille (fichier ou dossier). */
+  abstract purgeFile(fileId: string, isFolder?: boolean): Observable<void>;
   /** Vide entièrement la corbeille. */
   abstract emptyTrash(): Observable<void>;
 
@@ -109,6 +114,7 @@ export class GedMockService extends GedService {
   deleteItem(): Observable<void> { return of(void 0).pipe(delay(60)); }
 
   allFiles(_projectId: string | null): Observable<GedItem[]> { return of([]).pipe(delay(60)); }
+  findByName(_name: string): Observable<GedItem | undefined> { return of(undefined).pipe(delay(60)); }
   myDocuments(): Observable<GedItem[]> { return of([]).pipe(delay(60)); }
   sharedWithMe(): Observable<GedItem[]> { return of([]).pipe(delay(60)); }
   trash(): Observable<GedItem[]> { return of([]).pipe(delay(60)); }
@@ -185,10 +191,47 @@ export class GedHttpService extends BaseHttpService implements GedService {
     }));
   }
 
+  /**
+   * Résout un document par son nom (mention `@@@document`) : la recherche GED
+   * donne son id, puis on charge le fichier pour récupérer son `fileUrl` — sans
+   * quoi l'aperçu ne pourrait pas afficher le contenu réel.
+   */
+  findByName(name: string): Observable<GedItem | undefined> {
+    const term = name.trim();
+    if (!term) return of(undefined);
+    return forkJoin({
+      hits: this.get$<{ type: string; id: string; name: string }[]>('ged', '/ged/search', { q: term }),
+      dir: this.members.directory(),
+    }).pipe(switchMap(({ hits, dir }) => {
+      const byId = new Map<string, Member>(dir.map(m => [m.userId ?? '', m]));
+      // Correspondance exacte du nom en priorité, sinon le premier document trouvé.
+      const hit = hits.find(h => h.name.toLowerCase() === term.toLowerCase()) ?? hits[0];
+      if (!hit) return of(undefined);
+      return this.get$<FileResponse>('ged', `/ged/files/${hit.id}`).pipe(
+        map(f => toFileItem(f, byId)),
+        catchError(() => of(undefined)), // l'id peut désigner un dossier → pas d'aperçu
+      );
+    }));
+  }
+
   // ── Bibliothèque ────────────────────────────────────────────────────────────
   myDocuments(): Observable<GedItem[]> { return this.library('/ged/my-documents'); }
   sharedWithMe(): Observable<GedItem[]> { return this.library('/ged/shared-with-me'); }
-  trash(): Observable<GedItem[]> { return this.library('/ged/trash'); }
+
+  /** Corbeille : fichiers ET dossiers supprimés par l'appelant (R11). */
+  trash(): Observable<GedItem[]> {
+    return forkJoin({
+      files: this.get$<FileResponse[]>('ged', '/ged/trash'),
+      folders: this.get$<FolderResponse[]>('ged', '/ged/folders/trash'),
+      dir: this.members.directory(),
+    }).pipe(map(({ files, folders, dir }) => {
+      const byId = new Map<string, Member>(dir.map(m => [m.userId ?? '', m]));
+      return [
+        ...folders.map(f => toFolderItem(f, byId)),
+        ...files.map(f => toFileItem(f, byId)),
+      ];
+    }));
+  }
 
   private library(path: string): Observable<GedItem[]> {
     return forkJoin({
@@ -200,11 +243,15 @@ export class GedHttpService extends BaseHttpService implements GedService {
     }));
   }
 
-  restoreFile(fileId: string): Observable<void> {
-    return this.post$<FileResponse>('ged', `/ged/files/${fileId}/restore`, {}).pipe(map(() => void 0));
+  /** Restaure un élément de la corbeille (fichier ou dossier). */
+  restoreFile(fileId: string, isFolder = false): Observable<void> {
+    const path = isFolder ? `/ged/folders/${fileId}/restore` : `/ged/files/${fileId}/restore`;
+    return this.post$<unknown>('ged', path, {}).pipe(map(() => void 0));
   }
-  purgeFile(fileId: string): Observable<void> {
-    return this.delete$<void>('ged', `/ged/trash/${fileId}`);
+  /** Supprime définitivement un élément de la corbeille (fichier ou dossier). */
+  purgeFile(fileId: string, isFolder = false): Observable<void> {
+    const path = isFolder ? `/ged/folders/trash/${fileId}` : `/ged/trash/${fileId}`;
+    return this.delete$<void>('ged', path);
   }
   emptyTrash(): Observable<void> {
     return this.delete$<void>('ged', '/ged/trash');
@@ -413,6 +460,7 @@ function toFileItem(f: FileResponse, byId: Map<string, Member>): GedItem {
     added: formatDate(f.addedAt),
     restricted: f.restricted,
     projectId: f.projectId,
+    url: f.fileUrl,
   };
 }
 
@@ -425,15 +473,19 @@ function toTaskAttachmentItem(a: TaskAttachmentLineResponse, byId: Map<string, M
     size: formatSize(a.fileSize),
     added: formatDate(a.uploadedAt),
     system: true,
-    task: { id: a.taskId, title: a.taskTitle },
+    task: { id: a.taskId, key: a.taskKey, title: a.taskTitle },
+    url: a.fileUrl,
   };
 }
 
 function toContentItems(content: FolderContentResponse, byId: Map<string, Member>): GedItem[] {
+  // `?? []` : un dossier restreint (ou vide) peut renvoyer un champ à `null` plutôt
+  // qu'un tableau vide — `null.map` crashait alors l'ouverture (« Cannot read
+  // properties of null (reading 'map') »), le chargement ne se terminait jamais.
   return [
-    ...content.subFolders.map(f => toFolderItem(f, byId)),
-    ...content.files.map(f => toFileItem(f, byId)),
-    ...content.taskAttachments.map(a => toTaskAttachmentItem(a, byId)),
+    ...(content.subFolders ?? []).map(f => toFolderItem(f, byId)),
+    ...(content.files ?? []).map(f => toFileItem(f, byId)),
+    ...(content.taskAttachments ?? []).map(a => toTaskAttachmentItem(a, byId)),
   ];
 }
 

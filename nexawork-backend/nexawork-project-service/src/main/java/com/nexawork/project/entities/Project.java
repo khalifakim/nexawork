@@ -57,7 +57,8 @@ public class Project extends Auditable {
     @Column(name = "organisation_id", nullable = false)
     private UUID organisationId;
 
-    @Column(name = "owner_user_id", nullable = false)
+    /** Chef de projet fonctionnel. {@code null} tant qu'aucun chef n'est désigné (CU-CP05). */
+    @Column(name = "owner_user_id")
     private UUID ownerUserId;
 
     @Enumerated(EnumType.STRING)

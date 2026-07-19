@@ -72,6 +72,23 @@ public class StompMessageController {
     }
 
     /**
+     * Indicateur de saisie d'un <b>canal</b> (miroir de {@link #typing}). Volatile :
+     * rediffusé aux abonnés de {@code /topic/channels/{id}/typing} sans persistance.
+     */
+    @MessageMapping("/channels/{channelId}/typing")
+    public void channelTyping(@DestinationVariable UUID channelId,
+                              @Payload TypingEvent event,
+                              SimpMessageHeaderAccessor accessor) {
+        Object userId = accessor.getSessionAttributes() != null
+                ? accessor.getSessionAttributes().get(WebSocketHandshakeInterceptor.ATTR_USER_ID) : null;
+        if (userId == null) {
+            return;
+        }
+        broadcaster.broadcastChannelTyping(channelId,
+                new TypingEvent(UUID.fromString(userId.toString()), event.isTyping()));
+    }
+
+    /**
      * Exécute une action avec l'identité STOMP dans le SecurityContext, sous forme
      * de {@link io.jsonwebtoken.Claims} (comme le filtre HTTP), puis nettoie.
      */

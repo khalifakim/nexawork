@@ -11,6 +11,8 @@ import com.nexawork.project.entities.Project;
 import com.nexawork.project.entities.ProjectMember;
 import com.nexawork.project.entities.Team;
 import com.nexawork.project.entities.enums.ProjectRole;
+import com.nexawork.project.events.publishers.AddedToProjectEvent;
+import com.nexawork.project.events.publishers.ProjectEventPublisher;
 import com.nexawork.project.mappers.ProjectMemberMapper;
 import com.nexawork.project.repositories.ProjectMemberRepository;
 import com.nexawork.project.repositories.ProjectRepository;
@@ -45,6 +47,7 @@ public class ProjectMemberServiceImpl implements ProjectMemberService {
     ProjectMemberMapper memberMapper;
     ProjectGuard guard;
     CallerContext caller;
+    ProjectEventPublisher eventPublisher;
 
     @Override
     @Transactional(readOnly = true)
@@ -75,7 +78,12 @@ public class ProjectMemberServiceImpl implements ProjectMemberService {
                 .isProjectLead(false)
                 .build();
         // saveAndFlush : peuple joinedAt (@CreationTimestamp) avant le mapping.
-        return memberMapper.asDto(projectMemberRepository.saveAndFlush(member));
+        ProjectMember saved = projectMemberRepository.saveAndFlush(member);
+        // Notifie le membre ajouté (§4.7).
+        eventPublisher.publishAddedToProject(new AddedToProjectEvent(
+                request.getUserId(), projectId, project.getName(),
+                project.getOrganisationId(), caller.userId()));
+        return memberMapper.asDto(saved);
     }
 
     @Override

@@ -30,6 +30,11 @@ export interface OngoingCall {
   context: string;
   /** Timestamp d'entrée dans l'appel — sert au chronomètre. */
   startedAt: number;
+  /**
+   * Créateur de l'appel = modérateur. Le popover du header n'offre « Terminer
+   * pour tous » qu'à lui : les autres ne peuvent que quitter.
+   */
+  hostUserId?: string;
 }
 
 /**
@@ -69,6 +74,10 @@ export class SessionService {
   /** Espaces de l'utilisateur — chargés depuis le backend (ou mock) via `loadWorkspaces()`. */
   private readonly _workspaces = signal<Workspace[]>([]);
   readonly workspaces = this._workspaces.asReadonly();
+
+  /** Vrai pendant le (re)chargement de la liste des espaces (loader du sélecteur). */
+  private readonly _workspacesLoading = signal(false);
+  readonly workspacesLoading = this._workspacesLoading.asReadonly();
 
   /** Denormalised view of the active workspace (id-driven). */
   readonly activeWorkspace = computed<ActiveWorkspaceView>(
@@ -189,12 +198,17 @@ export class SessionService {
 
   /** Charge (ou recharge) le catalogue des espaces de l'utilisateur. */
   loadWorkspaces(): void {
-    this.workspaceService.list().subscribe(ws => {
-      this._workspaces.set(ws);
-      // Si aucun espace actif valide, sélectionne le premier disponible.
-      if (!ws.some(w => w.id === this._activeWorkspaceId()) && ws.length) {
-        this._activeWorkspaceId.set(ws[0].id);
-      }
+    this._workspacesLoading.set(true);
+    this.workspaceService.list().subscribe({
+      next: ws => {
+        this._workspaces.set(ws);
+        // Si aucun espace actif valide, sélectionne le premier disponible.
+        if (!ws.some(w => w.id === this._activeWorkspaceId()) && ws.length) {
+          this._activeWorkspaceId.set(ws[0].id);
+        }
+        this._workspacesLoading.set(false);
+      },
+      error: () => this._workspacesLoading.set(false),
     });
   }
 

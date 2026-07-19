@@ -16,4 +16,10 @@ public class CallerContext {
         return SecurityUtils.getCurrentUserId()
                 .orElseThrow(() -> new ForbiddenException("Identité utilisateur absente."));
     }
+
+    /** Workspace actif (header {@code X-Org-Id}) — scope les notifications. */
+    public UUID organisationId() {
+        return SecurityUtils.getCurrentOrganisationId()
+                .orElseThrow(() -> new ForbiddenException("Aucun workspace actif dans la session."));
+    }
 }

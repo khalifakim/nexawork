@@ -9,6 +9,7 @@ import { IconComponent } from '@shared/ui/icon/icon.component';
 import { SearchService } from '@core/services/search.service';
 import { SessionService } from '@core/services/session.service';
 import { SearchResult as Result } from '@core/models/search.models';
+import { AvatarDirectoryService } from '@core/services/avatar-directory.service';
 import { slugify } from '@core/util/ui.util';
 import { ShellBus } from '@layouts/app-shell/shell.bus';
 
@@ -37,7 +38,15 @@ import { ShellBus } from '@layouts/app-shell/shell.bus';
           @for (r of shown(); track r.name; let i = $index) {
             <div class="res" #resRow [class.res--on]="i===highlight()"
                  (mouseenter)="highlight.set(i)" (click)="open(r)">
-              @if (r.avatar) { <span class="res__av" [style.background]="r.color">{{ r.avatar }}</span> }
+              @if (r.avatar) {
+                <!-- Photo de profil si l'annuaire en connaît une (le résultat porte
+                     l'userId), initiales sinon. -->
+                @if (photoOf(r); as photo) {
+                  <img class="res__av res__av--img" [src]="photo" alt="" />
+                } @else {
+                  <span class="res__av" [style.background]="r.color">{{ r.avatar }}</span>
+                }
+              }
               @else if (r.radio) { <span class="res__radio" [style.border-color]="r.radio"></span> }
               @else if (r.hash) { <span class="res__hash">#</span> }
               @else { <span class="res__ic" [style.color]="r.color || 'var(--nx-text-500)'"><app-icon [name]="r.icon || 'file'" [size]="18" /></span> }
@@ -84,6 +93,16 @@ export class RechercheGlobaleComponent implements AfterViewInit {
   private searchSvc = inject(SearchService);
   private router = inject(Router);
   private bus = inject(ShellBus);
+  private avatars = inject(AvatarDirectoryService);
+
+  /**
+   * Photo d'un résultat « personne ». Le résultat porte l'`userId` (`r.id`), mais
+   * les endpoints `/search` ne renvoient pas les photos : on la résout via
+   * l'annuaire du workspace, déjà chargé.
+   */
+  photoOf(r: Result): string | undefined {
+    return r.type === 'personnes' ? this.avatars.photoOf(r.id) : undefined;
+  }
 
   /**
    * Résultats de la recherche fédérée. La requête part au serveur (debounce

@@ -5,8 +5,10 @@ import com.nexawork.commons.exceptions.ResourceNotFoundException;
 import com.nexawork.meeting.dtos.requests.InviteGuestRequest;
 import com.nexawork.meeting.dtos.responses.GuestAccessResponse;
 import com.nexawork.meeting.dtos.responses.GuestInviteResponse;
+import com.nexawork.meeting.dtos.responses.MeetingFileResponse;
 import com.nexawork.meeting.entities.Call;
 import com.nexawork.meeting.entities.ExternalGuest;
+import com.nexawork.meeting.entities.MeetingFile;
 import com.nexawork.meeting.entities.enums.CallStatus;
 import com.nexawork.meeting.events.publishers.ExternalGuestInvitedEvent;
 import com.nexawork.meeting.events.publishers.MeetingEventPublisher;
@@ -14,9 +16,14 @@ import com.nexawork.meeting.properties.JitsiProperties;
 import com.nexawork.meeting.properties.MeetingProperties;
 import com.nexawork.meeting.repositories.CallRepository;
 import com.nexawork.meeting.repositories.ExternalGuestRepository;
+import com.nexawork.meeting.repositories.MeetingFileRepository;
 import com.nexawork.meeting.security.CallerContext;
 import com.nexawork.meeting.services.GuestService;
 import com.nexawork.meeting.services.JitsiTokenService;
+import com.nexawork.meeting.services.MeetingFileClient;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.util.List;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
@@ -39,6 +46,8 @@ public class GuestServiceImpl implements GuestService {
 
     CallRepository callRepository;
     ExternalGuestRepository guestRepository;
+    MeetingFileRepository fileRepository;
+    MeetingFileClient fileClient;
     JitsiTokenService tokenService;
     MeetingEventPublisher eventPublisher;
     JitsiProperties jitsiProperties;
@@ -71,29 +80,139 @@ public class GuestServiceImpl implements GuestService {
                 .guestToken(token).guestLink(link).build();
     }
 
+    /**
+     * Ouvre la salle à l'invité externe.
+     *
+     * <p>🔴 Le lien n'est <b>plus</b> refusé parce qu'il a « déjà servi ». Il l'était,
+     * et cela rendait l'invité prisonnier d'un aller simple : <b>quitter la réunion,
+     * recharger la page, ou perdre le réseau une seconde</b> suffisait à le laisser
+     * dehors définitivement — alors même que la réunion continuait sans lui.
+     *
+     * <p>La garde qui compte est la <b>durée de vie de la réunion</b> : le lien
+     * n'ouvre que <i>cet</i> appel, et <b>uniquement tant qu'il est ACTIVE</b>. Une
+     * fois l'appel terminé (départ du dernier participant, clôture par l'hôte, ou
+     * balayage automatique), le lien ne vaut plus rien.
+     *
+     * <p>{@code used} reste renseigné : il trace la <b>première</b> entrée de
+     * l'invité (utile à l'historique), il ne bloque plus les suivantes.</p>
+     */
     @Override
     public GuestAccessResponse access(String guestToken) {
         ExternalGuest guest = guestRepository.findByGuestToken(guestToken)
                 .orElseThrow(() -> new ResourceNotFoundException("Lien d'invité invalide."));
-        if (Boolean.TRUE.equals(guest.getUsed())) {
-            throw new ConflictException("Ce lien d'invitation a déjà été utilisé.");
-        }
         Call call = guest.getCall();
         if (call.getStatus() != CallStatus.ACTIVE) {
-            throw new ConflictException("La réunion n'est pas active.");
+            throw new ConflictException("La réunion est terminée.");
         }
 
         // Token JaaS non modérateur pour l'invité (id null → "guest").
         String token = tokenService.generateToken(call.getRoomName(), null,
                 guest.getDisplayName(), guest.getEmail(), false);
-        guest.setUsed(true);
-        guestRepository.save(guest);
+        if (!Boolean.TRUE.equals(guest.getUsed())) {
+            guest.setUsed(true);
+            guestRepository.save(guest);
+        }
 
         String jitsiUrl = jitsiProperties.getUrl() + "/" + jitsiProperties.getAppId()
                 + "/" + call.getRoomName() + "?jwt=" + token;
         return GuestAccessResponse.builder()
                 .callId(call.getId()).topic(call.getTopic()).displayName(guest.getDisplayName())
                 .jitsiUrl(jitsiUrl).jwt(token).build();
+    }
+
+    // ─── Fichiers partagés (M5) — l'invité fait exactement comme les membres ────
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<MeetingFileResponse> files(String guestToken) {
+        Call call = resolveGuest(guestToken).getCall();
+        return fileRepository.findByCallIdOrderBySharedAtAsc(call.getId()).stream()
+                .map(GuestServiceImpl::toDto)
+                .toList();
+    }
+
+    /**
+     * L'invité partage un fichier. Il n'a pas de JWT : le Meeting Service relaie
+     * l'upload au File Service (→ MinIO) après avoir validé son token, puis
+     * rattache la référence à l'appel — exactement comme pour un membre.
+     */
+    @Override
+    public MeetingFileResponse shareFile(String guestToken, MultipartFile file) {
+        ExternalGuest guest = resolveGuest(guestToken);
+        Call call = guest.getCall();
+
+        MeetingFileClient.Stored stored = fileClient.upload(
+                file, call.getOrganisationId(), call.getId(), call.getHostUserId());
+
+        return toDto(fileRepository.save(MeetingFile.builder()
+                .call(call)
+                .fileId(stored.id())
+                .downloadUrl("/api/v1/files/" + stored.id() + "/download")
+                .fileName(stored.originalName())
+                .fileSize(stored.size())
+                .contentType(stored.contentType())
+                // `sharedBy` reste NUL : un invité externe n'a pas de compte, donc pas
+                // d'UUID. Sa paternité est portée par le nom — on n'invente pas d'identité.
+                .sharedByName(guest.getDisplayName())
+                .build()));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public byte[] downloadFile(String guestToken, UUID meetingFileId) {
+        Call call = resolveGuest(guestToken).getCall();
+        MeetingFile mf = requireFileOfCall(meetingFileId, call);
+        return fileClient.download(mf.getFileId(), call.getOrganisationId(), call.getHostUserId());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public String fileName(String guestToken, UUID meetingFileId) {
+        Call call = resolveGuest(guestToken).getCall();
+        return requireFileOfCall(meetingFileId, call).getFileName();
+    }
+
+    /** Le fichier doit appartenir À CETTE réunion : sinon le token deviendrait un passe-partout. */
+    private MeetingFile requireFileOfCall(UUID meetingFileId, Call call) {
+        MeetingFile mf = fileRepository.findById(meetingFileId)
+                .orElseThrow(() -> new ResourceNotFoundException("Fichier introuvable."));
+        if (!mf.getCall().getId().equals(call.getId()) || mf.getFileId() == null) {
+            throw new ResourceNotFoundException("Fichier introuvable.");
+        }
+        return mf;
+    }
+
+    /**
+     * Résout l'invité par son token, pour les appels qui SUIVENT son entrée.
+     *
+     * <p>Contrairement à {@link #access(String)}, on n'exige pas ici que le token soit
+     * vierge : il a justement été <b>consommé</b> à l'entrée dans la salle. Le refuser
+     * ensuite empêcherait l'invité de voir ou partager le moindre fichier. La garde
+     * qui compte est que la <b>réunion soit encore active</b> — un token périmé ne
+     * donne donc accès à rien.</p>
+     */
+    private ExternalGuest resolveGuest(String guestToken) {
+        ExternalGuest guest = guestRepository.findByGuestToken(guestToken)
+                .orElseThrow(() -> new ResourceNotFoundException("Lien d'invité invalide."));
+        if (guest.getCall().getStatus() != CallStatus.ACTIVE) {
+            throw new ConflictException("La réunion n'est pas active.");
+        }
+        return guest;
+    }
+
+    private static MeetingFileResponse toDto(MeetingFile f) {
+        return MeetingFileResponse.builder()
+                .id(f.getId())
+                .callId(f.getCall().getId())
+                .fileId(f.getFileId())
+                .downloadUrl(f.getDownloadUrl())
+                .fileName(f.getFileName())
+                .fileSize(f.getFileSize())
+                .contentType(f.getContentType())
+                .sharedBy(f.getSharedBy())
+                .sharedByName(f.getSharedByName())
+                .sharedAt(f.getSharedAt())
+                .build();
     }
 
     private Call loadInOrg(UUID callId) {

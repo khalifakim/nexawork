@@ -23,5 +23,12 @@ public interface FileService {
     /** Charge l'entité (pour le stream de download côté contrôleur). */
     StoredFile getEntity(UUID id);
 
+    /**
+     * Comme {@link #getEntity(UUID)}, mais **refuse tout ce qui n'est pas un avatar**
+     * (404). Garde de la route publique {@code /files/{id}/avatar} : sans elle, cette
+     * route servirait n'importe quel document du workspace sans authentification.
+     */
+    StoredFile getAvatarEntity(UUID id);
+
     void delete(UUID id);
 }

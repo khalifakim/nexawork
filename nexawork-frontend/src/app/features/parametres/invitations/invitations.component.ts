@@ -18,25 +18,36 @@ interface Inv { id: string; email: string; role: 'Administrateur' | 'Membre'; by
       <h1 class="set-h1">Invitations</h1>
       <p class="set-desc">Les invitations envoyées, en attente d'acceptation.</p>
       <div class="bar">
-        <span class="cnt">{{ all().length }} invitations en attente</span>
+        <span class="cnt">
+          @if (loading()) { Chargement… } @else { {{ all().length }} invitations en attente }
+        </span>
         <span style="flex:1"></span>
         <button class="set-btn set-btn--primary" (click)="bus.openInvite()"><app-icon name="plus" [size]="16" />Inviter des personnes</button>
       </div>
       <div class="set-card">
-        @for (inv of all(); track inv.id; let i = $index) {
-          <div class="row" [class.row--first]="i===0">
-            <span class="ic"><app-icon name="mail" [size]="18" /></span>
-            <div class="b"><div class="e">{{ inv.email }}</div><div class="m">Invité par {{ inv.by }} · {{ inv.date }}</div></div>
-            <span class="set-badge" [class.set-badge--admin]="inv.role==='Administrateur'" [class.set-badge--member]="inv.role==='Membre'">{{ inv.role }}</span>
-            <span class="status"><span class="status__d"></span>En attente</span>
-            <button class="rs" (click)="resend(inv)"><app-icon name="refresh" [size]="15" />Relancer</button>
-            <button class="cx" (click)="cancel(inv)"><app-icon name="x" [size]="15" /></button>
-          </div>
-        }
-        @if (!all().length) {
-          <div class="row row--first" style="justify-content:center;color:var(--nx-text-500);font-size:13px;padding:20px 0;">
-            Aucune invitation en attente.
-          </div>
+        @if (loading()) {
+          <!-- Squelette : sans lui, « Aucune invitation » s'affichait pendant le chargement. -->
+          @for (s of [1,2,3]; track s) {
+            <div class="row" [class.row--first]="s===1">
+              <span class="sk sk--ic"></span>
+              <div class="b" style="flex:1"><span class="sk sk--l"></span><span class="sk sk--s"></span></div>
+            </div>
+          }
+        } @else {
+          @for (inv of all(); track inv.id; let i = $index) {
+            <div class="row" [class.row--first]="i===0">
+              <span class="ic"><app-icon name="mail" [size]="18" /></span>
+              <div class="b"><div class="e">{{ inv.email }}</div><div class="m">Invité par {{ inv.by }} · {{ inv.date }}</div></div>
+              <span class="set-badge" [class.set-badge--admin]="inv.role==='Administrateur'" [class.set-badge--member]="inv.role==='Membre'">{{ inv.role }}</span>
+              <span class="status"><span class="status__d"></span>En attente</span>
+              <button class="rs" (click)="resend(inv)"><app-icon name="refresh" [size]="15" />Relancer</button>
+              <button class="cx" (click)="cancel(inv)"><app-icon name="x" [size]="15" /></button>
+            </div>
+          } @empty {
+            <div class="row row--first" style="justify-content:center;color:var(--nx-text-500);font-size:13px;padding:20px 0;">
+              Aucune invitation en attente.
+            </div>
+          }
         }
       </div>
     </div></div>
@@ -50,15 +61,22 @@ export class ParamInvitationsComponent implements OnInit {
   private toast = inject(ToastService);
 
   all = signal<Inv[]>([]);
+  loading = signal(true);
 
   ngOnInit(): void { this.reload(); }
 
   private reload(): void {
-    this.workspaceService.invitations(this.session.activeWorkspaceId()).subscribe(list =>
-      this.all.set(list.map((i: WorkspaceInvitation) => ({
-        id: i.id, email: i.email, role: i.role === 'ADMIN' ? 'Administrateur' : 'Membre',
-        by: i.invitedBy, date: this.relative(i.createdAt),
-      }))));
+    this.loading.set(true);
+    this.workspaceService.invitations(this.session.activeWorkspaceId()).subscribe({
+      next: list => {
+        this.all.set(list.map((i: WorkspaceInvitation) => ({
+          id: i.id, email: i.email, role: i.role === 'ADMIN' ? 'Administrateur' : 'Membre',
+          by: i.invitedBy, date: this.relative(i.createdAt),
+        })));
+        this.loading.set(false);
+      },
+      error: () => this.loading.set(false),
+    });
   }
 
   resend(inv: Inv): void {

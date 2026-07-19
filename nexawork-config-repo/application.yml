@@ -2,6 +2,26 @@
 # Chaque service peut surcharger ces valeurs dans son fichier dédié
 
 spring:
+  # ─── Pool de connexions (CAUSE RACINE des « serveur ne répond pas ») ─────────
+  # Sans configuration, Hikari applique maximum-pool-size=10 ET minimum-idle=10 :
+  # chaque service garde donc 10 connexions ouvertes en permanence. Or UNE connexion
+  # = UN processus PostgreSQL (~7 Mo). Avec 9 services : 90 processus (~630 Mo)
+  # maintenus même application au repos, sur une VM Docker de 4,8 Go → swap → la VM
+  # se fige (« thread starvation », housekeeper delta > 1 min) → PostgreSQL n'arrive
+  # plus à répondre, ses clients coupent (« Broken pipe »), le postmaster croit à un
+  # crash et repart en récupération, qui elle-même n'aboutit pas (disque saturé par
+  # le swap) → boucle de crash.
+  # On garde donc 1 connexion au repos et 5 en pointe (5 × 9 = 45 < max_connections=100).
+  datasource:
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 1
+      idle-timeout: 300000        # 5 min — rend les connexions inutilisées
+      max-lifetime: 900000        # 15 min — recycle avant tout timeout côté serveur
+      keepalive-time: 120000      # 2 min — détecte une connexion morte sans attendre l'emprunt
+      connection-timeout: 30000
+      validation-timeout: 5000
+
   jpa:
     hibernate:
       ddl-auto: none
@@ -31,7 +51,13 @@ nexawork:
     token-validity-in-seconds: 900
 
 nexawork-cors:
-  allowed-origins: "${CORS_ORIGINS:http://localhost:4200}"
+  # Filtre CORS commun (commons/WebConfigurer) appliqué par CHAQUE microservice servlet.
+  # Chaque service résout ${CORS_ORIGINS} avec SON propre env (défaut localhost) — donc
+  # pour un test multi-machines, on fixe « * » ici, en un seul point, plutôt que
+  # d'injecter la variable dans les 7 services. `setAllowedOriginPatterns(["*"])`
+  # accepte le joker même avec credentials.
+  # ⚠️ TEST uniquement — EN PRODUCTION : remettre l'URL réelle du frontend.
+  allowed-origins: "*"
   allowed-methods: "*"
   allowed-headers: "*"
   exposed-headers: "Authorization,Content-Disposition"

@@ -76,7 +76,14 @@ public class BucketRouter {
                 yield new Route(properties.getBuckets().getDocuments(),
                         "workspaces/" + ws + "/projects/" + projId + "/tasks/" + taskId + "/" + fileId);
             }
-            // MEETING_FILE retiré : partage de fichiers en réunion (M5) en perspective.
+            case MEETING_FILE -> {
+                UUID ws = require(p.getWorkspaceId(), "workspaceId", context);
+                UUID meetingId = require(p.getMeetingId(), "meetingId", context);
+                // Bucket `documents` : un fichier de réunion est un livrable durable,
+                // consultable dans l'historique bien après la fin de l'appel.
+                yield new Route(properties.getBuckets().getDocuments(),
+                        "workspaces/" + ws + "/meetings/" + meetingId + "/" + fileId);
+            }
         };
     }
 

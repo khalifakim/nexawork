@@ -20,8 +20,12 @@ public class ProjectEventPublisher {
 
     public static final String EXCHANGE = "nexawork.events";
     public static final String ROUTING_PROJECT_CREATED = "project.created";
+    public static final String ROUTING_PROJECT_DELETED = "project.deleted";
     public static final String ROUTING_TASK_ASSIGNED = "task.assigned";
+    public static final String ROUTING_TASK_COMMENTED = "task.commented";
     public static final String ROUTING_LIVRABLE_VALIDATED = "livrable.validated";
+    public static final String ROUTING_MEMBER_ADDED = "project.member-added";
+    public static final String ROUTING_COMMENT_MENTION = "comment.mention";
 
     RabbitTemplate rabbitTemplate;
 
@@ -29,12 +33,28 @@ public class ProjectEventPublisher {
         publish(ROUTING_PROJECT_CREATED, event, "projet " + event.projectId());
     }
 
+    public void publishProjectDeleted(ProjectDeletedEvent event) {
+        publish(ROUTING_PROJECT_DELETED, event, "projet supprimé " + event.projectId());
+    }
+
     public void publishTaskAssigned(TaskAssignedEvent event) {
         publish(ROUTING_TASK_ASSIGNED, event, "tâche " + event.taskId() + " → " + event.assigneeUserId());
     }
 
+    public void publishTaskCommented(TaskCommentedEvent event) {
+        publish(ROUTING_TASK_COMMENTED, event, "commentaire sur tâche " + event.taskId());
+    }
+
     public void publishLivrableValidated(LivrableValidatedEvent event) {
         publish(ROUTING_LIVRABLE_VALIDATED, event, "livrable " + event.taskId());
+    }
+
+    public void publishAddedToProject(AddedToProjectEvent event) {
+        publish(ROUTING_MEMBER_ADDED, event, "membre " + event.recipientUserId() + " → projet " + event.projectId());
+    }
+
+    public void publishCommentMention(CommentMentionEvent event) {
+        publish(ROUTING_COMMENT_MENTION, event, "mention " + event.recipientUserId() + " sur commentaire " + event.commentId());
     }
 
     private void publish(String routingKey, Object event, String context) {

@@ -104,10 +104,19 @@ public class ConversationServiceImpl implements ConversationService {
                 .edited(false)
                 .build();
         assembler.applyAttachments(message, request, caller.userId());
-        message = messageRepository.save(message);
-        assembler.persistMentions(message);
+        // saveAndFlush : peuple `sentAt` (@CreationTimestamp) avant le DTO diffusé,
+        // sinon l'heure part nulle en temps réel → « 00:00 » chez le destinataire.
+        message = messageRepository.saveAndFlush(message);
+        assembler.notifyMentioned(message, assembler.persistMentions(message, request), null, null, conversationId);
         MessageResponse dto = assembler.toDto(message);
         broadcaster.broadcastConversationMessage(conversationId, dto); // temps réel (§7.5)
+
+        // Notification « nouveau message » (cloche) → l'autre participant.
+        List<UUID> recipients = participantRepository.findByConversationId(conversationId).stream()
+                .map(ConversationParticipant::getUserId)
+                .filter(uid -> !uid.equals(caller.userId()))
+                .toList();
+        assembler.notifyNewMessage(message, recipients, null, null, conversationId);
         return dto;
     }
 
@@ -126,6 +135,11 @@ public class ConversationServiceImpl implements ConversationService {
         if (message.getReadAt() == null) {
             message.setReadAt(Instant.now());
             messageRepository.save(message);
+            // Accusé de lecture TEMPS RÉEL : on rediffuse le message (désormais avec
+            // `readAt`) sur le topic de la conversation. L'EXPÉDITEUR, abonné, voit
+            // alors son message passer « lu » sans recharger. Sans cette diffusion,
+            // le `readAt` n'était visible qu'au prochain rechargement de la page.
+            broadcaster.broadcastConversationMessage(message.getConversationId(), assembler.toDto(message));
         }
         return assembler.toDto(message);
     }
@@ -154,12 +168,16 @@ public class ConversationServiceImpl implements ConversationService {
     private ConversationResponse toDto(Conversation c) {
         List<UUID> participants = participantRepository.findByConversationId(c.getId())
                 .stream().map(ConversationParticipant::getUserId).toList();
-        boolean isRead = participantRepository.findByConversationId(c.getId()).stream()
-                .filter(p -> p.getUserId().equals(caller.userId()))
-                .findFirst().map(ConversationParticipant::getIsRead).orElse(true);
+        // Vrai compteur de non-lus (messages reçus sans `readAt`) : remplace le
+        // booléen `is_read` du participant, jamais remis à jour après création →
+        // le badge restait figé à « 1 ». `isRead` en découle (= aucun non-lu).
+        long unread = messageRepository.countUnreadInConversation(c.getId(), caller.userId());
         return ConversationResponse.builder()
                 .id(c.getId()).workspaceId(c.getWorkspaceId()).type(c.getType())
-                .participantUserIds(participants).isRead(isRead).createdAt(c.getCreatedAt()).build();
+                .participantUserIds(participants)
+                .unreadCount(unread)
+                .isRead(unread == 0)
+                .createdAt(c.getCreatedAt()).build();
     }
 
     private LocalDateTime parseCursor(String cursor) {

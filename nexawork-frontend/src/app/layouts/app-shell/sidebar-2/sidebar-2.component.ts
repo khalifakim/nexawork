@@ -1,21 +1,65 @@
-import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, EventEmitter, Input, Output, computed, effect, inject, signal } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { Observable, Subscription } from 'rxjs';
 import { filter } from 'rxjs/operators';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 import { ProjectsService } from '@core/services/projects.service';
 import { ConversationsService } from '@core/services/conversations.service';
 import { ChannelsService } from '@core/services/channels.service';
+import { AccueilService } from '@core/services/accueil.service';
+import { MembersService } from '@core/services/members.service';
+import { ReceivedMention } from '@core/models/accueil.models';
+import { Member } from '@core/models/member.models';
 import { SessionService } from '@core/services/session.service';
 import { ArchivedProjectsService } from '@core/services/archived-projects.service';
 import { DataRefreshService } from '@core/services/data-refresh.service';
 import { ToastService } from '@core/services/toast.service';
-import { ShellBus } from '@layouts/app-shell/shell.bus';
+import { NewChannelState, ShellBus } from '@layouts/app-shell/shell.bus';
 import { Project } from '@core/models/project.models';
 import { Conversation } from '@core/models/conversation.models';
 import { Channel } from '@core/models/channel.models';
-import { workspaceSignal } from '@core/util/workspace-signal';
+import { workspaceQuery, workspaceSignal } from '@core/util/workspace-signal';
+
+/**
+ * Suit en temps réel l'ensemble des fils (conversations OU canaux) où quelqu'un
+ * est en train d'écrire, pour l'afficher dans la sidebar même fil fermé. Un
+ * abonnement STOMP par fil (partagé avec la vue ouverte via le client STOMP),
+ * avec expiration de 4 s si plus aucun signal n'arrive. `sync()` (ré)aligne les
+ * abonnements sur la liste courante ; `destroy()` libère tout à la destruction.
+ */
+class LiveTypingSet {
+  private readonly typing = signal<Set<string>>(new Set());
+  private readonly subs = new Map<string, Subscription>();
+  private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
+  /** Ids des fils où quelqu'un écrit actuellement (lu par le template). */
+  readonly value = this.typing.asReadonly();
+
+  sync(ids: string[], factory: (id: string) => Observable<boolean>): void {
+    const wanted = new Set(ids);
+    for (const id of [...this.subs.keys()]) {
+      if (!wanted.has(id)) { this.subs.get(id)!.unsubscribe(); this.subs.delete(id); this.clear(id); }
+    }
+    for (const id of ids) {
+      if (this.subs.has(id)) continue;
+      this.subs.set(id, factory(id).subscribe(t => (t ? this.mark(id) : this.clear(id))));
+    }
+  }
+  private mark(id: string): void {
+    if (!this.typing().has(id)) { const n = new Set(this.typing()); n.add(id); this.typing.set(n); }
+    clearTimeout(this.timers.get(id));
+    this.timers.set(id, setTimeout(() => this.clear(id), 4000));
+  }
+  private clear(id: string): void {
+    clearTimeout(this.timers.get(id)); this.timers.delete(id);
+    if (this.typing().has(id)) { const n = new Set(this.typing()); n.delete(id); this.typing.set(n); }
+  }
+  destroy(): void {
+    this.subs.forEach(s => s.unsubscribe()); this.subs.clear();
+    this.timers.forEach(t => clearTimeout(t)); this.timers.clear();
+  }
+}
 
 /** Sidebar 2 body — contextual sub-navigation for the active rail section. */
 @Component({
@@ -32,7 +76,7 @@ import { workspaceSignal } from '@core/util/workspace-signal';
           <app-icon class="row__i" name="taskCheck" [size]="16" /><span>Mes tâches</span>
         </a>
         <a class="row" routerLink="/app/accueil/mentions-recues" routerLinkActive="row--on">
-          <app-icon class="row__i" name="at" [size]="16" /><span>Mentions reçues</span><span class="row__badge">3</span>
+          <app-icon class="row__i" name="at" [size]="16" /><span>Mentions reçues</span>@if (mentionsCount() > 0) { <span class="row__badge">{{ mentionsCount() }}</span> }
         </a>
         @if (isAdmin()) {
           <a class="row" routerLink="/app/accueil/tableau-de-bord" routerLinkActive="row--on">
@@ -121,17 +165,21 @@ import { workspaceSignal } from '@core/util/workspace-signal';
                  placeholder="Rechercher un canal…" aria-label="Rechercher un canal" />
         </button>
 
+        @if (channelsBusy()) { <div class="sync" role="status"><span class="spin"></span>Mise à jour…</div> }
+
         <div class="head head--row"><span>Canaux Organisation</span>
           @if (isAdmin()) {
-            <button class="add" (click)="newChannel.emit('org')" title="Ajouter un canal"><app-icon name="plus" [size]="16" /></button>
+            <button class="add" (click)="newChannel.emit({ scope: 'org' })" title="Ajouter un canal"><app-icon name="plus" [size]="16" /></button>
           }
         </div>
         @for (c of filteredOrg(); track c.id) {
-          <div class="chwrap">
+          <div class="chwrap" [class.stale]="channelsBusy()">
             <a class="row row--ch" [routerLink]="['/app/canaux', c.id]" routerLinkActive="row--on">
               <app-icon class="row__i" [name]="c.kind" [size]="16" />
               <span>{{ c.name }}</span>
+              @if (chanTyping.value().has(c.id)) { <span class="chtyping">En train d'écrire…</span> }
               @if (isPrivate(c.id)) { <span class="lock" title="Canal privé"><app-icon name="lock" [size]="13" /></span> }
+              @if (c.unread) { <span class="chbadge">{{ c.unread }}</span> }
             </a>
             @if (isAdmin()) {
               <button class="dots" [class.dots--on]="menuId()===c.id"
@@ -157,47 +205,49 @@ import { workspaceSignal } from '@core/util/workspace-signal';
           }
         }
 
-        @if (projectChannelName()) {
+        <!-- Un groupe PAR PROJET. Auparavant : un en-tête unique, et le groupe
+             entier disparaissait si le nom du projet n'était pas résolu — ce qui
+             rendait invisibles les #général/#annonces automatiques. -->
+        @if (projectChannelGroups().length) {
           <div class="head head--row"><span>Canaux Projets</span></div>
-          <button class="row row--group" (click)="canauxGrp.set(!canauxGrp())">
-            <app-icon class="row__i" name="projects" [size]="16" /><span>{{ projectChannelName() }}</span>
-            @if (canManageProjectChannels()) {
-              <button class="add" (click)="newChannel.emit('project'); $event.stopPropagation()" title="Ajouter un canal"><app-icon name="plus" [size]="16" /></button>
-            }
-            <span class="chev2" [style.transform]="canauxGrp() ? '' : 'rotate(-90deg)'"><app-icon name="chevronDown" [size]="15" /></span>
-          </button>
-          @if (canauxGrp()) {
-            @for (c of filteredProject(); track c.id) {
-              <div class="chwrap chwrap--sub">
-                <a class="row row--sub row--ch" [routerLink]="['/app/canaux', c.id]" routerLinkActive="row--on">
-                  <app-icon class="row__i" [name]="c.kind" [size]="16" />
-                  <span>{{ c.name }}</span>
-                  @if (isPrivate(c.id)) { <span class="lock" title="Canal privé"><app-icon name="lock" [size]="13" /></span> }
-                </a>
-                @if (canManageProjectChannels()) {
-                  <button class="dots dots--sub" [class.dots--on]="menuId()===c.id"
-                          (click)="toggleMenu(c.id, $event)" title="Options du canal">⋯</button>
-                  @if (menuId()===c.id) {
-                    <div class="menubd" (click)="menuId.set(null)"></div>
-                    <div class="menu menu--sub" (click)="$event.stopPropagation()">
-                      <button class="menu__i" (click)="edit(c)"><app-icon name="edit" [size]="15" /><span>Modifier</span></button>
-                      <button class="menu__i" (click)="access(c)"><app-icon name="lock" [size]="15" /><span>Gérer les accès</span></button>
-                      <div class="menu__sep"></div>
-                      <button class="menu__i menu__i--danger" (click)="del(c)"><app-icon name="trash" [size]="15" /><span>Supprimer</span></button>
-                    </div>
+          @for (g of projectChannelGroups(); track g.id) {
+            <button class="row row--group" (click)="toggleProjectGroup(g.id)">
+              <app-icon class="row__i" name="projects" [size]="16" /><span>{{ g.name }}</span>
+              @if (canManageProjectChannels()) {
+                <button class="add" (click)="newProjectChannelFor(g); $event.stopPropagation()" title="Ajouter un canal"><app-icon name="plus" [size]="16" /></button>
+              }
+              <span class="chev2" [style.transform]="isProjectGroupOpen(g.id) ? '' : 'rotate(-90deg)'"><app-icon name="chevronDown" [size]="15" /></span>
+            </button>
+            @if (isProjectGroupOpen(g.id)) {
+              @for (c of g.channels; track c.id) {
+                <div class="chwrap chwrap--sub" [class.stale]="channelsBusy()">
+                  <a class="row row--sub row--ch" [routerLink]="['/app/canaux', c.id]" routerLinkActive="row--on">
+                    <app-icon class="row__i" [name]="c.kind" [size]="16" />
+                    <span>{{ c.name }}</span>
+                    @if (chanTyping.value().has(c.id)) { <span class="chtyping">En train d'écrire…</span> }
+                    @if (isPrivate(c.id)) { <span class="lock" title="Canal privé"><app-icon name="lock" [size]="13" /></span> }
+                    @if (c.unread) { <span class="chbadge">{{ c.unread }}</span> }
+                  </a>
+                  @if (canManageProjectChannels()) {
+                    <button class="dots dots--sub" [class.dots--on]="menuId()===c.id"
+                            (click)="toggleMenu(c.id, $event)" title="Options du canal">⋯</button>
+                    @if (menuId()===c.id) {
+                      <div class="menubd" (click)="menuId.set(null)"></div>
+                      <div class="menu menu--sub" (click)="$event.stopPropagation()">
+                        <button class="menu__i" (click)="edit(c)"><app-icon name="edit" [size]="15" /><span>Modifier</span></button>
+                        <button class="menu__i" (click)="access(c)"><app-icon name="lock" [size]="15" /><span>Gérer les accès</span></button>
+                        <div class="menu__sep"></div>
+                        <button class="menu__i menu__i--danger" (click)="del(c)"><app-icon name="trash" [size]="15" /><span>Supprimer</span></button>
+                      </div>
+                    }
                   }
-                }
-              </div>
-            } @empty {
-              @if (canalQ().trim() && projectChannels().length > 0) {
-                <div class="chempty">Aucun canal ne correspond à votre recherche.</div>
-              } @else if (canManageProjectChannels()) {
-                <div class="chempty">Aucun canal — utilisez + pour en créer un.</div>
-              } @else {
-                <div class="chempty">Aucun canal projet pour le moment.</div>
+                </div>
               }
             }
           }
+        } @else if (canalQ().trim() && projectChannels().length > 0) {
+          <div class="head head--row"><span>Canaux Projets</span></div>
+          <div class="chempty">Aucun canal ne correspond à votre recherche.</div>
         }
         }
       }
@@ -206,7 +256,7 @@ import { workspaceSignal } from '@core/util/workspace-signal';
       @case ('conversations') {
         <button class="primary" (click)="newMessage.emit()"><app-icon name="plus" [size]="16" />Nouveau message</button>
         <a class="row row--actifs" routerLink="/app/conversations/actifs" routerLinkActive="row--on">
-          <span class="dot" style="background:var(--nx-success)"></span><span style="flex:1">En ligne</span><span class="row__badge">3</span>
+          <span class="dot" style="background:var(--nx-success)"></span><span style="flex:1">En ligne</span>@if (onlineCount() > 0) { <span class="row__badge">{{ onlineCount() }}</span> }
         </a>
         <div class="head">Conversations</div>
         <button class="search">
@@ -219,8 +269,12 @@ import { workspaceSignal } from '@core/util/workspace-signal';
         @for (c of filteredConvos(); track c.id) {
           <div class="convwrap">
             <a class="conv" [routerLink]="['/app/conversations', c.id]" routerLinkActive="conv--on">
-              <span class="conv__av" [style.background]="c.color">{{ c.initials }}</span>
-              <span class="conv__t"><span class="conv__n">{{ c.name }}</span><span class="conv__m">{{ c.msg }}</span></span>
+              @if (c.photoUrl) {
+                <img class="conv__av conv__av--img" [src]="c.photoUrl" alt="" />
+              } @else {
+                <span class="conv__av" [style.background]="c.color">{{ c.initials }}</span>
+              }
+              <span class="conv__t"><span class="conv__n">{{ c.name }}</span>@if (convTyping.value().has(c.id)) { <span class="conv__typing">En train d'écrire…</span> } @else { <span class="conv__m">{{ c.msg }}</span> }</span>
               <span class="conv__r">
                 <span class="conv__time">{{ c.time }}</span>
                 @if (c.unread) { <span class="conv__u">{{ c.unread }}</span> }
@@ -291,14 +345,20 @@ import { workspaceSignal } from '@core/util/workspace-signal';
         <app-icon name="search" [size]="15" />
         <input [value]="projQ()" (input)="projQ.set($any($event.target).value)" placeholder="Rechercher un projet…" aria-label="Rechercher un projet" />
       </button>
-      <div class="head">Tous les projets</div>
-      @for (p of filteredProjects(); track p.id) {
-        <a class="row" [routerLink]="['/app/projets', p.id]" routerLinkActive="row--on">
-          <span class="dot" [style.background]="p.color"></span><span style="flex:1">{{ p.name }}</span>
-        </a>
-      } @empty {
-        <div class="empty">Aucun projet trouvé.</div>
-      }
+      <div class="head head--row">
+        <span>Tous les projets</span>
+        @if (projectsBusy()) { <span class="spin" aria-hidden="true"></span> }
+      </div>
+      @if (projectsBusy()) { <div class="sync" role="status">Mise à jour…</div> }
+      <div [class.stale]="projectsBusy()">
+        @for (p of filteredProjects(); track p.id) {
+          <a class="row" [routerLink]="['/app/projets', p.id]" routerLinkActive="row--on">
+            <span class="dot" [style.background]="p.color"></span><span style="flex:1">{{ p.name }}</span>
+          </a>
+        } @empty {
+          @if (!projectsBusy()) { <div class="empty">Aucun projet trouvé.</div> }
+        }
+      </div>
     </ng-template>
   `,
   styles: [`
@@ -312,7 +372,11 @@ import { workspaceSignal } from '@core/util/workspace-signal';
     .row--sub { padding-left: 30px; }
     .row__i { color: var(--nx-text-400); display: flex; flex: none; }
     .row--on .row__i { color: var(--nx-indigo); }
-    .row > span:not(.dot):not(.row__badge):not(.row__pct):not(.chev2):not(.lock) { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .row > span:not(.dot):not(.row__badge):not(.row__pct):not(.chev2):not(.lock):not(.chtyping):not(.chbadge) { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    /* Indicateur « en train d'écrire » d'un canal (sidebar) — vert, compact (§#3). */
+    .chtyping { flex: none; color: var(--nx-success); font-size: 11px; font-weight: 600; font-style: italic; white-space: nowrap; }
+    /* Badge de messages non lus d'un canal (parité conversations §6). */
+    .chbadge { flex: none; min-width: 17px; height: 17px; padding: 0 5px; border-radius: 9px; background: var(--nx-indigo); color: #fff; font-size: 10.5px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
     .row__badge { font-size: 11px; color: var(--nx-text-500); font-weight: 600; }
     .row__pct { font-size: 11px; color: var(--nx-text-500); font-weight: 600; }
     .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
@@ -347,6 +411,19 @@ import { workspaceSignal } from '@core/util/workspace-signal';
     .empty { padding: 10px 12px; font-size: 12.5px; color: var(--nx-text-400); }
     .row--group { font-weight: 600; }
 
+    /* ─── Mise à jour en cours (mutation + rechargement) ─────────────────────
+       La liste affichée est périmée le temps que le serveur réponde : on l'estompe
+       et on l'annonce, plutôt que de laisser croire que l'action n'a rien fait. */
+    .sync { display: flex; align-items: center; gap: 7px; padding: 6px 10px; margin: 0 2px 6px;
+      font-size: 12px; font-weight: 600; color: var(--nx-text-500); background: var(--nx-surface-2);
+      border-radius: 8px; }
+    .stale { opacity: .45; pointer-events: none; transition: opacity .12s; }
+    .spin { width: 12px; height: 12px; flex: none; border-radius: 50%;
+      border: 2px solid var(--nx-border); border-top-color: var(--nx-indigo);
+      animation: nx-spin .6s linear infinite; }
+    @keyframes nx-spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) { .spin { animation-duration: 2s; } }
+
     /* Channels: row + trailing dots + private lock */
     .chwrap { position: relative; }
     .chwrap--sub { }
@@ -380,9 +457,12 @@ import { workspaceSignal } from '@core/util/workspace-signal';
     .conv:hover { background: var(--nx-surface-2); }
     .conv--on { background: rgba(91,95,233,0.10); }
     .conv__av { width: 34px; height: 34px; flex: none; border-radius: 50%; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; }
+    .conv__av--img { object-fit: cover; display: block; }
     .conv__t { flex: 1; min-width: 0; display: flex; flex-direction: column; }
     .conv__n { font-size: 13px; font-weight: 600; color: var(--nx-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .conv__m { font-size: 12px; color: var(--nx-text-400); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    /* « En train d'écrire » d'une conversation (sidebar) — vert (§#3). */
+    .conv__typing { font-size: 12px; color: var(--nx-success); font-weight: 600; font-style: italic; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .conv__r { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex: none; }
     .conv__time { font-size: 10.5px; color: var(--nx-text-300); }
     .conv__u { min-width: 17px; height: 17px; padding: 0 5px; border-radius: 9px; background: var(--nx-indigo); color: #fff; font-size: 10.5px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
@@ -397,7 +477,7 @@ export class Sidebar2Component {
   @Output() invite = new EventEmitter<void>();
   @Output() createProject = new EventEmitter<void>();
   @Output() newMessage = new EventEmitter<void>();
-  @Output() newChannel = new EventEmitter<'org' | 'project'>();
+  @Output() newChannel = new EventEmitter<NewChannelState>();
 
   private projectsSvc = inject(ProjectsService);
   private session = inject(SessionService);
@@ -405,14 +485,32 @@ export class Sidebar2Component {
   private toast = inject(ToastService);
   bus = inject(ShellBus);
   private channelsSvc = inject(ChannelsService);
+  private accueilSvc = inject(AccueilService);
+  private membersSvc = inject(MembersService);
   /** True when current user is ADMIN or OWNER of the active workspace. */
   isAdmin = this.session.isAdmin;
+
+  /** Nombre réel de mentions reçues (badge « Mentions reçues »). */
+  private mentionsList = workspaceSignal<ReceivedMention[]>(this.session, () => this.accueilSvc.mentions(), []);
+  mentionsCount = computed(() => this.mentionsList().length);
+  /** Nombre réel de membres en ligne (badge « En ligne » des conversations). */
+  private onlineList = workspaceSignal<Member[]>(this.session, () => this.membersSvc.online(), []);
+  onlineCount = computed(() => this.onlineList().length);
   /** Team currently opened in the Équipes space (rendered under its project). */
   openTeam = this.bus.openTeamNav;
   /** Meeting whose discussion is currently open — rendered under « Historique discussion ». */
   openMeeting = this.bus.openMeetingNav;
   private refresh = inject(DataRefreshService);
-  private rawProjects = workspaceSignal<Project[]>(this.session, () => this.projectsSvc.list(), [], this.refresh.projects);
+  private projectsQuery = workspaceQuery<Project[]>(this.session, () => this.projectsSvc.list(), [], this.refresh.projects);
+  private rawProjects = this.projectsQuery.value;
+  private projectsMutating = this.refresh.busy('projects');
+  /**
+   * Vrai pendant TOUTE la fenêtre où la liste affichée est périmée : de l'envoi de
+   * la mutation (`busy`) jusqu'à la fin du rechargement qu'elle déclenche
+   * (`loading`). Sans quoi l'utilisateur voit le toast de confirmation alors que
+   * l'élément est encore listé, et croit à une anomalie.
+   */
+  projectsBusy = computed(() => this.projectsMutating() || this.projectsQuery.loading());
   /** Active projects only — archived ones are hidden from every sidebar list (REF E). */
   projects = computed<Project[]>(() => {
     const archived = this.archivedSvc.ids();
@@ -440,15 +538,24 @@ export class Sidebar2Component {
 
   private conversationsSvc = inject(ConversationsService);
 
+  /** Déclenche le (re)chargement à chaque changement d'espace ; peuple le cache réactif du service. */
   private allConvos = workspaceSignal<Conversation[]>(this.session, () => this.conversationsSvc.list(), []);
-  /** Conversation list minus those hidden by the current user, filtered by the shared search query. */
+  /**
+   * Liste des conversations, rendue depuis le **signal réactif** du service (et non
+   * le résultat figé de `list()`) : ainsi, ouvrir une conversation vide son badge
+   * « non lu » **sans rechargement** (`markRead` mute le cache du service).
+   */
   filteredConvos = computed<Conversation[]>(() => {
+    this.allConvos(); // dépendance : garde le chargement vivant et recharge au changement d'espace
     const q = this.bus.conversationSearch().toLowerCase().trim();
     const deleted = this.conversationsSvc.deletedIds();
-    const visible = this.allConvos().filter(c => !deleted.has(c.id));
+    const visible = this.conversationsSvc.items().filter(c => !deleted.has(c.id));
     if (!q) return visible;
     return visible.filter(c => c.name.toLowerCase().includes(q));
   });
+  /** Fils où quelqu'un écrit — conversations et canaux (affiché en sidebar, §#3). */
+  protected convTyping = new LiveTypingSet();
+  protected chanTyping = new LiveTypingSet();
   convMenuId = signal<string | null>(null);
   /** True when the current URL is the "En ligne" sub-route of Conversations. */
   private _url = signal(this.router.url);
@@ -466,7 +573,19 @@ export class Sidebar2Component {
     return this.projects()[0]?.id ?? null;
   });
 
-  private channels = workspaceSignal<Channel[]>(this.session, () => this.channelsSvc.list(), []);
+  private channelsQuery = workspaceQuery<Channel[]>(this.session, () => this.channelsSvc.list(), [], this.refresh.channels);
+  /**
+   * Rendu depuis le **signal réactif** du service (pas le résultat figé de `list()`) :
+   * ouvrir un canal vide son badge « non lus » sans rechargement (`markRead` mute le
+   * cache du service). `channelsQuery.value()` reste lu pour piloter le chargement.
+   */
+  private channels = computed<Channel[]>(() => {
+    this.channelsQuery.value();
+    return this.channelsSvc.items();
+  });
+  private channelsMutating = this.refresh.busy('channels');
+  /** Idem `projectsBusy`, pour la liste des canaux. */
+  channelsBusy = computed(() => this.channelsMutating() || this.channelsQuery.loading());
   private archivedSvc = inject(ArchivedProjectsService);
 
   canalQ = signal('');
@@ -481,13 +600,52 @@ export class Sidebar2Component {
     const archived = this.archivedSvc.ids();
     return this.channels()
       .filter(c => this.channelsSvc.hasAccess(c.id))
-      .filter(c => !(c.scope === 'project' && c.project && archived.has(this.slugifyProject(c.project))));
+      .filter(c => !(c.scope === 'project' && c.projectId && archived.has(c.projectId)));
   });
 
   orgChannels = computed<Channel[]>(() => this.visibleChannels().filter(c => c.scope === 'org'));
   projectChannels = computed<Channel[]>(() => this.visibleChannels().filter(c => c.scope === 'project'));
-  /** Owning project name of the first project channel (sidebar group header). */
-  projectChannelName = computed<string | null>(() => this.projectChannels()[0]?.project ?? null);
+  /**
+   * Canaux de projet **groupés par projet**.
+   *
+   * 🔴 Auparavant : un seul en-tête, celui du projet du **premier** canal, et le
+   * groupe entier **disparaissait** si ce projet n'était pas retrouvé dans la liste
+   * (chargement pas encore arrivé, projet archivé…). Tous les canaux automatiques
+   * `#général`/`#annonces` devenaient alors **invisibles** — le symptôme signalé.
+   *
+   * Désormais : un groupe **par projet**, et un projet inconnu n'efface plus rien
+   * (libellé de repli). Un canal existant est TOUJOURS affiché.
+   */
+  projectChannelGroups = computed<Array<{ id: string; name: string; channels: Channel[] }>>(() => {
+    const projects = new Map(this.rawProjects().map(p => [p.id, p.name]));
+    const groups = new Map<string, { id: string; name: string; channels: Channel[] }>();
+    for (const c of this.applyChanFilter(this.projectChannels())) {
+      const pid = c.projectId ?? 'sans-projet';
+      let g = groups.get(pid);
+      if (!g) {
+        g = { id: pid, name: projects.get(pid) ?? 'Projet', channels: [] };
+        groups.set(pid, g);
+      }
+      g.channels.push(c);
+    }
+    return [...groups.values()];
+  });
+
+  /** Groupes projet repliés (par défaut tous dépliés — les canaux doivent se voir). */
+  private collapsedProjectGroups = signal<Set<string>>(new Set());
+  isProjectGroupOpen(projectId: string): boolean { return !this.collapsedProjectGroups().has(projectId); }
+  toggleProjectGroup(projectId: string): void {
+    this.collapsedProjectGroups.update(s => {
+      const next = new Set(s);
+      if (next.has(projectId)) { next.delete(projectId); } else { next.add(projectId); }
+      return next;
+    });
+  }
+
+  /** « + » d'un groupe projet : le canal naît rattaché à CE projet. */
+  newProjectChannelFor(g: { id: string; name: string }): void {
+    this.newChannel.emit({ scope: 'project', projectId: g.id, projectName: g.name });
+  }
   /**
    * True when the user is allowed to create / edit / delete project channels
    * in the sidebar section (règle R15). Currently modelled as `isAdmin` +
@@ -549,7 +707,7 @@ export class Sidebar2Component {
   }
   access(c: Channel): void {
     this.menuId.set(null);
-    this.bus.openAccessChannel({ id: c.id, name: c.name, scope: c.scope });
+    this.bus.openAccessChannel({ id: c.id, name: c.name, scope: c.scope, projectId: c.projectId });
   }
   del(c: Channel): void {
     this.menuId.set(null);
@@ -559,6 +717,15 @@ export class Sidebar2Component {
   toggleDocsProj(e: Event): void { e.preventDefault(); e.stopPropagation(); this.docsProjOpen.set(!this.docsProjOpen()); }
 
   constructor() {
+    // Abonne la sidebar au « en train d'écrire » de chaque conversation / canal
+    // visible, pour l'afficher fil fermé. Les abonnements se réalignent quand la
+    // liste change ; ils sont libérés à la destruction du composant.
+    effect(() => this.convTyping.sync(this.conversationsSvc.items().map(c => c.id),
+      id => this.conversationsSvc.typing(id)));
+    effect(() => this.chanTyping.sync(this.visibleChannels().map(c => c.id),
+      id => this.channelsSvc.typing(id)));
+    inject(DestroyRef).onDestroy(() => { this.convTyping.destroy(); this.chanTyping.destroy(); });
+
     this.router.events
       .pipe(filter((e): e is NavigationEnd => e instanceof NavigationEnd), takeUntilDestroyed())
       .subscribe(e => {

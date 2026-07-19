@@ -1,7 +1,16 @@
-import { ChangeDetectionStrategy, Component, EventEmitter, Output, computed, inject, signal } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import {
+  ChangeDetectionStrategy, Component, EventEmitter, Output, computed, effect, inject, signal,
+} from '@angular/core';
+import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { Router, RouterLink } from '@angular/router';
+import { of, timer } from 'rxjs';
+import { catchError, switchMap } from 'rxjs/operators';
 import { SessionService } from '@core/services/session.service';
+import { MeetingsService } from '@core/services/meetings.service';
+import { CallRoom } from '@core/models/meeting.models';
+import { openMeetingWindow } from '@core/util/meeting-window.util';
+import { GENERIC_CALLER, IncomingCallService } from '@core/services/incoming-call.service';
+import { environment } from '@environment/environment';
 import { WorkspaceLoaderService } from '@core/services/workspace-loader.service';
 import { ToastService } from '@core/services/toast.service';
 import { NotificationsService } from '@core/services/notifications.service';
@@ -15,6 +24,9 @@ import { LogoComponent } from '@shared/ui/logo/logo.component';
 import { initials } from '@core/util/ui.util';
 
 type Menu = 'ws' | 'user' | 'notif' | 'call' | null;
+
+/** Cadence de rafraîchissement de la bannière « Appel en cours ». */
+const ACTIVE_CALL_POLL_MS = 15_000;
 
 @Component({
   selector: 'app-header',
@@ -94,18 +106,12 @@ type Menu = 'ws' | 'user' | 'notif' | 'call' | null;
                 <div style="font-size:16px;font-weight:700;margin-bottom:3px">{{ call.meetingTitle }}</div>
                 <div style="font-size:12.5px;color:rgba(255,255,255,.8)">{{ call.context }}</div>
               </div>
-              <div style="padding:14px 18px 6px">
-                <div style="font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--nx-text-400);margin-bottom:11px">{{ callParts.length }} participants</div>
-                <div style="display:flex;align-items:center">
-                  @for (p of callParts; track p.i; let idx = $index) {
-                    <span class="stack" [style.background]="p.c" [style.margin-left.px]="idx ? -9 : 0">{{ p.i }}</span>
-                  }
-                  <span style="margin-left:12px;font-size:13px;color:var(--nx-text-500)">Sarah, Moussa et 3 autres</span>
-                </div>
-              </div>
+              <!-- Pas de « terminer pour tous » ici : quitter suffit. L'appel se clôt
+                   de lui-même au départ du DERNIER participant, et le modérateur peut
+                   donc partir puis revenir sans couper la réunion des autres. -->
               <div style="padding:12px 18px 18px;display:flex;gap:10px">
-                <button class="call__ignore" (click)="hangup()" title="Raccrocher"><app-icon name="x" [size]="17" /></button>
-                <button class="call__join" (click)="focusCall()"><app-icon name="video" [size]="17" [stroke]="2" />Revenir à l'appel</button>
+                <button class="call__ignore" (click)="hangup()" title="Quitter l'appel"><app-icon name="x" [size]="17" /></button>
+                <button class="call__join" (click)="focusCall()"><app-icon name="video" [size]="17" [stroke]="2" />Rejoindre la salle</button>
               </div>
             </div>
           }
@@ -137,6 +143,12 @@ type Menu = 'ws' | 'user' | 'notif' | 'call' | null;
                     <div style="font-size:13px;color:var(--nx-text-700);line-height:1.45;margin:2px 0 5px">{{ n.text }}</div>
                     <div style="font-size:12px;color:var(--nx-text-400);font-weight:500">{{ n.date }}</div>
                   </div>
+                  <!-- stopPropagation : sans lui le clic remonterait à la ligne, qui
+                       ouvre la notification (et la navigation annulerait le DELETE). -->
+                  <button class="nm__del" title="Supprimer cette notification"
+                          (click)="removeNotif(n, $event)">
+                    <app-icon name="trash" [size]="15" />
+                  </button>
                 </div>
               } @empty { <div class="nm__empty">Aucune notification {{ notifFilter()==='nonlu' ? 'non lue' : '' }}.</div> }
             </div>
@@ -168,9 +180,11 @@ type Menu = 'ws' | 'user' | 'notif' | 'call' | null;
 })
 export class HeaderComponent {
   private session = inject(SessionService);
+  private meetingsSvc = inject(MeetingsService);
   private router = inject(Router);
   private loader = inject(WorkspaceLoaderService);
   private toast = inject(ToastService);
+  private incomingCall = inject(IncomingCallService);
   private bus = inject(ShellBus);
   private profileSvc = inject(UserProfileService);
   @Output() search = new EventEmitter<void>();
@@ -208,12 +222,58 @@ export class HeaderComponent {
 
   openCreateWorkspace(): void { this.close(); this.bus.openCreateWorkspace(); }
 
-  callParts = [
-    { i: 'SD', c: '#F2693C' }, { i: 'MB', c: '#6C70F0' }, { i: 'AN', c: '#2BB673' }, { i: 'YS', c: '#3AA9E0' }, { i: 'FT', c: '#E89A2C' },
-  ];
   /** REF A — état d'appel actif ; le popover et le bouton ne sont montés que sur ce flag. */
   hasOngoingCall = this.session.hasOngoingCall;
   ongoingCall = this.session.ongoingCall;
+
+  /**
+   * « Appel en cours » pour **tous** les participants conviés, pas seulement pour
+   * celui qui a ouvert la salle : l'état venait d'un signal local (posé dans la
+   * fenêtre de la salle), donc invisible partout ailleurs. Il est désormais tenu
+   * par le serveur — `GET /calls/active` ne renvoie que les appels actifs dont
+   * l'appelant est hôte ou participant convié (§14.2).
+   */
+  private readonly activeCall = toSignal(
+    environment.mock.meetings
+      ? of<CallRoom[]>([])
+      : timer(0, ACTIVE_CALL_POLL_MS).pipe(
+          switchMap(() => this.meetingsSvc.active().pipe(catchError(() => of<CallRoom[]>([])))),
+        ),
+    { initialValue: [] as CallRoom[] },
+  );
+
+  /** L'appel actif du serveur pilote la bannière (et sa disparition à la fin). */
+  private readonly syncCall = effect(() => {
+    if (environment.mock.meetings) return;
+    const call = this.activeCall()[0];
+    const current = this.session.ongoingCall();
+    if (call && current?.id !== call.id) {
+      this.session.startCall({
+        id: call.id, meetingTitle: call.topic, context: 'Réunion en cours',
+        hostUserId: call.hostUserId, // sans lui, le header ignore qui est modérateur
+      });
+      // Modal d'appel entrant — FILET indispensable : une trame STOMP ne se
+      // rattrape pas. WebSocket coupée, en reconnexion, ou application ouverte
+      // APRÈS l'invitation → la notification est perdue et le modal n'apparaîtrait
+      // jamais. `/calls/active` ne renvoie que les appels dont on est hôte ou
+      // convié : le voir ici suffit à savoir qu'on est invité. L'hôte est exclu
+      // (on ne s'auto-appelle pas).
+      if (call.hostUserId !== this.session.user()?.id) {
+        // `/calls/active` ne porte pas le nom de l'invitant (le Meeting Service ne
+        // résout pas les noms) : on ne l'invente pas. La notification STOMP, elle,
+        // le porte — et si elle arrive, `offer()` n'écrase pas un modal déjà à
+        // l'écran pour le même appel.
+        this.incomingCall.offer({
+          callId: call.id,
+          topic: call.topic || 'Réunion',
+          caller: GENERIC_CALLER,
+        });
+      }
+    } else if (!call && current) {
+      this.session.endCall();
+    }
+  });
+
 
   /** Tick tous les 1 s pour rafraîchir le chronomètre du popover. */
   private nowTick = signal(Date.now());
@@ -228,19 +288,22 @@ export class HeaderComponent {
     return `${mm}:${ss}`;
   });
 
-  /** Raccrocher — libère la contrainte REF A et ferme le popover. */
+  /** Quitter l'appel — libère la contrainte REF A côté serveur, pas seulement l'affichage. */
   hangup(): void {
     const call = this.ongoingCall();
-    this.session.endCall();
     this.close();
-    if (call) this.toast.show({ message: 'Appel « ' + call.meetingTitle + ' » terminé' });
+    if (!call) return;
+    this.session.endCall();
+    if (!environment.mock.meetings) this.meetingsSvc.leave(call.id).subscribe({ error: () => {} });
+    this.toast.show({ message: 'Vous avez quitté « ' + call.meetingTitle + ' »' });
   }
 
-  /** Revenir à la vue d'appel — navigue vers la réunion active. */
+  /** Rejoindre / revenir à la salle — fenêtre dédiée, ou onglet courant si le popup est bloqué. */
   focusCall(): void {
     const call = this.ongoingCall();
     this.close();
-    if (call) this.router.navigate(['/app/reunions', call.id]);
+    if (!call) return;
+    openMeetingWindow(call.id); // ne peut plus échouer : fenêtre ou, à défaut, onglet courant
   }
   /** Notifications of the active workspace (reload on workspace switch). */
   private notifsSvc = inject(NotificationsService);
@@ -254,15 +317,53 @@ export class HeaderComponent {
     return this.notifFilter() === 'nonlu' ? list.filter(n => !n.read) : list;
   });
   unread = computed(() => this.visibleNotifsAll().filter(n => !n.read).length);
+  /** Supprimées côté serveur — retirées de la vue sans recharger la liste. */
+  private removedIds = signal<string[]>([]);
   private visibleNotifsAll = computed(() => {
     const read = this.readIds();
-    return this.notifs().map(n => ({ ...n, read: n.read || read.includes(n.id) }));
+    const removed = this.removedIds();
+    return this.notifs()
+      .filter(n => !removed.includes(n.id))
+      .map(n => ({ ...n, read: n.read || read.includes(n.id) }));
   });
 
   constructor() {
     // Réception temps réel : la notification s'ajoute en tête de la liste.
-    this.notifsSvc.live().pipe(takeUntilDestroyed()).subscribe(n =>
-      this.pushed.update(l => [n, ...l]));
+    this.notifsSvc.live().pipe(takeUntilDestroyed()).subscribe(n => {
+      // Invitation à une réunion (§15) : le modal d'appel entrant s'ouvre IMMÉDIATEMENT
+      // via STOMP (le sondage /calls/active de 15 s n'est qu'un filet). Vaut à la
+      // création comme pour une invitation à une réunion déjà en cours. `offer()`
+      // n'écrase pas un modal déjà affiché pour le même appel.
+      if (n.type === 'MEETING_INVITED') {
+        const callId = n.payload?.['callId'] as string | undefined;
+        if (callId) {
+          this.incomingCall.offer({
+            callId,
+            topic: (n.payload?.['topic'] as string) || 'Réunion',
+            caller: (n.payload?.['actorName'] as string) || GENERIC_CALLER,
+          });
+        }
+      }
+      // Anti-bruit (§4) : une notif « nouveau message » d'un fil que je regarde à
+      // l'instant est marquée lue sans jamais s'afficher (je vois déjà le message).
+      const threadId = n.payload?.['threadId'] as string | undefined;
+      if (n.type === 'MESSAGE_RECEIVED' && threadId && threadId === this.bus.activeThreadId()) {
+        this.notifsSvc.markRead(n.id).subscribe({ error: () => {} });
+        return;
+      }
+      this.pushed.update(l => [n, ...l]);
+    });
+    // Effacement à l'ouverture (§4) : ouvrir un fil marque lues ses notifs « nouveau
+    // message » en attente (le badge « non lus » de la sidebar prend le relais).
+    toObservable(this.bus.activeThreadId).pipe(takeUntilDestroyed()).subscribe(threadId => {
+      if (!threadId) return;
+      for (const n of this.notifs()) {
+        if (n.type === 'MESSAGE_RECEIVED' && !n.read && !this.readIds().includes(n.id)
+            && (n.payload?.['threadId'] as string | undefined) === threadId) {
+          this.markRead(n.id);
+        }
+      }
+    });
   }
 
   toggle(m: Menu): void { this.menu.set(this.menu() === m ? null : m); }
@@ -270,8 +371,31 @@ export class HeaderComponent {
   /** Marque lue localement (retour immédiat) puis persiste côté serveur. */
   markRead(id: string): void {
     this.readIds.update(l => l.includes(id) ? l : [...l, id]);
+    // Activité de canal : signal volatile, sans existence en base (cf. removeNotif).
+    if (id.startsWith('ch-')) return;
     this.notifsSvc.markRead(id).subscribe({ error: () => {} });
   }
+  /**
+   * Supprime définitivement la notification. Le popover reste ouvert (on en
+   * supprime souvent plusieurs d'affilée) et la ligne n'est retirée qu'APRÈS
+   * confirmation du serveur — sinon elle disparaîtrait de l'écran sur un échec,
+   * pour réapparaître au rechargement.
+   */
+  removeNotif(n: Notif, ev: Event): void {
+    ev.stopPropagation();
+    // Les activités de canal (`ch-…`) sont des signaux temps réel VOLATILES : elles
+    // n'existent pas en base, un DELETE serveur répondrait 404. On les écarte
+    // localement.
+    if (n.id.startsWith('ch-')) {
+      this.removedIds.update(l => [...l, n.id]);
+      return;
+    }
+    this.notifsSvc.remove(n.id).subscribe({
+      next: () => this.removedIds.update(l => [...l, n.id]),
+      error: () => this.toast.show({ message: 'Impossible de supprimer la notification.', icon: 'warning' }),
+    });
+  }
+
   ini(name: string): string { return initials(name); }
   logout(): void { this.close(); this.session.logout(); }
 

@@ -10,6 +10,7 @@ import { ShellBus } from '@layouts/app-shell/shell.bus';
 import { TaskCard, TaskComment, AttachedRef, KanbanColumn, TaskPriority, UpdateTaskPayload } from '@core/models/task.models';
 import { Member } from '@core/models/member.models';
 import { chipTabFor as chipTabForUtil, parseRichText, RichPart } from '@core/util/mention.util';
+import { MentionRef } from '@core/models/mention.models';
 import { avatarColorFor } from '@core/util/ui.util';
 import { TasksService } from '@core/services/tasks.service';
 import { MembersService } from '@core/services/members.service';
@@ -32,7 +33,10 @@ interface SubRow { id: string; title: string; done: boolean; }
 /** Vue d'affichage d'un commentaire (contenu parsé en parts + fichiers). */
 interface CommentRow {
   id: string;
+  authorUserId: string;
   author: string; color: string; time: string;
+  /** Photo de profil de l'auteur (annuaire) — absente → initiales. */
+  authorPhotoUrl?: string;
   parts: RichPart[];
   files: AttachedRef[];
   mine: boolean;
@@ -65,10 +69,10 @@ interface CommentRow {
             <span class="created">Créée le {{ fmtDate(task.createdDate) }}</span>
             @if (!readonly) {
               @if (editMode()) {
-                <button class="edit edit--save" [disabled]="saving()" (click)="saveEdit()" title="Enregistrer les modifications"><app-icon name="check" [size]="15" [stroke]="2.4" />{{ saving() ? 'Enregistrement…' : 'Enregistrer' }}</button>
+                <button class="edit edit--save" [disabled]="saving()" (click)="saveEdit()" title="Enregistrer les modifications"><app-icon name="check" [size]="15" [stroke]="2.4" /><span>{{ saving() ? 'Enregistrement…' : 'Enregistrer' }}</span></button>
                 <button class="edit edit--cancel" [disabled]="saving()" (click)="cancelEdit()" title="Annuler"><app-icon name="x" [size]="15" /></button>
               } @else {
-                <button class="edit" (click)="enterEdit()" title="Modifier la tâche"><app-icon name="edit" [size]="14" />Modifier</button>
+                <button class="edit edit--icon" (click)="enterEdit()" title="Modifier la tâche"><app-icon name="edit" [size]="15" /></button>
                 <button class="del" (click)="deleteTask()"><app-icon name="trash" [size]="14" />Supprimer</button>
               }
             } @else {
@@ -210,8 +214,12 @@ interface CommentRow {
             <span class="spacer"></span><button class="x" (click)="closed.emit()"><app-icon name="x" [size]="17" /></button></div>
           <div class="thread" #threadEl>
             @for (c of comments(); track c.id) {
-              <div class="cm" [class.cm--mine]="c.mine">
-                <span class="av" [style.background]="c.color">{{ ini(c.author) }}</span>
+              <div class="cm" [class.cm--mine]="c.mine" [class.cm--focus]="c.id === focusedComment()" [attr.data-cid]="c.id">
+                <span class="av" [style.background]="c.authorPhotoUrl ? 'transparent' : c.color">
+                  @if (c.authorPhotoUrl) {
+                    <img class="av__i" [src]="c.authorPhotoUrl" alt="" />
+                  } @else { {{ ini(c.author) }} }
+                </span>
                 <div class="cm__b">
                   <div class="cm__h">
                     <span class="cm__n">{{ c.author }}</span>
@@ -255,6 +263,7 @@ interface CommentRow {
             <div class="composer">
               <app-comment-composer
                 [placeholder]="'Commentez, mentionnez avec @, @@, @@@ ou #…'"
+                [sending]="commentSending()"
                 (submitted)="onNewComment($event)"
               />
             </div>
@@ -276,6 +285,8 @@ export class FicheTacheComponent implements OnChanges {
   @Output() openTask = new EventEmitter<string>();
   /** Emitted (with the task id) after the task has been deleted from its detail. */
   @Output() deleted = new EventEmitter<string>();
+  /** Émis après enregistrement d'une édition — le board se met à jour sans rechargement. */
+  @Output() updated = new EventEmitter<TaskCard>();
 
   private router = inject(Router);
   protected bus = inject(ShellBus);
@@ -289,6 +300,12 @@ export class FicheTacheComponent implements OnChanges {
 
   protected subtasks = signal<SubRow[]>([]);
   protected comments = signal<CommentRow[]>([]);
+  /** Envoi de commentaire en cours (spinner du composeur). */
+  protected commentSending = signal(false);
+  /** Commentaire à cibler (notification de mention de commentaire) — défilement + surbrillance. */
+  private _anchorComment = signal<string | null>(null);
+  @Input() set anchorCommentId(v: string | null | undefined) { this._anchorComment.set(v ?? null); }
+  protected focusedComment = signal<string | null>(null);
   protected attachments = signal<AttachedRef[]>([]);
   adding = signal(false);
   draft = signal('');
@@ -326,12 +343,30 @@ export class FicheTacheComponent implements OnChanges {
   assigneeInitials = computed(() => this.ini(this.assigneeLabel()));
 
   constructor() {
+    // Ancrage sur un commentaire ciblé (mention) : défile vers lui et l'encadre
+    // une fois le fil peint.
+    effect(() => {
+      const cid = this._anchorComment();
+      if (!cid || !this.comments().length) return;
+      this.focusedComment.set(cid);
+      requestAnimationFrame(() =>
+        this.threadEl?.nativeElement.querySelector(`[data-cid="${cid}"]`)
+          ?.scrollIntoView({ block: 'center', behavior: 'smooth' }));
+    });
     effect(() => {
       this.comments();
       requestAnimationFrame(() => this.scrollThreadToBottom());
     });
     // Annuaire chargé une fois — sert à résoudre le nom de l'assigné (affichage + édition).
-    this.membersSvc.directory().subscribe(list => this.directory.set(list));
+    this.membersSvc.directory().subscribe(list => {
+      this.directory.set(list);
+      // L'annuaire peut arriver après les commentaires : on re-résout les auteurs.
+      const meId = this.session.user()?.id;
+      this.comments.update(rows => rows.map(r => r.authorUserId === meId ? r : ({
+        ...r,
+        author: list.find(m => m.userId === r.authorUserId)?.name ?? r.author,
+      })));
+    });
   }
 
   // ── Mode édition ────────────────────────────────────────────────────────────
@@ -395,6 +430,7 @@ export class FicheTacheComponent implements OnChanges {
             this.eStatusId.set(this.task.statusId); // rétablit le statut réel dans le sélecteur
             this.statusError.set(extractApiError(err, "Ce changement de statut n'est pas autorisé par le workflow."));
             this.toast.show({ message: 'Modifications enregistrées (hors statut, non autorisé)' });
+            this.updated.emit(this.task); // le board reflète les champs sauvés
           },
         });
       },
@@ -407,6 +443,7 @@ export class FicheTacheComponent implements OnChanges {
     this.editMode.set(false);
     this.statusError.set('');
     this.toast.show({ message: 'Modifications enregistrées avec succès' });
+    this.updated.emit(this.task); // met à jour le board sans rechargement
   }
 
   ngOnChanges(): void {
@@ -424,13 +461,23 @@ export class FicheTacheComponent implements OnChanges {
       this.subtasks.set(list.map(s => ({ id: s.id, title: s.title, done: s.done }))));
     this.tasksSvc.attachments(id).subscribe(list => this.attachments.set(list));
     this.tasksSvc.comments(id).subscribe(list => this.comments.set(list.map(c => this.toRow(c))));
+    // Précharge les statuts du projet pour que le sélecteur soit prérempli
+    // dès l'entrée en édition (les <option> doivent exister avant le [value]).
+    this.tasksSvc.loadBoard(this.task.projectId).subscribe(b => this.columns.set(b.columns));
   }
 
   private toRow(c: TaskComment): CommentRow {
     const mine = c.authorUserId === this.session.user()?.id;
+    const member = this.directory().find(m => m.userId === c.authorUserId);
     return {
       id: c.id,
-      author: mine ? (this.session.user()?.displayName ?? 'Moi') : 'Membre',
+      // Nom réel de l'auteur, résolu via l'annuaire du workspace.
+      author: mine
+        ? (this.session.user()?.displayName ?? 'Moi')
+        : (member?.name ?? 'Membre'),
+      authorUserId: c.authorUserId,
+      // L'annuaire porte la photo (il contient aussi l'utilisateur courant).
+      authorPhotoUrl: member?.photoUrl,
       color: avatarColorFor(c.authorUserId),
       time: this.fmtDateTime(c.createdAt),
       parts: parseRichText(c.content),
@@ -493,8 +540,37 @@ export class FicheTacheComponent implements OnChanges {
   // ── Commentaires ────────────────────────────────────────────────────────────
   onNewComment(payload: { parts: RichPart[]; files: { file?: File }[]; text: string }): void {
     const files = payload.files.map(f => f.file).filter((f): f is File => !!f);
-    this.tasksSvc.addComment(this.task.id, this.task.projectId, payload.text, files)
-      .subscribe(c => this.comments.update(list => [...list, this.toRow(c)]));
+    // Mentions de personnes résolues en userId via l'annuaire (déjà chargé) → le
+    // serveur notifie les mentionnés (hors moi) et alimente « Mentions reçues ».
+    const mentions: MentionRef[] = payload.parts
+      .filter(p => p.type === 'person')
+      .map((p): MentionRef | null => {
+        const m = this.directory().find(x => x.name === p.val)
+          ?? this.directory().find(x => x.name.toLowerCase().startsWith(p.val.toLowerCase()));
+        return m?.userId ? { type: 'USER', targetId: m.userId, targetText: p.val } : null;
+      })
+      .filter((m): m is MentionRef => m !== null);
+    // Affichage OPTIMISTE : le commentaire apparaît immédiatement (le serveur peut
+    // être lent sous charge) ; il est réconcilié avec l'id réel à la réponse, ou
+    // retiré en cas d'échec. Supprime la latence perçue « le commentaire arrive tard ».
+    const tempId = 'tmp-' + Date.now();
+    this.comments.update(list => [...list, this.toRow({
+      id: tempId, taskId: this.task.id, authorUserId: this.session.user()?.id ?? 'me',
+      content: payload.text, createdAt: new Date().toISOString(), attachments: [],
+    })]);
+    this.commentSending.set(true);
+    this.tasksSvc.addComment(this.task.id, this.task.projectId, payload.text, files, mentions)
+      .subscribe({
+        next: c => {
+          this.comments.update(list => list.map(r => r.id === tempId ? this.toRow(c) : r));
+          this.commentSending.set(false);
+        },
+        error: () => {
+          this.comments.update(list => list.filter(r => r.id !== tempId));
+          this.commentSending.set(false);
+          this.toast.show({ message: "L'envoi du commentaire a échoué.", icon: 'warning' });
+        },
+      });
   }
   removeComment(id: string): void {
     const snapshot = this.comments();

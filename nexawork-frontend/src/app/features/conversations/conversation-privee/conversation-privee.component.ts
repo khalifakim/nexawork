@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, ElementRef, ViewChild, computed, effect, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, ViewChild, computed, effect, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { map, switchMap, tap } from 'rxjs/operators';
@@ -11,6 +11,7 @@ import { ThreadMediaPanelComponent, SharedMediaItem } from '@shared/overlays/thr
 import { ThreadMentionsPanelComponent, ThreadMention, MentionKind } from '@shared/overlays/thread-mentions-panel/thread-mentions-panel.component';
 import { MembersService } from '@core/services/members.service';
 import { ConversationsService } from '@core/services/conversations.service';
+import { ProjectCatalogService } from '@core/services/project-catalog.service';
 import { Member } from '@core/models/member.models';
 import { ConversationFile, ConversationMessage } from '@core/models/conversation.models';
 import { ShellBus } from '@layouts/app-shell/shell.bus';
@@ -41,7 +42,11 @@ type Msg = ConversationMessage;
       <div class="ch">
         <div class="ch__peer" (click)="bus.openProfile(peer().name)" style="cursor:pointer">
           <div class="av">
-            <span class="av__c" [style.background]="peer().color">{{ ini(peer().name) }}</span>
+            @if (peer().photoUrl) {
+              <img class="av__c av__c--img" [src]="peer().photoUrl" alt="" />
+            } @else {
+              <span class="av__c" [style.background]="peer().color">{{ ini(peer().name) }}</span>
+            }
             @if (peer().online) { <span class="av__d"></span> }
           </div>
           <div>
@@ -85,7 +90,12 @@ type Msg = ConversationMessage;
             @if (m.day) {
               <div class="day"><div class="day__l"></div><span>{{ m.day }}</span><div class="day__l"></div></div>
             }
-            <div class="line" [class.line--me]="m.me">
+            @if (m.id && m.id === unreadSeparatorId()) {
+              <div class="unreadsep"><span>Messages non lus</span></div>
+            }
+            <div class="line" [class.line--me]="m.me"
+                 [class.line--focus]="m.id && m.id === focusMessageId()"
+                 [attr.data-mid]="m.id">
               <div class="bubble" [class.bubble--me]="m.me">
                 @if (m.parts.length > 0) {
                   <div>
@@ -136,7 +146,7 @@ type Msg = ConversationMessage;
       </div>
 
       @if (peerTyping()) {
-        <div class="typing">{{ peer().name.split(' ')[0] }} est en train d'écrire…</div>
+        <div class="typing">En train d'écrire…</div>
       }
 
       <div class="composer">
@@ -147,6 +157,7 @@ type Msg = ConversationMessage;
   styleUrl: './conversation-privee.component.scss',
 })
 export class ConversationPriveeComponent {
+  private catalog = inject(ProjectCatalogService);
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   bus = inject(ShellBus);
@@ -162,13 +173,21 @@ export class ConversationPriveeComponent {
   msgs = signal<Msg[]>([]);
   /** Vrai tant que l'historique de la conversation n'est pas chargé. */
   loading = signal(true);
+  /** Id du 1ᵉʳ message non lu au chargement — place la séparation « Messages non lus ». */
+  unreadSeparatorId = signal<string | null>(null);
 
   // ── Indicateur « est en train d'écrire » ────────────────────────────────────
   /** Vrai uniquement quand le pair est EN LIGNE et tape réellement (STOMP). */
   private typingRaw = signal(false);
-  peerTyping = computed(() => this.typingRaw() && this.peer().online);
+  // 🔴 Le « en train d'écrire » NE dépend PLUS de la présence. Un événement typing
+  // reçu prouve à lui seul que la personne est là (elle tape) ; le coupler à
+  // `peer().online` le masquait dès que la présence était en retard ou indisponible.
+  // L'expiration est déjà gérée par `typingTimer` (4 s sans nouvel événement).
+  peerTyping = computed(() => this.typingRaw());
   /** Timer d'expiration : l'indicateur retombe si plus rien n'arrive. */
   private typingTimer?: ReturnType<typeof setTimeout>;
+  /** Messages déjà signalés « lus » au serveur — évite de re-PATCHer à chaque ré-ouverture. */
+  private readonly markedRead = new Set<string>();
   /** Anti-spam : on ne republie « je tape » qu'une fois par fenêtre. */
   private lastTypingSentAt = 0;
   private stopTypingTimer?: ReturnType<typeof setTimeout>;
@@ -228,10 +247,18 @@ export class ConversationPriveeComponent {
     return out;
   });
 
+  /** Message ciblé par une notification de mention (`?message=<uuid>`) — cf. canal. */
+  protected focusMessageId = toSignal(
+    this.route.queryParamMap.pipe(map(q => q.get('message'))),
+    { initialValue: null },
+  );
+
   @ViewChild('msgsEl') private msgsEl?: ElementRef<HTMLDivElement>;
   @ViewChild('sinput') private searchInput?: ElementRef<HTMLInputElement>;
 
   constructor() {
+    // Quitter les conversations libère le « fil actif » (plus d'anti-bruit associé).
+    inject(DestroyRef).onDestroy(() => this.bus.activeThreadId.set(null));
     toObservable(this.slug)
       .pipe(
         tap(() => this.loading.set(true)),
@@ -243,8 +270,22 @@ export class ConversationPriveeComponent {
         this.searchQ.set('');
         this.loading.set(false);
         this.typingRaw.set(false); // jamais affiché par défaut à l'ouverture
-        // À l'ouverture, marquer la conversation comme lue (accusé de lecture).
+        // Séparation « Messages non lus » : 1ᵉʳ message reçu non lu, AVANT de marquer lu.
+        this.unreadSeparatorId.set(thread.find(m => m.unreadByMe && m.id)?.id ?? null);
+        // Fil actif → anti-bruit des notifs + effacement des notifs « nouveau message ».
+        this.bus.activeThreadId.set(
+          this.conversationsSvc.items().find(c => c.id === this.slug())?.uuid ?? null);
+        // À l'ouverture, effacer le badge « non lu » et émettre l'accusé de lecture
+        // serveur pour chaque message du pair reçu pendant mon absence → l'expéditeur
+        // les voit passer « lu » en temps réel. Dédupliqué pour ne pas re-PATCHer à
+        // chaque ré-ouverture (le serveur est idempotent, mais autant lui épargner).
         this.conversationsSvc.markRead(this.slug());
+        for (const m of thread) {
+          if (!m.me && m.id && !this.markedRead.has(m.id)) {
+            this.markedRead.add(m.id);
+            this.conversationsSvc.markMessageRead(m.id);
+          }
+        }
       });
 
     // Indicateur de saisie du pair (STOMP). Retombe seul après 4 s sans signal.
@@ -261,13 +302,38 @@ export class ConversationPriveeComponent {
           this.typingTimer = setTimeout(() => this.typingRaw.set(false), 4000);
         }
       });
-    // Réception temps réel des messages du pair (mes propres messages sont déjà
-    // affichés de façon optimiste à l'envoi).
+    // Réception temps réel. Le serveur diffuse un message sur DEUX occasions :
+    // à l'envoi, et à sa LECTURE (accusé de lecture — il revient avec `read=true`).
     toObservable(this.slug)
       .pipe(switchMap(s => this.conversationsSvc.live(s)), takeUntilDestroyed())
       .subscribe(msg => {
+        this.msgs.update(list => {
+          // 1. Message déjà connu (même id) → mise à jour, typiquement l'accusé de
+          //    lecture : MON message passe « lu » sans que je recharge.
+          const known = list.findIndex(m => m.id && m.id === msg.id);
+          if (known >= 0) {
+            const next = [...list];
+            next[known] = { ...next[known], read: msg.read ?? next[known].read };
+            return next;
+          }
+          // 2. MON propre message qui revient du serveur → remplace l'optimiste
+          //    (affiché sans id à l'envoi) pour récupérer son id, cible du reçu de lecture.
+          if (msg.me) {
+            const optimistic = list.findIndex(m => m.me && !m.id);
+            if (optimistic >= 0) { const next = [...list]; next[optimistic] = msg; return next; }
+            return list; // déjà présent
+          }
+          // 3. Nouveau message du pair.
+          return [...list, msg];
+        });
+        // À la réception d'un message du pair, j'émets l'accusé de lecture serveur
+        // (`PATCH /messages/{id}/read`) → le serveur en informe l'expéditeur en
+        // temps réel (cas 1 chez lui). J'efface aussi le badge « non lu » local.
         if (!msg.me) {
-          this.msgs.update(list => [...list, msg]);
+          if (msg.id && !this.markedRead.has(msg.id)) {
+            this.markedRead.add(msg.id);
+            this.conversationsSvc.markMessageRead(msg.id);
+          }
           this.conversationsSvc.markRead(this.slug());
         }
       });
@@ -275,7 +341,19 @@ export class ConversationPriveeComponent {
     // conversation, switch peer, or send a new message).
     effect(() => {
       this.visible();
+      // Sauf si un message est ciblé (mention) : le ramener en bas l'effacerait.
+      if (this.focusMessageId()) return;
       requestAnimationFrame(() => this.scrollToBottom());
+    });
+
+    // Défilement vers le message mentionné, une fois le fil peint.
+    effect(() => {
+      const id = this.focusMessageId();
+      if (!id || !this.visible().length) return;
+      requestAnimationFrame(() => {
+        this.msgsEl?.nativeElement.querySelector(`[data-mid="${id}"]`)
+          ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      });
     });
     // Autofocus the header search field as soon as it opens.
     effect(() => {
@@ -335,7 +413,9 @@ export class ConversationPriveeComponent {
     this.msgs.update(list => [...list, { me: true, parts: payload.parts, time, read: false, files }]);
     const text = payload.text ?? payload.parts.map(p => p.val).join('');
     const rawFiles = payload.files.map(f => f.file).filter((f): f is File => !!f);
-    this.conversationsSvc.sendMessage(this.slug(), text, rawFiles).subscribe();
+    // Mentions résolues en cibles réelles (cf. canal.component).
+    const mentions = this.catalog.resolveMentions(payload.parts);
+    this.conversationsSvc.sendMessage(this.slug(), text, rawFiles, mentions).subscribe();
   }
 
   onChipOpen(ev: MentionChipEvent): void {

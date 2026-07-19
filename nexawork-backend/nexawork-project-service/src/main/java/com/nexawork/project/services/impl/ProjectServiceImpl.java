@@ -6,10 +6,9 @@ import com.nexawork.project.dtos.requests.CreateProjectRequest;
 import com.nexawork.project.dtos.requests.UpdateProjectRequest;
 import com.nexawork.project.dtos.responses.ProjectResponse;
 import com.nexawork.project.entities.Project;
-import com.nexawork.project.entities.ProjectMember;
-import com.nexawork.project.entities.enums.ProjectRole;
 import com.nexawork.project.entities.enums.ProjectStatus;
 import com.nexawork.project.events.publishers.ProjectCreatedEvent;
+import com.nexawork.project.events.publishers.ProjectDeletedEvent;
 import com.nexawork.project.events.publishers.ProjectEventPublisher;
 import com.nexawork.project.mappers.ProjectMapper;
 import com.nexawork.project.repositories.ProjectMemberRepository;
@@ -61,7 +60,6 @@ public class ProjectServiceImpl implements ProjectService {
         // CU-A03 : la création d'un projet est réservée à l'administrateur (ou au
         // propriétaire) du workspace ; le chef de projet est désigné ensuite (CU-CP05).
         caller.requireWorkspaceAdmin("créer un projet");
-        UUID userId = caller.userId();
         String prefix = generateUniquePrefix(request.getPrefix(), request.getName(), caller.organisationId());
         Project project = projectRepository.save(Project.builder()
                 .name(request.getName())
@@ -69,28 +67,29 @@ public class ProjectServiceImpl implements ProjectService {
                 .taskSequence(0)
                 .color(request.getColor())
                 .organisationId(caller.organisationId())
-                .ownerUserId(userId)
+                // Pas de chef de projet à la création : il est désigné explicitement
+                // ensuite (CU-CP05). ownerUserId reste null tant qu'aucun chef n'est nommé.
+                .ownerUserId(null)
                 .status(ProjectStatus.ACTIVE)
                 .startDate(request.getStartDate())
                 .endDate(request.getEndDate())
                 .enforceWorkflowOrder(false)
                 .build());
 
-        // Le créateur devient chef de projet (PROJECT_LEAD, isProjectLead) — V5.1 §4.2.
-        projectMemberRepository.save(ProjectMember.builder()
-                .project(project)
-                .userId(userId)
-                .projectRole(ProjectRole.PROJECT_LEAD)
-                .isProjectLead(true)
-                .build());
+        // Aucun membre n'est ajouté d'office : l'administrateur crée le projet, il
+        // n'en devient ni membre ni chef. Il ajoute explicitement les collaborateurs
+        // ensuite (et peut s'ajouter lui-même s'il le souhaite).
 
         // Workflow Kanban par défaut (4 colonnes + transitions) — V5.1 §8.1.
         workflowSeeder.seedDefault(project);
 
+        // Le projet n'a pas encore de chef (ownerUserId null) : on transmet le
+        // créateur, dont les consumers (GED, Messaging) ont besoin pour tracer
+        // l'auteur des dossiers et canaux seedés.
         eventPublisher.publishProjectCreated(new ProjectCreatedEvent(
-                project.getId(), project.getName(), project.getOrganisationId(), project.getOwnerUserId()));
+                project.getId(), project.getName(), project.getOrganisationId(), caller.userId()));
 
-        log.info("Projet '{}' créé ({}) par {}", project.getName(), project.getId(), userId);
+        log.info("Projet '{}' créé ({}) par {}", project.getName(), project.getId(), caller.userId());
         return toDto(project);
     }
 
@@ -146,7 +145,12 @@ public class ProjectServiceImpl implements ProjectService {
     public void delete(UUID projectId) {
         Project project = guard.loadInOrg(projectId);
         caller.requireWorkspaceAdmin("supprimer un projet");
+        UUID organisationId = project.getOrganisationId(); // capturé AVANT la suppression
         projectRepository.delete(project); // cascade DB : membres, équipes, statuts, tâches...
+        // Les canaux du projet vivent dans le Messaging (autre base) : pas de cascade
+        // SQL possible. On publie `project.deleted` pour qu'il les supprime — sans quoi
+        // ils resteraient orphelins (canaux #général/#annonces d'un projet disparu).
+        eventPublisher.publishProjectDeleted(new ProjectDeletedEvent(projectId, organisationId));
         log.info("Projet {} supprimé par {}", projectId, caller.userId());
     }
 

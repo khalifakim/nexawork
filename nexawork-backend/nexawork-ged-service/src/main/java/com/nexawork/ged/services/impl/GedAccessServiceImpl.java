@@ -13,6 +13,8 @@ import com.nexawork.ged.entities.GedFolder;
 import com.nexawork.ged.entities.enums.AccessMode;
 import com.nexawork.ged.entities.enums.GranteeType;
 import com.nexawork.ged.entities.enums.TargetType;
+import com.nexawork.ged.events.publishers.DocumentSharedEvent;
+import com.nexawork.ged.events.publishers.GedEventPublisher;
 import com.nexawork.ged.mappers.FileMapper;
 import com.nexawork.ged.mappers.GrantMapper;
 import com.nexawork.ged.repositories.GedAccessGrantRepository;
@@ -51,6 +53,7 @@ public class GedAccessServiceImpl implements GedAccessService {
     GrantMapper grantMapper;
     GedGuard guard;
     CallerContext caller;
+    GedEventPublisher eventPublisher;
 
     @Override
     @Transactional(readOnly = true)
@@ -97,11 +100,22 @@ public class GedAccessServiceImpl implements GedAccessService {
                         .granteeId(request.getGranteeId())
                         .grantedBy(caller.userId())
                         .build());
+        boolean isNew = grant.getId() == null;
         grant.setAccessLevel(request.getAccessLevel());
         grant = grantRepository.save(grant);
 
         // Un partage bascule la cible en mode SHARED.
         setMode(request.getTargetType(), request.getTargetId(), AccessMode.SHARED);
+
+        // Notifie le bénéficiaire d'un NOUVEAU partage USER (§4.7). Un partage TEAM
+        // n'est pas notifié ici : le GED ignore la composition des équipes (Project).
+        if (isNew && request.getGranteeType() == GranteeType.USER) {
+            String docName = target.folder() != null ? target.folder().getName()
+                    : (target.file() != null ? target.file().getName() : "document");
+            eventPublisher.publishDocumentShared(new DocumentSharedEvent(
+                    request.getGranteeId(), docName, request.getTargetType().name(),
+                    request.getTargetId(), caller.organisationIdOptional().orElse(null), caller.userId()));
+        }
         return grantMapper.asDto(grant);
     }
 

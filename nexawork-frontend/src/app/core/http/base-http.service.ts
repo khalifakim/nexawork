@@ -14,14 +14,14 @@ export class BaseHttpService {
 
   protected readonly http = inject(HttpClient);
 
-  protected get$<T>(service: ApiService, path: string, params?: Record<string, string | number | boolean>): Observable<T> {
+  protected get$<T>(service: ApiService, path: string, params?: Record<string, string | number | boolean>, context?: HttpContext): Observable<T> {
     return this.http
-      .get<ApiResponse<T>>(api(service, path), { params: this.toParams(params) })
+      .get<ApiResponse<T>>(api(service, path), { params: this.toParams(params), context })
       .pipe(unwrap<T>());
   }
 
-  protected post$<T>(service: ApiService, path: string, body?: unknown): Observable<T> {
-    return this.http.post<ApiResponse<T>>(api(service, path), body ?? {}).pipe(unwrap<T>());
+  protected post$<T>(service: ApiService, path: string, body?: unknown, context?: HttpContext): Observable<T> {
+    return this.http.post<ApiResponse<T>>(api(service, path), body ?? {}, { context }).pipe(unwrap<T>());
   }
 
   protected patch$<T>(service: ApiService, path: string, body?: unknown, context?: HttpContext): Observable<T> {

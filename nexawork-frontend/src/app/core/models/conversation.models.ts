@@ -6,6 +6,8 @@ export interface Conversation {
   name: string;
   color: string;       // avatar tint
   initials: string;
+  /** Photo de profil de l'interlocuteur (annuaire) — remplace les initiales. */
+  photoUrl?: string;
   msg: string;         // last-message preview
   unread: number;
   /** Relative time of the last message (e.g. '2 min', '1 h', '3 h', 'hier'). */
@@ -23,6 +25,8 @@ export interface ConversationResponse {
   type: string;
   participantUserIds: string[];
   isRead: boolean;
+  /** Vrai nombre de messages non lus reçus (badge sidebar). */
+  unreadCount?: number;
   createdAt: string;
 }
 
@@ -31,6 +35,8 @@ export interface ConversationFile { id: number; name: string; size: number; /** 
 
 /** A single message inside a private conversation. */
 export interface ConversationMessage {
+  /** UUID backend — sert à cibler un message (mention : « ouvrir et encadrer »). */
+  id?: string;
   me: boolean;
   parts: RichPart[];   // rich text (mentions rendered as chips)
   time: string;
@@ -38,6 +44,8 @@ export interface ConversationMessage {
   day?: string;
   /** For messages sent by the current user, indicates whether the peer has read it. */
   read?: boolean;
+  /** Message reçu du pair et non encore lu par moi (au chargement) — place la séparation « Messages non lus ». */
+  unreadByMe?: boolean;
   /** Files attached to the message — same preview format as canaux / task comments. */
   files?: ConversationFile[];
 }

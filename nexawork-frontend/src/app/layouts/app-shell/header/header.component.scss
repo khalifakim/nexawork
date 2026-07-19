@@ -94,6 +94,10 @@
 .nm__row:hover { background: var(--nx-surface-3); }
 .nm__row--unread { background: rgba(91,95,233,.07); border-left-color: var(--nx-indigo); }
 .nm__row--unread:hover { background: rgba(91,95,233,.11); }
+.nm__del { flex: none; align-self: flex-start; width: 26px; height: 26px; border: none; border-radius: 7px; background: transparent; color: var(--nx-text-400); cursor: pointer; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity .12s, background .12s, color .12s; }
+.nm__row:hover .nm__del { opacity: 1; }
+.nm__del:hover { background: #FDECEB; color: #F5564E; }
+.nm__del:focus-visible { opacity: 1; }
 .nm__u { width: 8px; flex: none; display: flex; justify-content: center; padding-top: 17px; }
 .nm__udot { width: 8px; height: 8px; border-radius: 50%; background: var(--nx-indigo); }
 .nm__av { width: 40px; height: 40px; flex: none; border-radius: 50%; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; }

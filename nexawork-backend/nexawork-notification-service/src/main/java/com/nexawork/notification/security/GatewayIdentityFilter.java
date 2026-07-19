@@ -16,6 +16,8 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 /**
@@ -27,6 +29,7 @@ public class GatewayIdentityFilter extends OncePerRequestFilter {
     public static final String HEADER_USER_ID = "X-User-Id";
     public static final String HEADER_ORG_ID = "X-Org-Id";
     public static final String HEADER_ORG_ROLE = "X-Org-Role";
+    public static final String HEADER_USER_NAME = "X-User-Name";
 
     @Override
     protected void doFilterInternal(@NonNull HttpServletRequest request,
@@ -39,6 +42,8 @@ public class GatewayIdentityFilter extends OncePerRequestFilter {
         if (StringUtils.hasText(userId) && SecurityContextHolder.getContext().getAuthentication() == null) {
             String organisationId = request.getHeader(HEADER_ORG_ID);
             String orgRole = request.getHeader(HEADER_ORG_ROLE);
+            // Nom d'affichage : encodé par le gateway (accents), donc décodé ici.
+            String displayName = request.getHeader(HEADER_USER_NAME);
 
             var claimsBuilder = Jwts.claims()
                     .subject(userId)
@@ -48,6 +53,10 @@ public class GatewayIdentityFilter extends OncePerRequestFilter {
             }
             if (StringUtils.hasText(orgRole)) {
                 claimsBuilder.add(SecurityUtils.CLAIM_ORG_ROLE, orgRole);
+            }
+            if (StringUtils.hasText(displayName)) {
+                claimsBuilder.add(SecurityUtils.CLAIM_DISPLAY_NAME,
+                        URLDecoder.decode(displayName, StandardCharsets.UTF_8));
             }
             Claims claims = claimsBuilder.build();
 

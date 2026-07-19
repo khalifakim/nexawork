@@ -37,6 +37,7 @@ public class ProjectTaskAttachmentClient {
     public record ProjectTaskAttachment(
             UUID attachmentId,
             UUID taskId,
+            String taskKey,
             String taskTitle,
             String fileName,
             String fileUrl,

@@ -77,8 +77,10 @@ import { GED_COLOR, GED_ICON, TASK_FOLDER } from '@core/util/ui.util';
           <div class="trow" [style.grid-template-columns]="grid()" [class.trow--sel]="isSel(it.name)" (click)="rowClick(it)">
             <span class="cb">@if (!it.system && !inSystem() && !readonly) { <button class="box" [class.box--on]="isSel(it.name)" (click)="toggleSel(it.name); $event.stopPropagation()">@if (isSel(it.name)) { <app-icon name="check" [size]="12" [stroke]="2.6" /> }</button> }</span>
             <span class="name">
-              <span class="ic" [class.ic--sys]="it.system" [class.ic--folder]="it.type==='folder' && !it.system" [style.color]="it.system ? 'var(--nx-indigo)' : color(it.type)" [title]="it.system ? 'Dossier système — lecture seule' : ''">
-                <app-icon [name]="it.system ? 'folder' : icon(it.type)" [size]="18" />
+              <!-- L'icône reflète TOUJOURS le type réel du fichier ; le cadenas
+                   signale seulement qu'il s'agit d'un élément système (lecture seule). -->
+              <span class="ic" [class.ic--sys]="it.system && it.type==='folder'" [class.ic--folder]="it.type==='folder'" [style.color]="color(it.type)" [title]="it.system ? 'Élément système — lecture seule' : ''">
+                <app-icon [name]="icon(it.type)" [size]="18" />
                 @if (it.system) { <span class="ic__lock"><app-icon name="lock" [size]="9" /></span> }
               </span>
               <span class="nm" [class.nm--folder]="it.type==='folder'">{{ it.name }}</span>
@@ -93,7 +95,7 @@ import { GED_COLOR, GED_ICON, TASK_FOLDER } from '@core/util/ui.util';
             @if (inSystem()) {
               <button type="button" class="task" title="Ouvrir la tâche associée"
                       (click)="openTaskChip(it.task?.id, $event)">
-                <span class="task__id nx-mono">{{ it.task?.id }}</span>
+                <span class="task__id nx-mono">{{ it.task?.key }}</span>
                 <span class="task__t">{{ it.task?.title }}</span>
               </button>
               <span class="muted">{{ it.owner }}</span>
@@ -124,9 +126,9 @@ import { GED_COLOR, GED_ICON, TASK_FOLDER } from '@core/util/ui.util';
       </div>
     </div>
 
-    @if (preview(); as p) { <app-apercu-document [name]="p" (closed)="preview.set(null)" /> }
+    @if (preview(); as p) { <app-apercu-document [name]="p.name" [url]="p.url" (closed)="preview.set(null)" /> }
     @if (newFolder()) { <app-nouveau-dossier [scope]="modalScope()" (closed)="newFolder.set(false)" (created)="onCreateFolder($event)" /> }
-    @if (upload()) { <app-importer-fichier [scope]="modalScope()" (closed)="upload.set(false)" (imported)="onImportFile($event)" /> }
+    @if (upload()) { <app-importer-fichier [scope]="modalScope()" [busy]="uploadBusy()" [error]="uploadError()" (closed)="closeUpload()" (imported)="onImportFile($event)" /> }
 
     @if (toastMsg(); as t) { <div class="gtoast"><span class="gtoast__i"><app-icon name="check" [size]="14" /></span>{{ t }}</div> }
   `,
@@ -148,9 +150,13 @@ export class GedViewComponent {
   fDate = signal<string | null>(null);
   selected = signal<string[]>([]);
   deleted = signal<string[]>([]);
-  preview = signal<string | null>(null);
+  preview = signal<GedItem | null>(null);
   newFolder = signal(false);
   upload = signal(false);
+  /** Upload GED en cours (loader dans le modal). */
+  uploadBusy = signal(false);
+  /** Message d'erreur d'upload (affiché dans le modal, qui reste ouvert). */
+  uploadError = signal('');
   menu = signal<string | null>(null);
   toastMsg = signal<string | null>(null);
   private toastTimer: ReturnType<typeof setTimeout> | undefined;
@@ -199,11 +205,33 @@ export class GedViewComponent {
       .subscribe(() => { this.reload(); this.toast('Dossier « ' + ev.name + ' » créé'); });
   }
 
+  /**
+   * Import : le modal reste ouvert avec un loader jusqu'à la réponse. Succès →
+   * recharge l'espace, toast, ferme. Échec → message d'erreur dans le modal.
+   */
   onImportFile(ev: { file: File; name: string; restricted: boolean }): void {
-    this.upload.set(false);
-    this.toast('Import de « ' + ev.name + ' » en cours…');
+    this.uploadError.set('');
+    this.uploadBusy.set(true);
     this.ged.importFile(this.path(), this.projectId, ev.file, ev.name, ev.restricted)
-      .subscribe(() => { this.reload(); this.toast('« ' + ev.name + ' » importé'); });
+      .subscribe({
+        next: () => {
+          this.uploadBusy.set(false);
+          this.upload.set(false);        // ferme le modal
+          this.reload();                 // met à jour l'espace GED
+          this.toast('« ' + ev.name + ' » importé');
+        },
+        error: () => {
+          this.uploadBusy.set(false);
+          this.uploadError.set("L'import a échoué. Vérifiez le fichier et réessayez.");
+        },
+      });
+  }
+
+  /** Ferme le modal d'import (ignoré pendant l'upload). */
+  closeUpload(): void {
+    if (this.uploadBusy()) return;
+    this.upload.set(false);
+    this.uploadError.set('');
   }
 
   shown = computed(() => {
@@ -306,7 +334,7 @@ export class GedViewComponent {
 
   onAction(action: string, it: GedItem): void {
     switch (action) {
-      case 'preview':  this.preview.set(it.name); break;
+      case 'preview':  this.preview.set(it); break;
       case 'open':     this.path.update(p => [...p, it.name]); break;
       case 'download': this.toast('Téléchargement de « ' + it.name + ' »…'); break;
       case 'versions': this.gedOverlay.openVersionsFor(it); break;
@@ -323,7 +351,7 @@ export class GedViewComponent {
 
   rowClick(it: GedItem): void {
     if (it.type === 'folder') this.path.update(p => [...p, it.name]);
-    else this.preview.set(it.name);
+    else this.preview.set(it);
   }
   goTo(i: number): void { this.path.update(p => p.slice(0, i + 1)); }
 

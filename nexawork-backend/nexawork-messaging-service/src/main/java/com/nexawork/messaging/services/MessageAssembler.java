@@ -6,14 +6,22 @@ import com.nexawork.messaging.dtos.responses.MessageResponse;
 import com.nexawork.messaging.entities.Message;
 import com.nexawork.messaging.entities.MessageAttachment;
 import com.nexawork.messaging.entities.MessageMention;
+import com.nexawork.messaging.entities.enums.MentionType;
+import com.nexawork.messaging.events.publishers.MessageCreatedEvent;
+import com.nexawork.messaging.events.publishers.MessageMentionEvent;
+import com.nexawork.messaging.events.publishers.MessagingEventPublisher;
 import com.nexawork.messaging.mappers.MessageMapper;
 import com.nexawork.messaging.repositories.MessageMentionRepository;
+import com.nexawork.messaging.security.CallerContext;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -28,6 +36,8 @@ public class MessageAssembler {
     MentionParser mentionParser;
     MessageMentionRepository mentionRepository;
     MessageMapper messageMapper;
+    MessagingEventPublisher eventPublisher;
+    CallerContext caller;
 
     /**
      * Valide qu'un message est envoyable : il doit porter du texte OU au moins une
@@ -73,17 +83,108 @@ public class MessageAssembler {
         }
     }
 
-    /** Extrait et enregistre les mentions du contenu (à l'envoi). */
-    public void persistMentions(Message message) {
-        List<MentionParser.ParsedMention> parsed = mentionParser.parse(message.getContent());
-        for (MentionParser.ParsedMention m : parsed) {
-            mentionRepository.save(MessageMention.builder()
+    /**
+     * Extrait et enregistre les mentions du contenu (à l'envoi), en leur attachant
+     * la **cible réelle** ({@code targetId}) fournie par le client.
+     *
+     * <p>Le <b>contenu</b> reste la source de vérité sur ce qui est mentionné :
+     * on ne persiste que ce que le parser trouve dans le texte. La requête ne
+     * fait qu'apporter l'identifiant que le Messaging ne peut pas résoudre seul
+     * (utilisateurs, tâches, documents et canaux appartiennent à d'autres
+     * domaines). Sans lui, {@code targetId} restait nul : la vue « Mentions
+     * reçues » (§5.3) ne trouvait jamais personne et aucune notification de
+     * mention ne pouvait partir.</p>
+     *
+     * @return les mentions persistées (pour la publication des notifications)
+     */
+    public List<MessageMention> persistMentions(Message message, SendMessageRequest request) {
+        Map<String, UUID> targets = targetsByKey(request);
+        List<MessageMention> saved = new ArrayList<>();
+        for (MentionParser.ParsedMention m : mentionParser.parse(message.getContent())) {
+            saved.add(mentionRepository.save(MessageMention.builder()
                     .message(message)
                     .mentionType(m.type())
+                    .targetId(targets.get(key(m.type(), m.targetText())))
                     .targetText(m.targetText())
                     .isRead(false)
-                    .build());
+                    .build()));
         }
+        return saved;
+    }
+
+    /**
+     * Notifie les personnes mentionnées (§4.7). On ne notifie que les mentions
+     * {@code USER} résolues, et jamais l'auteur qui se mentionne lui-même.
+     */
+    public void notifyMentioned(Message message, List<MessageMention> mentions,
+                                UUID channelId, String channelName, UUID conversationId) {
+        for (MessageMention mention : mentions) {
+            if (mention.getMentionType() != MentionType.USER || mention.getTargetId() == null
+                    || mention.getTargetId().equals(message.getSenderUserId())) {
+                continue;
+            }
+            eventPublisher.publishMention(new MessageMentionEvent(
+                    message.getId(),
+                    mention.getTargetId(),
+                    message.getSenderUserId(),
+                    caller.displayName(),
+                    caller.organisationId(),
+                    excerpt(message.getContent()),
+                    channelId, channelName, conversationId));
+        }
+    }
+
+    /**
+     * Notifie les destinataires d'un nouveau message (§4.7) : conversation directe
+     * (l'autre participant) ou canal privé (ses membres, hors auteur). Aucun envoi
+     * si la liste est vide (canal public : {@code recipients} vide → pas de cloche).
+     */
+    public void notifyNewMessage(Message message, List<UUID> recipients,
+                                 UUID channelId, String channelName, UUID conversationId) {
+        if (recipients == null || recipients.isEmpty()) {
+            return;
+        }
+        eventPublisher.publishMessageCreated(new MessageCreatedEvent(
+                message.getId(), recipients, message.getSenderUserId(), caller.displayName(),
+                caller.organisationId(), excerpt(message.getContent()),
+                channelId, channelName, conversationId));
+    }
+
+    /** Extrait affiché sous la notification — exposé aux appelants (activité de canal). */
+    public String excerptOf(String content) {
+        return excerpt(content);
+    }
+
+    /** Extrait affiché sous la notification (le contenu peut être long). */
+    private String excerpt(String content) {
+        if (content == null) {
+            return "";
+        }
+        String trimmed = content.trim();
+        return trimmed.length() <= 140 ? trimmed : trimmed.substring(0, 137) + "…";
+    }
+
+    /** Index des cibles fournies par le client, par (type, libellé normalisé). */
+    private Map<String, UUID> targetsByKey(SendMessageRequest request) {
+        Map<String, UUID> targets = new HashMap<>();
+        if (request.getMentions() == null) {
+            return targets;
+        }
+        for (SendMessageRequest.MentionInput m : request.getMentions()) {
+            if (m.getType() != null && m.getTargetId() != null && m.getTargetText() != null) {
+                targets.put(key(m.getType(), m.getTargetText()), m.getTargetId());
+            }
+        }
+        return targets;
+    }
+
+    /**
+     * Clé de rapprochement texte↔cible. Le libellé saisi peut porter des espaces
+     * insécables (le composeur les utilise pour qu'une mention en plusieurs mots
+     * reste un seul token) : on normalise avant de comparer.
+     */
+    private String key(MentionType type, String targetText) {
+        return type + ":" + targetText.replace(' ', ' ').trim().toLowerCase();
     }
 
     /** Assemble un MessageResponse avec ses mentions. */

@@ -4,11 +4,13 @@ import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { Observable, forkJoin, of } from 'rxjs';
 import { filter, map, startWith, switchMap } from 'rxjs/operators';
 import {
+  MentionRef,
   ProjectChannelRef,
   ProjectDocRef,
   ProjectMemberRef,
   ProjectTaskRef,
 } from '@core/models/mention.models';
+import { RichPart } from '@core/util/mention.util';
 import { MembersService } from './members.service';
 import { ProjectsService } from './projects.service';
 import { TasksService } from './tasks.service';
@@ -107,25 +109,55 @@ export class ProjectCatalogService {
     const ids = this.rawMembers();
     // scope workspace (ids = null) → tout l'annuaire ; scope projet → filtré.
     const list = ids ? dir.filter(m => m.userId && ids.includes(m.userId)) : dir;
-    return list.map(m => ({
-      id: m.name, name: m.name,
+    return list.filter(m => !!m.userId).map(m => ({
+      id: m.name, uuid: m.userId!, name: m.name,
       role: m.role || 'Membre',
-      color: m.color ?? avatarColorFor(m.userId ?? m.name),
+      color: m.color ?? avatarColorFor(m.userId!),
+      photoUrl: m.photoUrl, // l'annuaire la porte → sélecteur de mentions + « Parcourir »
       email: m.email ?? '',
       online: m.online ?? false,
     }));
   });
 
   readonly tasks = computed<ProjectTaskRef[]>(() =>
-    this.rawTasks().map(t => ({ id: t.taskKey, title: t.title, color: t.tag?.[1] })));
+    this.rawTasks().map(t => ({ id: t.taskKey, uuid: t.id, title: t.title, color: t.tag?.[1] })));
 
   readonly documents = computed<ProjectDocRef[]>(() =>
     this.rawDocs()
-      .filter(it => it.type !== 'folder')
-      .map(it => ({ id: it.name, name: it.name, type: it.type, owner: it.owner })));
+      .filter(it => it.type !== 'folder' && !!it.id)
+      .map(it => ({ id: it.name, uuid: it.id!, name: it.name, type: it.type, owner: it.owner })));
 
   readonly channels = computed<ProjectChannelRef[]>(() =>
-    this.rawChannels().map(c => ({ id: c.id, name: c.name, isProject: c.scope === 'project' })));
+    this.rawChannels().map(c => ({ id: c.id, uuid: c.uuid, name: c.name, isProject: c.scope === 'project' })));
+
+  /**
+   * Résout les mentions d'un message en cibles réelles. Le texte saisi porte les
+   * libellés (`@Moussa Bâ`, `@@MOB-101`, …) ; le backend a besoin des identifiants
+   * pour rattacher la mention — c'est ici, à la saisie, qu'on les connaît.
+   */
+  resolveMentions(parts: RichPart[]): MentionRef[] {
+    const out: MentionRef[] = [];
+    const norm = (s: string) => s.replace(/ /g, ' ').trim().toLowerCase();
+
+    for (const p of parts) {
+      const text = p.val;
+      const key = norm(text);
+      if (p.type === 'person') {
+        const m = this.members().find(x => norm(x.name) === key);
+        if (m) out.push({ type: 'USER', targetId: m.uuid, targetText: text });
+      } else if (p.type === 'task') {
+        const t = this.tasks().find(x => norm(x.id) === key);
+        if (t) out.push({ type: 'TASK', targetId: t.uuid, targetText: text });
+      } else if (p.type === 'doc') {
+        const d = this.documents().find(x => norm(x.name) === key);
+        if (d) out.push({ type: 'DOCUMENT', targetId: d.uuid, targetText: text });
+      } else if (p.type === 'channel') {
+        const c = this.channels().find(x => norm(x.id) === key || norm(x.name) === key);
+        if (c?.uuid) out.push({ type: 'CHANNEL', targetId: c.uuid, targetText: text });
+      }
+    }
+    return out;
+  }
 
   // ── Résolution du contexte ──────────────────────────────────────────────────
 

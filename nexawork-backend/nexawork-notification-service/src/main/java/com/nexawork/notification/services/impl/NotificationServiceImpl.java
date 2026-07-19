@@ -38,17 +38,18 @@ public class NotificationServiceImpl implements NotificationService {
     @Transactional(readOnly = true)
     public NotificationPageResponse list(boolean unreadOnly, int page, int size) {
         UUID me = caller.userId();
+        UUID ws = caller.organisationId();
         int pageSize = size <= 0 ? 20 : Math.min(size, 100);
         PageRequest pr = PageRequest.of(Math.max(page, 0), pageSize);
 
-        Page<Notification> result = unreadOnly
-                ? notificationRepository.findByRecipientUserIdAndIsHiddenFalseAndReadFalseOrderByCreatedAtDesc(me, pr)
-                : notificationRepository.findByRecipientUserIdAndIsHiddenFalseOrderByCreatedAtDesc(me, pr);
+        // Scopé au workspace actif : une notification d'un autre espace n'a pas à
+        // apparaître ici (le compteur de la cloche non plus).
+        Page<Notification> result = notificationRepository.findVisible(me, ws, unreadOnly, pr);
 
         List<NotificationResponse> items = result.getContent().stream().map(notificationMapper::asDto).toList();
         return NotificationPageResponse.builder()
                 .notifications(items)
-                .unreadCount(notificationRepository.countByRecipientUserIdAndIsHiddenFalseAndReadFalse(me))
+                .unreadCount(notificationRepository.countUnread(me, ws))
                 .page(result.getNumber())
                 .totalPages(result.getTotalPages())
                 .totalElements(result.getTotalElements())
@@ -67,6 +68,13 @@ public class NotificationServiceImpl implements NotificationService {
         Notification n = requireMine(id);
         n.setIsHidden(true);
         notificationRepository.save(n);
+    }
+
+    @Override
+    public void delete(UUID id) {
+        // Suppression réelle : `requireMine` garantit qu'on ne supprime que la
+        // sienne (404 si inconnue, 403 si celle d'un autre).
+        notificationRepository.delete(requireMine(id));
     }
 
     private Notification requireMine(UUID id) {

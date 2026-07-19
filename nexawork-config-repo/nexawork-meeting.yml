@@ -28,3 +28,14 @@ nexawork:
   meeting:
     # Base URL du frontend pour construire le lien d'accès invité (/guest/{token}).
     frontend-base-url: ${FRONTEND_BASE_URL:http://localhost:4200}
+    # Clôture automatique des appels abandonnés (CallSweeper). `leave()` ne clôt
+    # l'appel qu'au départ d'un participant entré : un appel créé mais jamais
+    # rejoint resterait ACTIVE indéfiniment.
+    abandon-timeout-minutes: ${MEETING_ABANDON_TIMEOUT_MINUTES:15}
+    max-duration-hours: ${MEETING_MAX_DURATION_HOURS:12}
+    sweep-interval-ms: ${MEETING_SWEEP_INTERVAL_MS:300000}
+    # Partage de fichiers de l'INVITÉ EXTERNE (M5). Il n'a pas de compte, donc pas
+    # de JWT : il ne peut pas appeler le File Service lui-même. Le Meeting Service
+    # relaie l'upload/téléchargement après avoir validé son token d'invitation.
+    file-service-url: http://${FILE_SERVICE_HOST:localhost}:8086/nexawork-file-api-v1
+    file-call-timeout-ms: ${MEETING_FILE_CALL_TIMEOUT_MS:20000}

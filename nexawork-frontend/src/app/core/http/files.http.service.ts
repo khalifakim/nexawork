@@ -7,7 +7,9 @@ import { ApiResponse } from './response.model';
 
 /** Contexte d'upload accepté par le File Service (V5.1 §5.3). */
 export type UploadContext =
-  | 'avatar' | 'channel-msg' | 'conversation-msg' | 'ged' | 'task-attachment';
+  | 'avatar' | 'channel-msg' | 'conversation-msg' | 'ged' | 'task-attachment'
+  // M5 — fichier partagé en réunion (bucket `documents`, exige workspaceId + meetingId).
+  | 'meeting-file';
 
 /** Identifiants de contexte requis selon le bucket cible (cf. BucketRouter). */
 export interface UploadParams {
@@ -72,4 +74,16 @@ export class FilesHttpService {
   download(downloadUrl: string): Observable<Blob> {
     return this.http.get(`${environment.apiUrl}${downloadUrl}`, { responseType: 'blob' });
   }
+}
+
+/**
+ * URL d'affichage d'une photo de profil — **publique**, destinée à un `<img src>`.
+ *
+ * Un navigateur ne joint **aucun en-tête `Authorization`** à une balise `<img>` :
+ * pointer sur la route protégée `/download` renvoyait un **401**, d'où l'avatar
+ * cassé partout. Cette route-ci est en liste blanche de la Gateway et ne sert que
+ * les objets du bucket des avatars (404 pour tout autre fichier).
+ */
+export function avatarUrl(fileId: string): string {
+  return `${API.file}/files/${fileId}/avatar`;
 }

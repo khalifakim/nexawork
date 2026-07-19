@@ -31,6 +31,7 @@ import { ChannelAccessMode, ChannelGrant } from '@core/models/channel.models';
           [mode]="mode()"
           [grants]="grants()"
           [scope]="scope"
+          [projectId]="projectId"
           (modeChange)="mode.set($event)"
           (grantsChange)="grants.set($event)" />
       </div>
@@ -67,6 +68,8 @@ export class GererAccesCanalComponent {
   @Input({ required: true }) id!: string;
   @Input() name = '';
   @Input() scope: 'org' | 'project' = 'org';
+  /** Projet propriétaire — ses équipes deviennent sélectionnables comme bénéficiaires. */
+  @Input() projectId?: string;
   @Output() closed = new EventEmitter<void>();
 
   private channelsSvc = inject(ChannelsService);
@@ -76,11 +79,16 @@ export class GererAccesCanalComponent {
   mode = signal<ChannelAccessMode>('open');
   grants = signal<ChannelGrant[]>([]);
 
+  saving = signal(false);
+
   ngOnInit(): void {
-    const r = this.channelsSvc.restrictionOf(this.id);
-    this.mode.set(r.mode);
-    this.grants.set(r.grants.map(g => ({ ...g })));
     this.readonly.set(this.channelsSvc.isReadonly(this.id));
+    // Les bénéficiaires réels sont relus du serveur : `restrictionOf` ne connaît
+    // que le mode, et le modal affichait donc toujours une liste vide.
+    this.channelsSvc.access(this.id).subscribe(r => {
+      this.mode.set(r.mode);
+      this.grants.set(r.grants);
+    });
   }
 
   get subtitle(): string {
@@ -98,8 +106,15 @@ export class GererAccesCanalComponent {
   }
 
   save(): void {
-    this.channelsSvc.setRestriction(this.id, { mode: this.mode(), grants: this.grants() }, this.readonly());
-    this.toast.show({ message: 'Accès du canal « #' + this.name + ' » mis à jour' });
-    this.closed.emit();
+    if (this.saving()) return;
+    this.saving.set(true);
+    this.channelsSvc.setRestriction(this.id, { mode: this.mode(), grants: this.grants() }, this.readonly())
+      .subscribe({
+        next: () => {
+          this.toast.show({ message: 'Accès du canal « #' + this.name + ' » mis à jour' });
+          this.closed.emit();
+        },
+        error: () => this.saving.set(false), // message porté par l'intercepteur
+      });
   }
 }

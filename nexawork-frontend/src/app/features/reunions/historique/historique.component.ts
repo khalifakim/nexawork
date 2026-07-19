@@ -5,7 +5,7 @@ import { MeetingsService } from '@core/services/meetings.service';
 import { SessionService } from '@core/services/session.service';
 import { ToastService } from '@core/services/toast.service';
 import { Meeting } from '@core/models/meeting.models';
-import { workspaceSignal } from '@core/util/workspace-signal';
+import { workspaceQuery } from '@core/util/workspace-signal';
 
 @Component({
   selector: 'app-historique-reunions',
@@ -36,7 +36,11 @@ import { workspaceSignal } from '@core/util/workspace-signal';
               </div>
             }
           </div>
-          <span class="count">{{ shown().length }} réunion{{ shown().length > 1 ? 's' : '' }}</span>
+          <!-- Pendant le chargement, « 0 réunion » serait un mensonge. -->
+          <span class="count">
+            @if (loading()) { Chargement… }
+            @else { {{ shown().length }} réunion{{ shown().length > 1 ? 's' : '' }} }
+          </span>
         </div>
       </div>
 
@@ -44,6 +48,22 @@ import { workspaceSignal } from '@core/util/workspace-signal';
         <div class="hrow">
           <span>Réunion</span><span>Date</span><span>Durée</span><span>Participation</span><span></span>
         </div>
+        @if (loading()) {
+          <!-- Squelette : la liste garde sa forme pendant le chargement, au lieu de
+               s'afficher vide (indiscernable d'un historique réellement vide). -->
+          @for (s of [1,2,3]; track s) {
+            <div class="row row--skel" [class.row--first]="s===1">
+              <div class="r-name">
+                <span class="sk sk--ic"></span>
+                <div style="flex:1"><span class="sk sk--l"></span><span class="sk sk--s"></span></div>
+              </div>
+              <div><span class="sk sk--m"></span></div>
+              <span class="sk sk--xs"></span>
+              <span class="sk sk--m"></span>
+              <span></span>
+            </div>
+          }
+        } @else {
         @for (m of shown(); track m.id; let i = $index) {
           <div class="row" [class.row--first]="i===0" [class.row--menu]="menu()===m.id" (click)="open(m.id)">
             <div class="r-name">
@@ -60,10 +80,14 @@ import { workspaceSignal } from '@core/util/workspace-signal';
               <button class="dots" [class.dots--on]="menu()===m.id" (click)="toggleMenu(m.id, $event)"><app-icon name="dots" [size]="16" /></button>
               @if (menu()===m.id) {
                 <div class="hbd" (click)="menu.set(null); $event.stopPropagation()"></div>
+                <!-- stopPropagation sur CHAQUE action : sans lui le clic remontait à la
+                     ligne, qui NAVIGUE vers la réunion. La navigation détruit ce
+                     composant et ANNULE la requête HTTP en vol — d'où « la suppression
+                     ne fonctionne pas », doublée d'une ouverture intempestive. -->
                 <div class="hmenu" (click)="$event.stopPropagation()">
-                  <button class="hmenu__i" (click)="hide(m)"><app-icon name="eyeOff" [size]="16" />Masquer de mon historique</button>
+                  <button class="hmenu__i" (click)="hide(m); $event.stopPropagation()"><app-icon name="eyeOff" [size]="16" />Masquer de mon historique</button>
                   @if (isAdmin()) {
-                    <button class="hmenu__i hmenu__i--danger" (click)="remove(m)"><app-icon name="trash" [size]="16" />Supprimer définitivement</button>
+                    <button class="hmenu__i hmenu__i--danger" (click)="remove(m); $event.stopPropagation()"><app-icon name="trash" [size]="16" />Supprimer définitivement</button>
                   }
                 </div>
               }
@@ -71,6 +95,7 @@ import { workspaceSignal } from '@core/util/workspace-signal';
           </div>
         } @empty {
           <div class="empty">Aucune réunion dans cette période.</div>
+        }
         }
       </div>
     </div>
@@ -84,7 +109,12 @@ export class HistoriqueReunionsComponent {
   private toast = inject(ToastService);
 
   isAdmin = this.session.isAdmin;
-  private all = workspaceSignal<Meeting[]>(this.session, () => this.meetingsSvc.history(), []);
+  // `workspaceQuery` (et non `workspaceSignal`) : il expose `loading`, sans quoi la
+  // liste s'affichait VIDE le temps de la requête — indiscernable d'un historique
+  // réellement vide.
+  private query = workspaceQuery<Meeting[]>(this.session, () => this.meetingsSvc.history(), []);
+  private all = this.query.value;
+  loading = this.query.loading;
   private hidden = signal<string[]>([]);
   private removed = signal<string[]>([]);
 
@@ -128,16 +158,54 @@ export class HistoriqueReunionsComponent {
 
   toggleMenu(id: string, ev: Event): void { ev.stopPropagation(); this.menu.set(this.menu() === id ? null : id); }
 
+  /**
+   * Masquage et suppression PERSISTÉS. Les deux se contentaient d'alimenter un
+   * signal local et d'afficher un toast affirmant « supprimée définitivement » :
+   * aucune requête n'atteignait jamais le serveur, et tout réapparaissait au
+   * rechargement. Le masquage local n'est appliqué qu'APRÈS confirmation du
+   * serveur — sinon la ligne disparaîtrait de l'écran d'un utilisateur à qui
+   * REF B vient de refuser la suppression (403).
+   */
+  /** Armé le temps du clic sur une action du menu — voir `open()`. */
+  private actionClick = false;
+
   hide(m: Meeting): void {
+    this.actionClick = true;
     this.menu.set(null);
-    this.hidden.update(l => [...l, m.id]);
-    this.toast.show({ message: '« ' + m.name + ' » masquée de votre historique' });
-  }
-  remove(m: Meeting): void {
-    this.menu.set(null);
-    this.removed.update(l => [...l, m.id]);
-    this.toast.show({ message: '« ' + m.name + ' » supprimée définitivement' });
+    this.meetingsSvc.hide(m.id).subscribe({
+      next: () => {
+        this.hidden.update(l => [...l, m.id]);
+        this.toast.show({ message: '« ' + m.name + ' » masquée de votre historique' });
+      },
+      error: () => this.toast.show({ message: 'Impossible de masquer « ' + m.name + ' ».', icon: 'warning' }),
+    });
   }
 
-  open(id: string): void { this.router.navigate(['/app/reunions/historique', id]); }
+  remove(m: Meeting): void {
+    this.actionClick = true;
+    this.menu.set(null);
+    this.meetingsSvc.remove(m.id).subscribe({
+      next: () => {
+        this.removed.update(l => [...l, m.id]);
+        this.toast.show({ message: '« ' + m.name + ' » supprimée définitivement' });
+      },
+      error: () => this.toast.show({ message: 'Impossible de supprimer « ' + m.name + ' ».', icon: 'warning' }),
+    });
+  }
+
+  /**
+   * Ouvre la réunion. La ligne entière est cliquable, et le menu « ⋯ » vit
+   * DEDANS : un clic sur « Masquer »/« Supprimer » finissait par la faire naviguer.
+   * Or la navigation détruit ce composant, ce qui **annule la requête HTTP en vol**
+   * — la suppression semblait « ne rien faire » alors qu'elle n'avait simplement
+   * jamais eu le temps de partir.
+   *
+   * Le verrou est nécessaire *en plus* du `stopPropagation` : les actions ferment
+   * le menu, donc tester `menu() !== null` ici serait déjà trop tard.
+   */
+  open(id: string): void {
+    if (this.actionClick) { this.actionClick = false; return; }
+    if (this.menu() !== null) return;
+    this.router.navigate(['/app/reunions/historique', id]);
+  }
 }

@@ -1,5 +1,6 @@
 /** ── Mes tâches ─────────────────────────────────────────────────────────── */
-export interface MyTaskRow { id: string; t: string; proj: string; prio: [string, string]; due: string; }
+/** `id` = UUID de la tâche (ouverture de la fiche) ; `key` = identifiant lisible affiché (PREFIX-NNN). */
+export interface MyTaskRow { id: string; key: string; t: string; proj: string; prio: [string, string]; due: string; }
 export interface MyTaskSection { cat: string; color: string; tasks: MyTaskRow[]; }
 
 /** ── Mentions reçues ───────────────────────────────────────────────────────
@@ -8,13 +9,28 @@ export interface MyTaskSection { cat: string; color: string; tasks: MyTaskRow[];
  */
 export type MentionKind = 'Canaux' | 'Discussions' | 'Commentaires';
 export type MentionTarget =
-  | { kind: 'task'; id: string }
+  | { kind: 'task'; id: string; commentId?: string }
   | { kind: 'conversation'; slug: string }
   | { kind: 'channel'; slug: string };
+
+/** Mention reçue dans un commentaire (Project) — onglet « Commentaires ». */
+export interface ReceivedCommentMentionResponse {
+  commentId: string;
+  taskId: string;
+  taskKey: string;
+  taskTitle: string;
+  projectId: string;
+  projectName: string;
+  authorUserId: string;
+  excerpt: string;
+  createdAt: string;
+}
 
 export interface ReceivedMention {
   id: string;
   a: string; initials: string; c: string;
+  /** Photo de profil de l'auteur (annuaire) — remplace les initiales. */
+  photoUrl?: string;
   verb: string; snip: string; ctx: string; date: string;
   kind: MentionKind;
   read?: boolean;

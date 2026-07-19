@@ -24,6 +24,8 @@ export abstract class NotificationsService {
   abstract markRead(id: string): Observable<void>;
   /** Masque une notification de la liste. */
   abstract hide(id: string): Observable<void>;
+  /** Supprime définitivement une notification. */
+  abstract remove(id: string): Observable<void>;
   /** Enregistre l'abonnement Web Push du navigateur. */
   abstract subscribePush(sub: PushSubscriptionJSON): Observable<void>;
   /** Retire l'abonnement Web Push. */
@@ -39,6 +41,7 @@ export class NotificationsMockService extends NotificationsService {
   live(): Observable<Notification> { return EMPTY; }
   markRead(_id: string): Observable<void> { return of(void 0); }
   hide(_id: string): Observable<void> { return of(void 0); }
+  remove(_id: string): Observable<void> { return of(void 0); }
   subscribePush(_sub: PushSubscriptionJSON): Observable<void> { return of(void 0); }
   unsubscribePush(_endpoint: string): Observable<void> { return of(void 0); }
 }
@@ -60,13 +63,24 @@ const KIND: Record<NotificationType, NotificationKind> = {
 @Injectable()
 export class NotificationsHttpService extends BaseHttpService implements NotificationsService {
   private readonly stomp = inject(StompClientService);
+  private readonly session = inject(SessionService);
 
+  /**
+   * Historique complet du workspace actif. La taille par défaut du serveur est de
+   * 20 : au-delà, les notifications plus anciennes étaient tout simplement
+   * tronquées. On demande explicitement le maximum admis (100).
+   */
   list(): Observable<Notification[]> {
-    return this.get$<NotificationPageResponse>('notification', '/notifications')
+    return this.get$<NotificationPageResponse>('notification', '/notifications', { size: 100 })
       .pipe(map(page => (page.notifications ?? []).map(toNotification)));
   }
 
-  /** File personnelle STOMP — le serveur route vers l'utilisateur authentifié. */
+  /**
+   * Flux temps réel de la cloche : la **file personnelle** des notifications
+   * persistées (mentions, tâches, réunions, et désormais « nouveau message » pour
+   * les DM et canaux **privés** — §4). Les canaux **publics** n'émettent pas de
+   * cloche (décision §4) : ils s'appuient sur le badge « non lus » de la sidebar.
+   */
   live(): Observable<Notification> {
     return this.stomp.watchNotifications('/user/queue/notifications').pipe(
       map(frame => toNotification(JSON.parse(frame.body) as NotificationResponse)),
@@ -78,6 +92,9 @@ export class NotificationsHttpService extends BaseHttpService implements Notific
   }
   hide(id: string): Observable<void> {
     return this.patch$<void>('notification', `/notifications/${id}/hide`, {});
+  }
+  remove(id: string): Observable<void> {
+    return this.delete$<void>('notification', `/notifications/${id}`);
   }
 
   subscribePush(sub: PushSubscriptionJSON): Observable<void> {
@@ -109,6 +126,8 @@ function toNotification(r: NotificationResponse): Notification {
     kind: KIND[r.type] ?? 'message',
     // Le header route à partir de `target` ; l'URL cible du backend fait foi.
     target: r.targetUrl ?? '',
+    type: r.type,
+    payload: r.payload,
   };
 }
 

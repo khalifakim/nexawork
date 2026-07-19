@@ -359,11 +359,22 @@ export class GedAccessModalComponent {
     if (this.real && item?.id) {
       // Mode réel : bascule de l'accessMode + réconciliation des grants (UUID).
       const mode: AccessMode = this.mode() === 'open' ? 'OPEN' : this.mode() === 'private' ? 'PRIVATE' : 'SHARED';
-      const grants: GedGrantInput[] = this.mode() === 'shared'
-        ? this.grants()
-            .filter(g => !!g.granteeId)
-            .map(g => ({ granteeId: g.granteeId!, type: g.type, level: g.level }))
-        : [];
+      // Déploie les équipes en leurs membres (comme les canaux) : le GED ne résout
+      // que les grants USER — seuls visibles dans « Partagé avec moi » et notifiés.
+      // Un accès Éditeur (explicite OU via une équipe) l'emporte sur Lecteur.
+      const byUser = new Map<string, GedGrantInput>();
+      const addUser = (granteeId: string, level: Level) => {
+        const cur = byUser.get(granteeId);
+        if (!cur || level === 'EDITOR') byUser.set(granteeId, { granteeId, type: 'user', level });
+      };
+      for (const g of this.grants().filter(g => !!g.granteeId)) {
+        if (g.type === 'team') {
+          this.projectMembers().filter(m => m.teamId === g.granteeId).forEach(m => addUser(m.userId, g.level));
+        } else {
+          addUser(g.granteeId!, g.level);
+        }
+      }
+      const grants: GedGrantInput[] = this.mode() === 'shared' ? [...byUser.values()] : [];
       this.ged.saveAccess(item, mode, grants).subscribe(() => {
         this.toast.show({ message: 'Accès mis à jour pour « ' + this.name + ' »' });
         this.closed.emit();

@@ -3,6 +3,7 @@ package com.nexawork.messaging.services.impl;
 import com.nexawork.commons.exceptions.ForbiddenException;
 import com.nexawork.commons.exceptions.ResourceNotFoundException;
 import com.nexawork.messaging.dtos.requests.SendMessageRequest;
+import com.nexawork.messaging.dtos.responses.ChannelActivityEvent;
 import com.nexawork.messaging.dtos.responses.MessagePageResponse;
 import com.nexawork.messaging.dtos.responses.MessageResponse;
 import com.nexawork.messaging.dtos.responses.ThreadAttachmentResponse;
@@ -13,6 +14,7 @@ import com.nexawork.messaging.entities.MessageAttachment;
 import com.nexawork.messaging.entities.MessageMention;
 import com.nexawork.messaging.entities.enums.MentionType;
 import com.nexawork.messaging.entities.enums.MessageType;
+import com.nexawork.messaging.repositories.ChannelMemberRepository;
 import com.nexawork.messaging.repositories.MessageMentionRepository;
 import com.nexawork.messaging.repositories.MessageRepository;
 import com.nexawork.messaging.security.CallerContext;
@@ -44,6 +46,7 @@ public class MessageServiceImpl implements MessageService {
 
     MessageRepository messageRepository;
     MessageMentionRepository mentionRepository;
+    ChannelMemberRepository channelMemberRepository;
     ChannelAccessGuard channelGuard;
     MessageAssembler assembler;
     MessageBroadcaster broadcaster;
@@ -78,10 +81,42 @@ public class MessageServiceImpl implements MessageService {
                 .edited(false)
                 .build();
         assembler.applyAttachments(message, request, caller.userId());
-        message = messageRepository.save(message);
-        assembler.persistMentions(message);
+        // saveAndFlush : force l'INSERT immédiat pour que `@CreationTimestamp` peuple
+        // `sentAt` AVANT de construire le DTO diffusé. Sans flush, `sentAt` restait
+        // nul dans la trame temps réel → le destinataire affichait « 00:00 » jusqu'au
+        // prochain rechargement (l'heure réelle n'étant en base qu'au commit).
+        message = messageRepository.saveAndFlush(message);
+        List<MessageMention> mentions = assembler.persistMentions(message, request);
+        assembler.notifyMentioned(message, mentions, channel.getId(), channel.getName(), null);
         MessageResponse dto = assembler.toDto(message);
         broadcaster.broadcastChannelMessage(channelId, dto); // temps réel (§7.5)
+
+        // Signale l'activité à ceux qui n'ont PAS le canal ouvert : sans cela, seul
+        // un abonné du topic du canal apprend qu'un message est arrivé.
+        broadcaster.broadcastChannelActivity(
+                channel.getOrganisationId(),
+                Boolean.TRUE.equals(channel.getIsPrivate()),
+                channelMemberRepository.findByChannelId(channelId).stream()
+                        .map(m -> m.getUserId()).toList(),
+                ChannelActivityEvent.builder()
+                        .messageId(message.getId())
+                        .channelId(channel.getId())
+                        .channelName(channel.getName())
+                        .authorUserId(message.getSenderUserId())
+                        .authorDisplayName(caller.displayName())
+                        .excerpt(assembler.excerptOf(message.getContent()))
+                        .build());
+
+        // Notification « nouveau message » (cloche) : canaux PRIVÉS uniquement (leurs
+        // membres explicites, hors auteur). Les canaux publics s'appuient sur le badge
+        // « non lus » — pas de cloche pour éviter de notifier tout l'espace (décision §4).
+        if (Boolean.TRUE.equals(channel.getIsPrivate())) {
+            List<UUID> recipients = channelMemberRepository.findByChannelId(channelId).stream()
+                    .map(m -> m.getUserId())
+                    .filter(uid -> !uid.equals(caller.userId()))
+                    .toList();
+            assembler.notifyNewMessage(message, recipients, channel.getId(), channel.getName(), null);
+        }
         return dto;
     }
 
