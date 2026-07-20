@@ -12,14 +12,14 @@ import com.nexawork.meeting.entities.MeetingFile;
 import com.nexawork.meeting.entities.enums.CallStatus;
 import com.nexawork.meeting.events.publishers.ExternalGuestInvitedEvent;
 import com.nexawork.meeting.events.publishers.MeetingEventPublisher;
-import com.nexawork.meeting.properties.JitsiProperties;
 import com.nexawork.meeting.properties.MeetingProperties;
 import com.nexawork.meeting.repositories.CallRepository;
 import com.nexawork.meeting.repositories.ExternalGuestRepository;
 import com.nexawork.meeting.repositories.MeetingFileRepository;
 import com.nexawork.meeting.security.CallerContext;
 import com.nexawork.meeting.services.GuestService;
-import com.nexawork.meeting.services.JitsiTokenService;
+import com.nexawork.meeting.services.video.RoomAccess;
+import com.nexawork.meeting.services.video.VideoConferenceProvider;
 import com.nexawork.meeting.services.MeetingFileClient;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -48,9 +48,8 @@ public class GuestServiceImpl implements GuestService {
     ExternalGuestRepository guestRepository;
     MeetingFileRepository fileRepository;
     MeetingFileClient fileClient;
-    JitsiTokenService tokenService;
+    VideoConferenceProvider videoProvider;
     MeetingEventPublisher eventPublisher;
-    JitsiProperties jitsiProperties;
     MeetingProperties meetingProperties;
     CallerContext caller;
 
@@ -105,16 +104,16 @@ public class GuestServiceImpl implements GuestService {
             throw new ConflictException("La réunion est terminée.");
         }
 
-        // Token JaaS non modérateur pour l'invité (id null → "guest").
-        String token = tokenService.generateToken(call.getRoomName(), null,
-                guest.getDisplayName(), guest.getEmail(), false);
+        // Jeton non modérateur pour l'invité externe (id null → "guest"), passage
+        // par la salle d'attente (lobbyBypass = false).
+        String token = videoProvider.issueAccessToken(new RoomAccess(call.getRoomName(), null,
+                guest.getDisplayName(), guest.getEmail(), false, false));
         if (!Boolean.TRUE.equals(guest.getUsed())) {
             guest.setUsed(true);
             guestRepository.save(guest);
         }
 
-        String jitsiUrl = jitsiProperties.getUrl() + "/" + jitsiProperties.getAppId()
-                + "/" + call.getRoomName() + "?jwt=" + token;
+        String jitsiUrl = videoProvider.buildRoomUrl(call.getRoomName(), token);
         return GuestAccessResponse.builder()
                 .callId(call.getId()).topic(call.getTopic()).displayName(guest.getDisplayName())
                 .jitsiUrl(jitsiUrl).jwt(token).build();

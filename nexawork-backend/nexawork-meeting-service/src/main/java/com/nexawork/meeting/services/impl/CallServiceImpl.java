@@ -13,14 +13,15 @@ import com.nexawork.meeting.entities.enums.CallStatus;
 import com.nexawork.meeting.events.publishers.CallEndedEvent;
 import com.nexawork.meeting.events.publishers.MeetingEventPublisher;
 import com.nexawork.meeting.events.publishers.MeetingParticipantInvitedEvent;
-import com.nexawork.meeting.properties.JitsiProperties;
 import com.nexawork.meeting.properties.MeetingProperties;
 import com.nexawork.meeting.repositories.CallParticipantRepository;
 import com.nexawork.meeting.repositories.CallRepository;
 import com.nexawork.meeting.repositories.MeetingHiddenRepository;
 import com.nexawork.meeting.security.CallerContext;
 import com.nexawork.meeting.services.CallService;
-import com.nexawork.meeting.services.JitsiTokenService;
+import com.nexawork.meeting.services.video.RoomAccess;
+import com.nexawork.meeting.services.video.VideoConferenceProvider;
+import com.nexawork.meeting.services.video.VideoProviderDiagnostic;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
@@ -34,9 +35,9 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Appels (§13.6). REF A appliqué à create/join ; token JaaS RS256 généré via
- * {@link JitsiTokenService} ; URL assemblée selon §9.9.5 ; {@code call.ended} publié
- * à la fin.
+ * Appels (§13.6). REF A appliqué à create/join ; jeton d'accès et URL de salle
+ * obtenus via le port {@link VideoConferenceProvider} (fournisseur de visioconférence
+ * abstrait) ; {@code call.ended} publié à la fin.
  */
 @Slf4j
 @Service
@@ -48,9 +49,8 @@ public class CallServiceImpl implements CallService {
     CallRepository callRepository;
     CallParticipantRepository participantRepository;
     MeetingHiddenRepository hiddenRepository;
-    JitsiTokenService tokenService;
+    VideoConferenceProvider videoProvider;
     MeetingEventPublisher eventPublisher;
-    JitsiProperties jitsiProperties;
     MeetingProperties meetingProperties;
     CallerContext caller;
 
@@ -83,8 +83,8 @@ public class CallServiceImpl implements CallService {
         }
 
         // L'hôte est modérateur et contourne la salle d'attente (M3).
-        String token = tokenService.generateToken(call.getRoomName(), host,
-                caller.displayName(), null, true, true);
+        String token = videoProvider.issueAccessToken(new RoomAccess(call.getRoomName(), host,
+                caller.displayName(), null, true, true));
         log.info("Appel {} lancé par {} (salle {})", call.getId(), host, call.getRoomName());
         return toResponse(call, token);
     }
@@ -127,8 +127,8 @@ public class CallServiceImpl implements CallService {
         // une validation manuelle du modérateur n'apporterait rien.
         // Seul l'INVITÉ EXTERNE, qui n'a pas de compte, passe par la salle
         // d'attente (GuestService : lobbyBypass = false).
-        String token = tokenService.generateToken(call.getRoomName(), me,
-                caller.displayName(), null, isHost, true);
+        String token = videoProvider.issueAccessToken(new RoomAccess(call.getRoomName(), me,
+                caller.displayName(), null, isHost, true));
         return toResponse(call, token);
     }
 
@@ -344,20 +344,19 @@ public class CallServiceImpl implements CallService {
         if (!caller.isWorkspaceAdmin()) {
             throw new ForbiddenException("Diagnostic réservé aux administrateurs et au propriétaire.");
         }
-        String appId = jitsiProperties.getAppId();
-        String kid = jitsiProperties.getApiKeyId();
+        // Salle factice : le jeton d'exemple n'ouvre aucune réunion réelle, il sert
+        // uniquement à faire lire ses claims (jwt.io).
+        VideoProviderDiagnostic diag = videoProvider.diagnostic(new RoomAccess(
+                "diagnostic-" + generateRoomName(), caller.userId(), caller.displayName(), null, true, true));
         return JaasDiagnosticResponse.builder()
-                .appId(appId)
-                .apiKeyId(kid)
-                .kidMatchesAppId(appId != null && kid != null && kid.startsWith(appId + "/"))
-                .keySizeBits(tokenService.keySizeBits())
-                .publicKeyFingerprint(tokenService.publicKeyFingerprint())
-                .publicKeyPem(tokenService.publicKeyPem())
+                .appId(diag.appId())
+                .apiKeyId(diag.apiKeyId())
+                .kidMatchesAppId(diag.kidMatchesAppId())
+                .keySizeBits(diag.keySizeBits())
+                .publicKeyFingerprint(diag.publicKeyFingerprint())
+                .publicKeyPem(diag.publicKeyPem())
                 .serverTimeUtc(java.time.Instant.now().toString())
-                // Salle factice : le jeton n'ouvre aucune réunion réelle, il sert
-                // uniquement à faire lire ses claims (jwt.io).
-                .sampleToken(tokenService.generateToken("diagnostic-" + generateRoomName(),
-                        caller.userId(), caller.displayName(), null, true, true))
+                .sampleToken(diag.sampleToken())
                 .build();
     }
 
@@ -407,9 +406,7 @@ public class CallServiceImpl implements CallService {
     }
 
     private CallResponse toResponse(Call c, String token) {
-        String jitsiUrl = token != null
-                ? jitsiProperties.getUrl() + "/" + jitsiProperties.getAppId() + "/" + c.getRoomName() + "?jwt=" + token
-                : null;
+        String jitsiUrl = videoProvider.buildRoomUrl(c.getRoomName(), token);
         List<CallResponse.ParticipantSummary> participants = participantRepository.findByCallId(c.getId()).stream()
                 .map(p -> CallResponse.ParticipantSummary.builder()
                         .userId(p.getUserId()).joinedAt(p.getJoinedAt()).leftAt(p.getLeftAt())
