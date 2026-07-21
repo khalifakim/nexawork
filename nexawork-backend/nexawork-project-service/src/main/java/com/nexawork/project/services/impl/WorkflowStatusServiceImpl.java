@@ -8,6 +8,7 @@ import com.nexawork.project.dtos.responses.StatusResponse;
 import com.nexawork.project.entities.Project;
 import com.nexawork.project.entities.WorkflowStatus;
 import com.nexawork.project.mappers.StatusMapper;
+import com.nexawork.project.repositories.TaskRepository;
 import com.nexawork.project.repositories.WorkflowStatusRepository;
 import com.nexawork.project.repositories.WorkflowTransitionRepository;
 import com.nexawork.project.security.ProjectGuard;
@@ -33,6 +34,7 @@ public class WorkflowStatusServiceImpl implements WorkflowStatusService {
 
     WorkflowStatusRepository statusRepository;
     WorkflowTransitionRepository transitionRepository;
+    TaskRepository taskRepository;
     StatusMapper statusMapper;
     ProjectGuard guard;
 
@@ -104,8 +106,13 @@ public class WorkflowStatusServiceImpl implements WorkflowStatusService {
             throw new ConflictException(
                     "Ce statut est la cible d'une transition. Supprimez d'abord cette transition.");
         }
-        // Les tâches positionnées sur ce statut repassent à statut nul (FK SET NULL) ;
-        // les transitions sortantes sont supprimées en cascade (from_status CASCADE).
+        // Colonne non vide : le statut d'une tâche étant obligatoire (FK RESTRICT),
+        // on interdit la suppression tant que des tâches y sont positionnées.
+        if (taskRepository.existsByStatusId(statusId)) {
+            throw new ConflictException(
+                    "Ce statut contient encore des tâches. Déplacez-les dans une autre colonne avant de le supprimer.");
+        }
+        // Les transitions sortantes sont supprimées en cascade (from_status CASCADE).
         statusRepository.delete(status);
     }
 }

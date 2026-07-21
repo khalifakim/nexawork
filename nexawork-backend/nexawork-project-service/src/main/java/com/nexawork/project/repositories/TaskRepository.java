@@ -14,6 +14,9 @@ public interface TaskRepository extends JpaRepository<Task, UUID> {
 
     List<Task> findByProjectId(UUID projectId);
 
+    /** Au moins une tâche est positionnée sur ce statut (garde la suppression d'une colonne non vide). */
+    boolean existsByStatusId(UUID statusId);
+
     /**
      * Toutes les tâches des projets d'un workspace dans un statut de cycle de vie
      * donné, avec projet et statut Kanban joints (agrégats du tableau de bord).

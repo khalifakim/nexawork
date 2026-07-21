@@ -24,9 +24,10 @@ import java.time.LocalDate;
 import java.util.UUID;
 
 /**
- * Tâche d'un projet (V5.1 §4.2). Statut Kanban courant (association nullable),
- * assignation polymorphe (assigneeType + assigneeId → User ou Team). Hérite de
- * l'audit ({@code createdDate} = date de création affichée).
+ * Tâche d'un projet (V5.1 §4.2). Statut Kanban courant (association obligatoire :
+ * une tâche est toujours positionnée dans une colonne), assignation polymorphe
+ * (assigneeType + assigneeId → User ou Team). Hérite de l'audit
+ * ({@code createdDate} = date de création affichée).
  */
 @Entity
 @Table(name = "tasks")
@@ -55,9 +56,9 @@ public class Task extends Auditable {
     @Column(name = "description", columnDefinition = "TEXT")
     private String description;
 
-    /** Statut Kanban courant (nullable — tâche non encore positionnée). */
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "status_id")
+    /** Statut Kanban courant (obligatoire — statut initial « À faire » par défaut). */
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "status_id", nullable = false)
     private WorkflowStatus status;
 
     @Enumerated(EnumType.STRING)

@@ -269,7 +269,14 @@ public class TaskServiceImpl implements TaskService {
 
     private WorkflowStatus resolveStatus(Project project, UUID statusId) {
         if (statusId == null) {
-            return null;
+            // Placement initial par défaut : une tâche est toujours créée dans une
+            // colonne (statut initial du projet — « À faire » —, sinon 1re colonne).
+            return statusRepository
+                    .findFirstByProjectIdAndIsInitialTrueOrderByPositionAsc(project.getId())
+                    .or(() -> statusRepository.findByProjectIdOrderByPositionAsc(project.getId())
+                            .stream().findFirst())
+                    .orElseThrow(() -> new IllegalStateException(
+                            "Le projet ne possède aucun statut de workflow."));
         }
         WorkflowStatus status = statusRepository.findById(statusId)
                 .orElseThrow(() -> new ResourceNotFoundException("Statut introuvable."));
