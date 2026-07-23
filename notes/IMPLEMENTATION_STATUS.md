@@ -542,6 +542,35 @@ Le **design est conservé** : la forme existante (cercle ou carré arrondi) est 
 
 `AvatarDirectoryService` (neuf) centralise la résolution `userId → photo/nom` pour les vues qui ne connaissent qu'un UUID (le Messaging et le Project Service ne résolvent ni noms ni photos).
 
+### Lot du 2026-07-22 — statut de tâche obligatoire (règle métier + cohérence code/base/doc)
+**Rebuild requis : `project-service`.** ⚠️ **MIGRATION `V7__task_status_mandatory.sql`.**
+`mvn -o compile` vert. **Non testé à l'exécution** (migration non encore appliquée). Code commité (`1437d48`) ;
+**le renommage V3→V7 reste à committer.**
+
+**Contexte** : une tâche est toujours créée dans une colonne Kanban (statut « À faire »), mais le code
+autorisait `status_id` NUL (`resolveStatus()` renvoyait `null`, colonne nullable). Alignement
+**code ↔ base ↔ diagramme** sur la règle réelle « toute tâche a exactement un statut ».
+
+| # | Symptôme / écart | Cause racine | Correctif |
+| :-: | :- | :- | :- |
+| 71 | Une tâche pouvait exister **sans statut** (`status_id` NUL) | `Task.status` en `@ManyToOne` nullable ; `resolveStatus()` renvoyait `null` faute de `statusId` | Entité `optional=false` + `@JoinColumn(nullable=false)` ; `resolveStatus()` retombe sur le **statut initial** du projet (`isInitial`, sinon 1re colonne par position) ; migration **V7** (backfill des tâches orphelines → statut initial ; FK `SET NULL`→`RESTRICT` ; `status_id` NOT NULL) |
+| 72 | Supprimer une colonne **contenant des tâches** « dénuderait » ces tâches (FK `SET NULL`) — incompatible avec un statut obligatoire | FK `fk_tasks_status` en `ON DELETE SET NULL` ; `deleteStatus()` ne testait pas la présence de tâches | FK passée en `RESTRICT` ; `deleteStatus()` refuse (**409**) une colonne non vide (`TaskRepository.existsByStatusId`), dans l'esprit de la garde déjà en place sur les transitions |
+| 73 | 🔴 **Collision Flyway** : deux migrations `V3` (`comment_attachments` **et** la nouvelle) → `project-service` **refuserait de démarrer** (« more than one migration with version 3 ») | Migration « statut obligatoire » numérotée `V3`, déjà occupé | Renommée en **`V7`** (prochaine version libre après V1→V6). *Détectée avant tout démarrage : jamais exécutée avec la collision.* |
+
+**Doc** (dépôt `docs-config`, déjà commité `3420ff6`) : dictionnaire `tasks.status_id` → `FK, NN`. **Reste à faire** :
+diagramme `figure3_21`, passer côté `WorkflowStatus` de `0..1` à `1` (retouche manuelle de l'image PNG).
+
+### Lot du 2026-07-22 (2) — recherche 500, notifications « voir tout », recherche « tout afficher »
+**Rebuild requis : `project-service`, `notification-service`, `ged-service`, `auth-service`, `messaging-service`, `frontend`.**
+Aucune migration. `mvn -o compile` vert (5 services) ; `ng build --configuration=development` vert. **Non testé en navigateur.**
+
+| # | Symptôme / demande | Cause racine | Correctif |
+| :-: | :- | :- | :- |
+| 74 | 🔴 Recherche **500** dès qu'une tâche matche (« tache de ») | `SearchController` non transactionnel + `TaskRepository.search` ne chargeait pas `t.status` → `t.getStatus().getColor()` = `LazyInitializationException` hors session. Depuis le **statut obligatoire (V7)**, toute tâche a un statut → l'erreur est systématique | `LEFT JOIN FETCH t.status` dans `TaskRepository.search` |
+| 75 | Notif de canal : quel comportement ? | — | **Décision utilisateur** : canaux = **badge « non lus » seul** ; cloche réservée aux **DM + mentions** (une cloche par message de canal = bruit ingérable). Comportement d'origine conservé (ma tentative « cloche aux suiveurs » annulée) |
+| 76 | Voir **toutes** les notifications + filtrer par type | Le popup cloche ne montrait qu'un extrait ; pas de vue complète ni de filtre type | Back : `GET /notifications?type=A,B` (filtre multi-types, déjà paginé). Front : page **`/app/notifications`** (chips Tout/Messages/Mentions/Tâches/Projets/Documents/Réunions + « Charger plus » + routage au clic) et bouton **« Voir toutes les notifications »** au bas du popup |
+| 77 | Recherche avancée : afficher **tout** le workspace à l'ouverture + suggestions en direct | Les 4 endpoints `/search` court-circuitaient sur `q` vide ; le front `SearchHttpService.query('')` renvoyait `[]` sans appeler le back | Back (project/ged/messaging/auth) : `q` vide autorisé → `LIKE '%%'` renvoie le **top N** par domaine. Front : `query('')` interroge le back (le debounce 250 ms des suggestions live existait déjà) |
+
 ## 3 · Décisions/gaps (voir plan §5)
 
 **✅ Tranchés**
