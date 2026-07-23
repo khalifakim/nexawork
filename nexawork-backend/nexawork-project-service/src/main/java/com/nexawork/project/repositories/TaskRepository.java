@@ -56,6 +56,7 @@ public interface TaskRepository extends JpaRepository<Task, UUID> {
     @Query("""
             SELECT t FROM Task t
             JOIN FETCH t.project p
+            LEFT JOIN FETCH t.status s
             WHERE p.organisationId = :orgId AND p.status = :projectStatus
               AND (:isAdmin = TRUE
                    OR EXISTS (SELECT 1 FROM ProjectMember m

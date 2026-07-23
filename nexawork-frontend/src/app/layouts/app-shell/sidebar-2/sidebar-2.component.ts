@@ -78,6 +78,9 @@ class LiveTypingSet {
         <a class="row" routerLink="/app/accueil/mentions-recues" routerLinkActive="row--on">
           <app-icon class="row__i" name="at" [size]="16" /><span>Mentions reçues</span>@if (mentionsCount() > 0) { <span class="row__badge">{{ mentionsCount() }}</span> }
         </a>
+        <a class="row" routerLink="/app/accueil/notifications" routerLinkActive="row--on">
+          <app-icon class="row__i" name="bell" [size]="16" /><span>Notifications</span>
+        </a>
         @if (isAdmin()) {
           <a class="row" routerLink="/app/accueil/tableau-de-bord" routerLinkActive="row--on">
             <app-icon class="row__i" name="dashboard" [size]="16" /><span>Tableau de bord</span>

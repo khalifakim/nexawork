@@ -152,6 +152,11 @@ const ACTIVE_CALL_POLL_MS = 15_000;
                 </div>
               } @empty { <div class="nm__empty">Aucune notification {{ notifFilter()==='nonlu' ? 'non lue' : '' }}.</div> }
             </div>
+            <button class="nm__all" routerLink="/app/accueil/notifications" (click)="close()"
+                    style="width:100%;padding:12px;border:none;border-top:1px solid var(--nx-border-card);
+                           background:none;color:var(--nx-indigo);font-size:13px;font-weight:700;cursor:pointer">
+              Voir toutes les notifications
+            </button>
           </div>
         }
 

@@ -38,11 +38,13 @@ public class AuthSearchController {
     public Response<List<SearchHitResponse>> search(@RequestParam("q") String q) {
         List<SearchHitResponse> hits = new ArrayList<>();
         UUID orgId = SecurityUtils.getCurrentOrganisationId().orElse(null);
-        if (q == null || q.isBlank() || orgId == null) {
+        if (orgId == null) {
             return Response.<List<SearchHitResponse>>ok().setPayload(hits);
         }
+        // Terme vide → tous les membres (top N) pour peupler la vue dès l'ouverture.
+        String term = q == null ? "" : q.trim();
 
-        for (OrganisationMember m : memberRepository.search(orgId, q.trim(), PageRequest.of(0, LIMIT))) {
+        for (OrganisationMember m : memberRepository.search(orgId, term, PageRequest.of(0, LIMIT))) {
             User u = m.getUser();
             hits.add(SearchHitResponse.builder()
                     .type("personnes")

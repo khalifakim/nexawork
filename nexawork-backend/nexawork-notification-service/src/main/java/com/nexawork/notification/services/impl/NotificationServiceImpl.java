@@ -5,6 +5,7 @@ import com.nexawork.commons.exceptions.ResourceNotFoundException;
 import com.nexawork.notification.dtos.responses.NotificationPageResponse;
 import com.nexawork.notification.dtos.responses.NotificationResponse;
 import com.nexawork.notification.entities.Notification;
+import com.nexawork.notification.entities.enums.NotificationType;
 import com.nexawork.notification.mappers.NotificationMapper;
 import com.nexawork.notification.repositories.NotificationRepository;
 import com.nexawork.notification.security.CallerContext;
@@ -36,15 +37,17 @@ public class NotificationServiceImpl implements NotificationService {
 
     @Override
     @Transactional(readOnly = true)
-    public NotificationPageResponse list(boolean unreadOnly, int page, int size) {
+    public NotificationPageResponse list(boolean unreadOnly, List<NotificationType> types, int page, int size) {
         UUID me = caller.userId();
         UUID ws = caller.organisationId();
         int pageSize = size <= 0 ? 20 : Math.min(size, 100);
         PageRequest pr = PageRequest.of(Math.max(page, 0), pageSize);
 
         // Scopé au workspace actif : une notification d'un autre espace n'a pas à
-        // apparaître ici (le compteur de la cloche non plus).
-        Page<Notification> result = notificationRepository.findVisible(me, ws, unreadOnly, pr);
+        // apparaître ici (le compteur de la cloche non plus). Filtre par type optionnel.
+        Page<Notification> result = (types == null || types.isEmpty())
+                ? notificationRepository.findVisible(me, ws, unreadOnly, pr)
+                : notificationRepository.findVisibleByTypes(me, ws, unreadOnly, types, pr);
 
         List<NotificationResponse> items = result.getContent().stream().map(notificationMapper::asDto).toList();
         return NotificationPageResponse.builder()

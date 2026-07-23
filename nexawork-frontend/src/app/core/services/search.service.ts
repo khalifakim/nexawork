@@ -49,8 +49,10 @@ export class SearchHttpService extends BaseHttpService implements SearchService 
    * Un domaine en échec ne fait pas échouer la recherche entière.
    */
   query(q: string): Observable<SearchResult[]> {
+    // Terme vide autorisé : le back renvoie le « top N » de chaque domaine, ce qui
+    // peuple l'overlay dès l'ouverture (avant toute frappe). `q=` reste envoyé
+    // (paramètre présent mais vide) — les endpoints l'exigent.
     const term = q.trim();
-    if (!term) return of([]);
     const params = { q: term };
 
     // Un domaine en échec ne fait pas échouer la recherche entière, mais l'erreur

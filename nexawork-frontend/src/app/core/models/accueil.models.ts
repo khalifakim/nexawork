@@ -1,6 +1,8 @@
 /** ── Mes tâches ─────────────────────────────────────────────────────────── */
 /** `id` = UUID de la tâche (ouverture de la fiche) ; `key` = identifiant lisible affiché (PREFIX-NNN). */
-export interface MyTaskRow { id: string; key: string; t: string; proj: string; prio: [string, string]; due: string; }
+export interface MyTaskRow { id: string; key: string; t: string; proj: string; prio: [string, string]; due: string; urg?: TaskUrgency; }
+/** Urgence d'une tâche pour le bandeau « Alertes » (échéance). */
+export type TaskUrgency = 'overdue' | 'soon' | 'other';
 export interface MyTaskSection { cat: string; color: string; tasks: MyTaskRow[]; }
 
 /** ── Mentions reçues ───────────────────────────────────────────────────────

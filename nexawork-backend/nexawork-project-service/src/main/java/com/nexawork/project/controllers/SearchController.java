@@ -41,11 +41,9 @@ public class SearchController {
     @GetMapping
     public Response<List<SearchHitResponse>> search(@RequestParam("q") String q) {
         List<SearchHitResponse> hits = new ArrayList<>();
-        if (q == null || q.isBlank()) {
-            return Response.<List<SearchHitResponse>>ok().setPayload(hits);
-        }
-
-        String term = q.trim();
+        // Terme vide (champ non encore saisi) : on renvoie le « top N » de chaque
+        // domaine (LIKE '%%' matche tout) pour peupler la vue dès l'ouverture (§4.8).
+        String term = q == null ? "" : q.trim();
         var page = PageRequest.of(0, LIMIT);
         boolean isAdmin = caller.isWorkspaceAdmin();
 

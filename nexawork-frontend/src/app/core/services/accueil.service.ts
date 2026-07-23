@@ -4,7 +4,7 @@ import { catchError, delay } from 'rxjs/operators';
 import { BaseHttpService } from '@core/http/base-http.service';
 import {
   Dashboard, DashboardAlert, DashboardProj, MentionKind, MyTaskRow, MyTaskSection, ReceivedMention,
-  ReceivedCommentMentionResponse,
+  ReceivedCommentMentionResponse, TaskUrgency,
 } from '@core/models/accueil.models';
 import { TaskResponse } from '@core/models/task.models';
 import { MY_TASKS_BY_WORKSPACE, MENTIONS_BY_WORKSPACE, DASHBOARD_BY_WORKSPACE } from '@core/mock/accueil';
@@ -79,9 +79,10 @@ export class AccueilHttpService extends BaseHttpService implements AccueilServic
   private readonly projects = inject(ProjectsService);
 
   /**
-   * « Mes tâches — Aujourd'hui et en retard » (V5.1 §5.1) : tâches assignées à
-   * l'appelant (`GET /users/me/tasks`), restreintes aux échéances **du jour** ou
-   * **dépassées**. Deux sections, pas de « Sans échéance » (§5.1 e).
+   * « Mes tâches » (V5.1 §5.1) : toutes les tâches assignées à l'appelant
+   * (`GET /users/me/tasks`), en **une liste plate**, tous projets confondus.
+   * L'urgence (en retard / échéance proche) n'est plus un regroupement ici : elle
+   * est portée par le **bandeau « Alertes »** via le champ {@code urg} de chaque ligne.
    *
    * Le nom du projet n'est pas porté par la tâche : il est résolu depuis la
    * liste des projets (la colonne « Projet » de chaque ligne).
@@ -93,13 +94,7 @@ export class AccueilHttpService extends BaseHttpService implements AccueilServic
     }).pipe(map(({ tasks, projects }) => {
       const projectName = new Map(projects.map(p => [p.id, p.name]));
       const rows = tasks.map(t => toMyTaskRow(t, projectName.get(t.projectId) ?? ''));
-      const sections: MyTaskSection[] = [
-        // Prioritaires : échéance aujourd'hui OU déjà dépassée.
-        { cat: 'Prioritaires', color: '#F5564E', tasks: rows.filter(r => r.slot === 'priority') },
-        // Toutes les autres tâches (à venir ou sans échéance), tous projets confondus.
-        { cat: 'Toutes mes tâches', color: '#5B8DEF', tasks: rows.filter(r => r.slot === 'other') },
-      ];
-      return sections.filter(s => s.tasks.length > 0);
+      return rows.length ? [{ cat: 'Mes tâches', color: '#5B8DEF', tasks: rows }] : [];
     }));
   }
 
@@ -131,8 +126,8 @@ export class AccueilHttpService extends BaseHttpService implements AccueilServic
 
 // ── Mapping ──────────────────────────────────────────────────────────────────
 
-/** Ligne « Mes tâches », enrichie du créneau d'échéance servant au regroupement. */
-function toMyTaskRow(t: TaskResponse, projectName: string): MyTaskRow & { slot?: DueSlot } {
+/** Ligne « Mes tâches », enrichie de son urgence d'échéance (bandeau Alertes). */
+function toMyTaskRow(t: TaskResponse, projectName: string): MyTaskRow {
   const prio = prioTuple(t.priority);
   return {
     id: t.id,
@@ -141,24 +136,28 @@ function toMyTaskRow(t: TaskResponse, projectName: string): MyTaskRow & { slot?:
     proj: projectName,
     prio: [prio[0], prio[1]],
     due: t.dueDate ? formatDue(t.dueDate) : '',
-    slot: dueSlot(t.dueDate),
+    urg: urgencyOf(t.dueDate),
   };
 }
 
-/**
- * Créneau de l'écran « Mes tâches » (§5.1) :
- * - `priority` : échéance **aujourd'hui ou dépassée** — à traiter en priorité ;
- * - `other` : tout le reste (échéance future OU aucune échéance).
- * Contrairement à la version précédente, aucune tâche n'est plus masquée.
- */
-type DueSlot = 'priority' | 'other';
+/** Seuil « échéance proche » (en jours) pour le bandeau « Alertes ». */
+const DUE_SOON_DAYS = 3;
 
-function dueSlot(dueDate?: string): DueSlot {
-  if (!dueDate) return 'other'; // sans échéance → « Mes autres tâches »
+/**
+ * Urgence d'une tâche d'après son échéance (bandeau « Alertes ») :
+ * - `overdue` : échéance **dépassée** ;
+ * - `soon` : échéance dans les **{@link DUE_SOON_DAYS} prochains jours** (aujourd'hui inclus) ;
+ * - `other` : plus lointaine ou sans échéance.
+ */
+function urgencyOf(dueDate?: string): TaskUrgency {
+  if (!dueDate) return 'other';
   const d = new Date(dueDate + 'T00:00:00');
   if (Number.isNaN(d.getTime())) return 'other';
   const today = new Date(); today.setHours(0, 0, 0, 0);
-  return d.getTime() <= today.getTime() ? 'priority' : 'other';
+  const days = Math.round((d.getTime() - today.getTime()) / 86_400_000);
+  if (days < 0) return 'overdue';
+  if (days <= DUE_SOON_DAYS) return 'soon';
+  return 'other';
 }
 
 function formatDue(iso: string): string {

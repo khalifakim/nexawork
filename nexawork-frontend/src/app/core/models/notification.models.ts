@@ -29,6 +29,15 @@ export interface NotificationPageResponse {
   totalElements: number;
 }
 
+/** Page mappée pour la vue « toutes les notifications » (pagination + filtre type). */
+export interface NotifPage {
+  items: Notification[];
+  page: number;
+  totalPages: number;
+  totalElements: number;
+  unreadCount: number;
+}
+
 export interface Notification {
   id: string;
   actor: string;

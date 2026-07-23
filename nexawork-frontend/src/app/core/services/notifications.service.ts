@@ -6,7 +6,7 @@ import { api } from '@core/http/api.config';
 import { ApiResponse } from '@core/http/response.model';
 import { StompClientService } from '@core/ws/stomp-client.service';
 import {
-  Notification, NotificationKind, NotificationPageResponse, NotificationResponse, NotificationType,
+  Notification, NotificationKind, NotifPage, NotificationPageResponse, NotificationResponse, NotificationType,
 } from '@core/models/notification.models';
 import { NOTIFICATIONS_BY_WORKSPACE } from '@core/mock/notifications';
 import { avatarColorFor } from '@core/util/ui.util';
@@ -18,6 +18,11 @@ import { SessionService } from './session.service';
  */
 export abstract class NotificationsService {
   abstract list(): Observable<Notification[]>;
+  /**
+   * Page filtrée pour la vue « toutes les notifications » : `types` vide = tous,
+   * sinon restreint aux types demandés (chips de filtre). Paginé.
+   */
+  abstract listPage(opts: { types?: NotificationType[]; page?: number; size?: number }): Observable<NotifPage>;
   /** Flux temps réel de la file personnelle (STOMP). */
   abstract live(): Observable<Notification>;
   /** Marque une notification comme lue. */
@@ -37,6 +42,19 @@ export class NotificationsMockService extends NotificationsService {
   private readonly session = inject(SessionService);
   list(): Observable<Notification[]> {
     return of(NOTIFICATIONS_BY_WORKSPACE[this.session.activeWorkspaceId()] ?? []).pipe(delay(80));
+  }
+  listPage(opts: { types?: NotificationType[]; page?: number; size?: number }): Observable<NotifPage> {
+    const all = NOTIFICATIONS_BY_WORKSPACE[this.session.activeWorkspaceId()] ?? [];
+    const filtered = opts.types?.length ? all.filter(n => opts.types!.includes(n.type)) : all;
+    const size = opts.size ?? 20;
+    const page = opts.page ?? 0;
+    return of({
+      items: filtered.slice(page * size, page * size + size),
+      page,
+      totalPages: Math.max(1, Math.ceil(filtered.length / size)),
+      totalElements: filtered.length,
+      unreadCount: all.filter(n => !n.read).length,
+    }).pipe(delay(80));
   }
   live(): Observable<Notification> { return EMPTY; }
   markRead(_id: string): Observable<void> { return of(void 0); }
@@ -73,6 +91,25 @@ export class NotificationsHttpService extends BaseHttpService implements Notific
   list(): Observable<Notification[]> {
     return this.get$<NotificationPageResponse>('notification', '/notifications', { size: 100 })
       .pipe(map(page => (page.notifications ?? []).map(toNotification)));
+  }
+
+  /**
+   * Page filtrée par type. Le back lie `List<NotificationType>` depuis une valeur
+   * séparée par virgules (`?type=MESSAGE_RECEIVED,MENTION`) — `get$` ne gère pas
+   * les paramètres répétés.
+   */
+  listPage(opts: { types?: NotificationType[]; page?: number; size?: number }): Observable<NotifPage> {
+    const params: Record<string, string | number | boolean> = { page: opts.page ?? 0, size: opts.size ?? 20 };
+    if (opts.types?.length) params['type'] = opts.types.join(',');
+    return this.get$<NotificationPageResponse>('notification', '/notifications', params).pipe(
+      map(p => ({
+        items: (p.notifications ?? []).map(toNotification),
+        page: p.page,
+        totalPages: p.totalPages,
+        totalElements: p.totalElements,
+        unreadCount: p.unreadCount,
+      })),
+    );
   }
 
   /**

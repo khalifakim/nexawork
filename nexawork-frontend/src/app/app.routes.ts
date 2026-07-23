@@ -41,6 +41,9 @@ export const routes: Routes = [
       { path: 'accueil/mentions-recues', loadComponent: () => import('@features/accueil/mentions-recues/mentions-recues.component').then(m => m.MentionsRecuesComponent) },
       { path: 'accueil/tableau-de-bord', canActivate: [adminGuard], loadComponent: () => import('@features/accueil/tableau-de-bord/tableau-de-bord.component').then(m => m.TableauDeBordComponent) },
 
+      // --- Notifications (vue complète, filtrable par type) — sous Accueil ---
+      { path: 'accueil/notifications', loadComponent: () => import('@features/notifications/toutes-notifications/toutes-notifications.component').then(m => m.ToutesNotificationsComponent) },
+
       // --- Projets ---
       { path: 'projets', pathMatch: 'full', loadComponent: () => import('@features/projets/projets-index/projets-index.component').then(m => m.ProjetsIndexComponent) },
       { path: 'projets/archives', canActivate: [adminGuard], loadComponent: () => import('@features/projets/projets-archives/projets-archives.component').then(m => m.ProjetsArchivesComponent) },

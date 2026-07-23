@@ -113,25 +113,15 @@ public class MessageAssembler {
     }
 
     /**
-     * Notifie les personnes mentionnées (§4.7). On ne notifie que les mentions
-     * {@code USER} résolues, et jamais l'auteur qui se mentionne lui-même.
+     * Les mentions ne déclenchent plus de notification « cloche ». Elles sont déjà
+     * regroupées et affichées dans la page dédiée « Mentions reçues » (§5.1), qui lit
+     * les entités de mention persistées (indépendamment des notifications). On évite
+     * ainsi le doublon cloche / page Mentions. La persistance des mentions reste
+     * assurée par {@code persistMentions} — seul l'envoi de la cloche est retiré.
      */
     public void notifyMentioned(Message message, List<MessageMention> mentions,
                                 UUID channelId, String channelName, UUID conversationId) {
-        for (MessageMention mention : mentions) {
-            if (mention.getMentionType() != MentionType.USER || mention.getTargetId() == null
-                    || mention.getTargetId().equals(message.getSenderUserId())) {
-                continue;
-            }
-            eventPublisher.publishMention(new MessageMentionEvent(
-                    message.getId(),
-                    mention.getTargetId(),
-                    message.getSenderUserId(),
-                    caller.displayName(),
-                    caller.organisationId(),
-                    excerpt(message.getContent()),
-                    channelId, channelName, conversationId));
-        }
+        // Volontairement vide : voir le Javadoc ci-dessus (mentions → page dédiée, pas de cloche).
     }
 
     /**

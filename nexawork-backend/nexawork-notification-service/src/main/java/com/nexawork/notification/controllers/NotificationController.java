@@ -2,6 +2,7 @@ package com.nexawork.notification.controllers;
 
 import com.nexawork.commons.models.Response;
 import com.nexawork.notification.dtos.responses.NotificationPageResponse;
+import com.nexawork.notification.entities.enums.NotificationType;
 import com.nexawork.notification.services.NotificationService;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -30,9 +32,10 @@ public class NotificationController {
 
     @GetMapping
     public Response<NotificationPageResponse> list(@RequestParam(defaultValue = "false") boolean unread,
+                                                   @RequestParam(required = false) List<NotificationType> type,
                                                    @RequestParam(defaultValue = "0") int page,
                                                    @RequestParam(defaultValue = "20") int size) {
-        return Response.<NotificationPageResponse>ok().setPayload(notificationService.list(unread, page, size));
+        return Response.<NotificationPageResponse>ok().setPayload(notificationService.list(unread, type, page, size));
     }
 
     @PatchMapping("/{id}/read")

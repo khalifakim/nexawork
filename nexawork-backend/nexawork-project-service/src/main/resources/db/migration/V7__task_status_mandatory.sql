@@ -1,5 +1,5 @@
 -- ============================================================================
--- NexaWork Project Service — V3__task_status_mandatory.sql
+-- NexaWork Project Service — V7__task_status_mandatory.sql
 -- Le statut Kanban d'une tâche devient OBLIGATOIRE : une tâche est toujours
 -- positionnée dans une colonne (statut initial « À faire » par défaut).
 --   1. Backfill des tâches sans statut → statut initial de leur projet
