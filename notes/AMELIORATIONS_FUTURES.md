@@ -116,10 +116,52 @@ volontairement exclus — coût JaaS.)
 
 ---
 
+## 9. Rôles personnalisés (permissions granulaires)
+Aujourd'hui : rôles **fixes** (workspace : OWNER/ADMIN/MEMBER ; projet : PROJECT_LEAD/PROJECT_MEMBER), vérifiés **en dur**.
+Cible : passer à un modèle à **permissions**.
+- Entité `Role { name, permissions[] }` + **catalogue de permissions granulaires** (create_task, delete_project,
+  manage_members, manage_workflow, manage_ged…). Rôles **composables**, assignés aux utilisateurs.
+- Les gardes vérifient une **permission** au lieu d'un rôle codé en dur.
+- ⚠️ **Refonte** de la couche de permissions (ProjectGuard, règles R1-R21) → gros chantier.
+- 📄 **Perspective du mémoire (non implémenté).**
+
+---
+
+## 10. Édition de documents dans l'app (« documents vivants »)
+Aujourd'hui : la GED **stocke** des fichiers (upload/download/versions).
+- **Niveau 1 — éditeur riche en ligne** : type « page/document » éditable (TipTap / Quill / ProseMirror),
+  contenu **stocké côté serveur** (dans la GED) + **versionné**. Verrou ou « dernier qui enregistre gagne ». *(Faisable, moyen.)*
+- **Niveau 2 — collaboratif temps réel** (type Google Docs) : **CRDT (Yjs) + WebSocket** (infra STOMP déjà là),
+  curseurs partagés, présence dans le doc. *(Gros chantier.)*
+- 📄 **Perspective du mémoire (non implémenté).**
+
+---
+
+## 11. Calendrier & vues multiples des tâches
+Deux niveaux distincts :
+- **Vue Calendrier interne** ⭐ *(faible effort, gros effet, données déjà là)* : grille mois/semaine affichant les
+  tâches sur leur `dueDate`/`startDate` + les réunions. Composant frontend (ex. FullCalendar), **aucun backend**.
+  S'inscrit dans les **vues multiples** (Liste / Kanban / Timeline-Gantt / **Charge** / Calendrier).
+- **Synchronisation calendrier externe** : (a) **flux iCal `.ics`** par utilisateur (`GET /users/me/calendar.ics`,
+  lecture seule, abonnement Google/Outlook) — *raisonnable* ; (b) **API Google Calendar / Microsoft Graph**
+  (OAuth, bidirectionnel) — *gros chantier, dépendances externes*.
+- 📄 Non présent dans le mémoire → **à ajouter après la soutenance** (excellent candidat « premier ajout »).
+
+---
+
+## ⚠️ Note de cohérence mémoire (IMPORTANT)
+Le mémoire présente **explicitement comme PERSPECTIVES (non implémentées)** : les **automatisations poussées** (§4),
+les **rôles personnalisés** (§9) et l'**édition de documents** (§10). → **Ne PAS les implémenter avant la soutenance** :
+la démo doit rester **cohérente** avec le document. Les **présenter** en section « Perspectives » (avec le design
+ci-dessus) est un **atout** ; les montrer implémentés créerait une **incohérence** que le jury relèverait.
+
+---
+
 ## Ordre de reprise suggéré (après soutenance)
 1. Dépendances typées (§1.1) — branchées sur le workflow.
 2. Modèles de méthodologie (§1.4) — peu de code, gros effet.
 3. Validateurs + post-fonctions de transition (§3).
-4. Automatisations Phase 1 (§4).
+4. Automatisations Phase 1 (§4), puis moteur de règles + constructeur visuel (automatisations poussées).
 5. Hub 360° de la tâche (§5) — la signature.
 6. Sprints (§1.3), puis IA (§6).
+7. Rôles personnalisés (§9) et édition de documents (§10) — gros chantiers, à planifier.
