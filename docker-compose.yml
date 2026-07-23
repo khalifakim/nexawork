@@ -96,6 +96,11 @@ services:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS}
       RABBITMQ_ERLANG_COOKIE: "nexawork-cookie"
+      # Schedulers Erlang : ne pas tourner à vide (busy-wait) quand il n'y a pas de
+      # travail → dormir. Sur une VM à 4 cœurs, RabbitMQ brûlait ~1,5 cœur au repos.
+      # Réglage CPU pur : ne change RIEN au comportement de la messagerie (files,
+      # échanges, ordre, fiabilité identiques). Réveil sur message = latence µs.
+      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: "+sbwt none +sbwtdcpu none +sbwtdio none"
     ports:
       - "5672:5672"
       - "15672:15672"
