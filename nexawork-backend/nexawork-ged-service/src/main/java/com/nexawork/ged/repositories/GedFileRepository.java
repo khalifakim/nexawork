@@ -39,6 +39,7 @@ public interface GedFileRepository extends JpaRepository<GedFile, UUID> {
      */
     @Query("""
             SELECT f FROM GedFile f
+            LEFT JOIN FETCH f.folder
             WHERE f.organisationId = :orgId
               AND f.isDeleted = FALSE
               AND LOWER(f.name) LIKE LOWER(CONCAT('%', :q, '%'))

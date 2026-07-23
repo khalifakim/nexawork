@@ -40,8 +40,14 @@ public interface TaskRepository extends JpaRepository<Task, UUID> {
             JOIN FETCH t.project p
             LEFT JOIN FETCH t.status s
             WHERE p.organisationId = :orgId AND p.status = :projectStatus
-              AND t.assigneeType = com.nexawork.project.entities.enums.AssigneeType.USER
-              AND t.assigneeId = :userId
+              AND (
+                   (t.assigneeType = com.nexawork.project.entities.enums.AssigneeType.USER
+                    AND t.assigneeId = :userId)
+                OR (t.assigneeType = com.nexawork.project.entities.enums.AssigneeType.TEAM
+                    AND t.assigneeId IN (
+                        SELECT pm.team.id FROM ProjectMember pm
+                        WHERE pm.userId = :userId AND pm.team IS NOT NULL))
+              )
             ORDER BY CASE WHEN t.dueDate IS NULL THEN 1 ELSE 0 END, t.dueDate ASC
             """)
     List<Task> findAssignedTo(@Param("orgId") UUID orgId,

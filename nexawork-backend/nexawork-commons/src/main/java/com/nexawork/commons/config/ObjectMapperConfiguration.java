@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonDeserializer;
 import com.fasterxml.jackson.databind.JsonSerializer;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.SerializerProvider;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
@@ -60,6 +61,11 @@ public class ObjectMapperConfiguration {
 
         objectMapper.registerModule(simpleModule);
         objectMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+        // Sans ceci, un ObjectMapper brut + JavaTimeModule sérialise LocalDate (et LocalTime)
+        // en TABLEAU [yyyy, MM, dd] au lieu de la chaîne ISO "yyyy-MM-dd" → le frontend affichait
+        // « Invalid Date » et les <input type="date"> restaient vides. (LocalDateTime a son propre
+        // sérialiseur ci-dessus, donc il n'est pas affecté.)
+        objectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
         return objectMapper;
     }
 }
