@@ -54,6 +54,18 @@ class StompConnection {
 
   get connected(): boolean { return !!this.client?.connected; }
 
+  /**
+   * Ferme la WebSocket proprement (logout) : `deactivate()` provoque un close
+   * côté serveur → le notification-service détecte la déconnexion et marque
+   * l'utilisateur hors ligne, sans attendre l'expiration du TTL Redis.
+   */
+  disconnect(): void {
+    this.client?.deactivate();
+    this.client = undefined;
+    this.subs.clear();
+    this.pending.length = 0;
+  }
+
   private ensureConnected(): void {
     if (this.client) return;
     this.client = new Client({
@@ -212,5 +224,20 @@ export class StompClientService {
     this.heartbeat = setInterval(() => {
       if (conn.connected) conn.publish('/app/presence/heartbeat', {});
     }, PRESENCE_HEARTBEAT_MS);
+  }
+
+  /**
+   * Déconnexion (logout) : coupe les deux WebSockets + le heartbeat. La fermeture
+   * PROPRE de la socket notifications fait passer l'utilisateur « hors ligne »
+   * IMMÉDIATEMENT côté serveur — sans attendre l'expiration du TTL ni la fermeture
+   * de l'onglet. Les connexions sont ré-établies paresseusement à la reconnexion.
+   */
+  disconnect(): void {
+    clearInterval(this.heartbeat);
+    this.heartbeat = undefined;
+    this.messaging?.disconnect();
+    this.notifications?.disconnect();
+    this.messaging = undefined;
+    this.notifications = undefined;
   }
 }

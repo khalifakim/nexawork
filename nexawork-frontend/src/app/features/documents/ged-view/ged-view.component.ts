@@ -249,12 +249,17 @@ export class GedViewComponent {
       if (!it.system && !this.gedOverlay.hasAccess(it.name, it.owner)) return false;
       // Type filter never hides folders (matches the prototype).
       if (ft && it.type !== 'folder' && it.type !== ft) return false;
-      if (fd && it.mod) {
-        const m = it.mod.toLowerCase();
-        if (fd === 'today' && !m.includes("aujourd'hui")) return false;
-        if (fd === 'week' && !(m.includes("aujourd'hui") || m.includes('hier'))) return false;
-        if (fd === 'month' && (m.includes('semaine') || m.includes('mois'))) return false;
-        if (fd === 'older' && (m.includes("aujourd'hui") || m.includes('hier') || m.includes('2 j') || m.includes('3 j'))) return false;
+      if (fd && it.rawDate) {
+        const d = new Date(it.rawDate);
+        if (!Number.isNaN(d.getTime())) {
+          const today = new Date(); today.setHours(0, 0, 0, 0);
+          const day = new Date(d); day.setHours(0, 0, 0, 0);
+          const diff = Math.round((today.getTime() - day.getTime()) / 86_400_000);
+          if (fd === 'today' && diff !== 0) return false;
+          if (fd === 'week'  && (diff < 0 || diff > 7))  return false;
+          if (fd === 'month' && (diff < 0 || diff > 31)) return false;
+          if (fd === 'older' && diff <= 31) return false;
+        }
       }
       return true;
     });

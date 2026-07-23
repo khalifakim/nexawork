@@ -445,6 +445,7 @@ function toFolderItem(f: FolderResponse, byId: Map<string, Member>): GedItem {
     by: byId.get(f.createdByUserId)?.name ?? 'Membre',
     system,
     restricted: f.restricted,
+    rawDate: f.createdAt,
   };
 }
 
@@ -461,6 +462,7 @@ function toFileItem(f: FileResponse, byId: Map<string, Member>): GedItem {
     restricted: f.restricted,
     projectId: f.projectId,
     url: f.fileUrl,
+    rawDate: f.addedAt,
   };
 }
 
@@ -475,6 +477,7 @@ function toTaskAttachmentItem(a: TaskAttachmentLineResponse, byId: Map<string, M
     system: true,
     task: { id: a.taskId, key: a.taskKey, title: a.taskTitle },
     url: a.fileUrl,
+    rawDate: a.uploadedAt,
   };
 }
 
@@ -508,15 +511,9 @@ function formatSize(bytes?: number): string {
   return (bytes / (1024 * 1024)).toFixed(1).replace('.', ',').replace(',0', '') + ' Mo';
 }
 
-/** Libellé de date relatif (aligné sur le filtre « Date » de la vue GED). */
+/** Date EXACTE (jj mois aaaa) — suivi précis de chaque élément (plus de libellé relatif). */
 function formatDate(iso: string): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return '';
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const day = new Date(d); day.setHours(0, 0, 0, 0);
-  const diff = Math.round((today.getTime() - day.getTime()) / 86_400_000);
-  if (diff <= 0) return "Aujourd'hui";
-  if (diff === 1) return 'Hier';
-  if (diff <= 7) return 'Cette semaine';
   return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
 }

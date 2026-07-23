@@ -9,6 +9,8 @@ export interface GedItem {
   by?: string;
   system?: boolean;
   added?: string;
+  /** Date brute ISO (pour le filtre « Date » de la vue GED — l'affichage, lui, est exact). */
+  rawDate?: string;
   task?: { id: string; key?: string; title: string };
   /** UUID backend (dossier ou fichier GED) — absent des fixtures mock. */
   id?: string;

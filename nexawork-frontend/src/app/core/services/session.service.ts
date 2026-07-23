@@ -12,6 +12,7 @@ import { WorkspaceLoaderService } from './workspace-loader.service';
 import { DEFAULT_WORKSPACE_ID } from '@core/mock/workspaces';
 import { CreateWorkspacePayload, UpdateWorkspacePayload, Workspace, WorkspaceRole } from '@core/models/workspace.models';
 import { environment } from '@environment/environment';
+import { StompClientService } from '@core/ws/stomp-client.service';
 
 /** Display-friendly view of the active workspace (denormalised). */
 export interface ActiveWorkspaceView extends Workspace {}
@@ -52,6 +53,7 @@ export interface OngoingCall {
 export class SessionService {
   private readonly store = inject(Store);
   private readonly router = inject(Router);
+  private readonly stomp = inject(StompClientService);
   private readonly auth = inject(AuthService);
   private readonly workspaceService = inject(WorkspaceService);
   private readonly loader = inject(WorkspaceLoaderService);
@@ -304,6 +306,10 @@ export class SessionService {
   }
 
   logout(): void {
+    // Coupe la WebSocket AVANT de vider la session : la fermeture propre de la
+    // socket fait passer l'utilisateur « hors ligne » immédiatement côté serveur
+    // (sinon il restait en ligne jusqu'à la fermeture de l'onglet ou l'expiration TTL).
+    this.stomp.disconnect();
     this.store.dispatch(AuthActions.logout());
   }
 

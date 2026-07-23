@@ -378,8 +378,10 @@ export class FicheTacheComponent implements OnChanges {
     this.eDesc.set(this.task.desc ?? '');
     this.eStatusId.set(this.task.statusId);
     this.eAssigneeId.set(this.task.assigneeId ?? '');
-    this.eStart.set(this.task.startDate ?? '');
-    this.eDue.set(this.task.dueDate ?? '');
+    // `<input type="date">` exige exactement `yyyy-MM-dd` : on tronque une éventuelle
+    // partie horaire (sinon le champ resterait vide alors que la date existe).
+    this.eStart.set((this.task.startDate ?? '').slice(0, 10));
+    this.eDue.set((this.task.dueDate ?? '').slice(0, 10));
     this.ePriority.set(this.task.priority);
     this.eEstimate.set(this.task.estimate ?? '');
     // Colonnes du projet (sélecteur de statut).

@@ -101,7 +101,8 @@ import { LoaderComponent } from '@shared/ui/loader/loader.component';
     </div>
 
     @if (openTask(); as card) {
-      <app-fiche-tache [task]="card" (closed)="openTask.set(null)" (openTask)="onChipOpenTask($event)" />
+      <app-fiche-tache [task]="card" (closed)="openTask.set(null)" (openTask)="onChipOpenTask($event)"
+                       (updated)="onTaskChanged()" (deleted)="onTaskChanged()" />
     }
   `,
   styleUrl: './mes-taches.component.scss',
@@ -136,9 +137,11 @@ export class MesTachesComponent {
   openTask  = signal<TaskCard | null>(null);
   /** Panneau d'alerte ouvert (liste dépliée sous les pastilles). */
   panel = signal<'late' | 'soon' | null>(null);
+  /** Bumpé après une modif/suppression de tâche → re-fetch sans changer d'espace. */
+  private reload = signal(0);
 
-  /** Tâches de l'espace actif (rechargées au switch) + état de chargement. */
-  private query = workspaceQuery<Section[]>(this.session, () => this.accueil.myTasks(), []);
+  /** Tâches de l'espace actif (rechargées au switch ET après une modif de tâche). */
+  private query = workspaceQuery<Section[]>(this.session, () => this.accueil.myTasks(), [], this.reload);
   sections = this.query.value;
   loading = this.query.loading;
 
@@ -168,4 +171,7 @@ export class MesTachesComponent {
   onChipOpenTask(ref: string): void {
     this.tasksSvc.cardByRef(ref).subscribe(card => { if (card) this.openTask.set(card); });
   }
+
+  /** Une modif/suppression de tâche dans la fiche → re-fetch « Mes tâches » (bandeau Alertes inclus). */
+  onTaskChanged(): void { this.reload.update(v => v + 1); }
 }
