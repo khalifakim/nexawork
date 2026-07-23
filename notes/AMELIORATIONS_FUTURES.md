@@ -147,6 +147,10 @@ Deux niveaux distincts :
   (OAuth, bidirectionnel) — *gros chantier, dépendances externes*.
 - 📄 Non présent dans le mémoire → **à ajouter après la soutenance** (excellent candidat « premier ajout »).
 
+**Filtrage par période sur le tableau de bord** : sélecteur `from`/`to` (semaine / mois / trimestre / personnalisé).
+Nécessite que `GET /workspaces/{id}/dashboard` accepte un intervalle et **recalcule** les agrégats (KPI, charge,
+alertes) côté serveur + un sélecteur côté frontend. *(Modif d'une fonctionnalité existante → post-soutenance.)*
+
 ---
 
 ## ⚠️ Note de cohérence mémoire (IMPORTANT)
