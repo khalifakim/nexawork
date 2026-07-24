@@ -127,14 +127,17 @@
 /* Message supprimé — marqueur « … a supprimé ce message » (façon WhatsApp) */
 .deleted { font-style: italic; color: var(--nx-text-400); }
 
-/* ── Barre d'actions : pilule flottante au-dessus de la bulle, hors du texte ── */
+/* ── Barre d'actions : pilule flottante À CÔTÉ de la bulle, centrée ────────── */
 .act {
-  position: absolute; top: -14px; right: 6px; z-index: 6;
+  position: absolute; top: 50%; transform: translateY(-50%); z-index: 6;
+  left: 100%; margin-left: 6px;  /* reçu : à droite de la bulle */
   display: flex; align-items: center; gap: 1px;
   padding: 2px; border-radius: 9px;
   background: #fff; border: 1px solid var(--nx-border-card); box-shadow: var(--nx-shadow-pop);
   opacity: 0; transition: opacity .12s;
 }
+.bubble--me .act { left: auto; margin-left: 0; right: 100%; margin-right: 6px; }  /* envoyé : à gauche */
+.bubble--me .ra__bar { left: 0; right: auto; }  /* s'ouvre vers la droite */
 .line:hover .act { opacity: 1; }
 .act__b {
   min-width: 26px; height: 24px; padding: 0 4px; border: none; border-radius: 7px;
@@ -163,6 +166,8 @@
 .rq__a { font-size: 11.5px; font-weight: 700; color: var(--nx-indigo-text); }
 .rq__x { font-size: 12.5px; color: var(--nx-text-500); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 240px; }
 .rq--del .rq__x { font-style: italic; }
+.rq--link { cursor: pointer; }
+.rq--link:hover { background: rgba(91,95,233,.12); }
 
 /* Réactions posées */
 .rx { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }

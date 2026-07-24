@@ -147,7 +147,8 @@ type Msg = ConversationMessage;
                   </div>
                 } @else {
                   @if (m.replyTo; as r) {
-                    <div class="rq" [class.rq--del]="r.deleted">
+                    <div class="rq" [class.rq--del]="r.deleted" [class.rq--link]="!r.deleted"
+                         (click)="!r.deleted && scrollToMessage(r.id); $event.stopPropagation()">
                       <span class="rq__a">{{ r.author }}</span>
                       <span class="rq__x">{{ r.excerpt }}</span>
                     </div>
@@ -525,6 +526,15 @@ export class ConversationPriveeComponent {
   cancelReply(): void { this.replyingTo.set(null); }
 
   toggleReactBar(m: Msg): void { this.reactFor.set(this.reactFor() === m.id ? null : (m.id ?? null)); }
+
+  /** Clic sur une citation → défile jusqu'au message d'origine et l'encadre. */
+  scrollToMessage(id: string): void {
+    const el = this.msgsEl?.nativeElement.querySelector(`[data-mid="${id}"]`) as HTMLElement | null;
+    if (!el) return;
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    el.classList.add('line--focus');
+    setTimeout(() => el.classList.remove('line--focus'), 2000);
+  }
 
   react(m: Msg, emoji: string): void {
     this.reactFor.set(null);

@@ -133,14 +133,17 @@
 /* Message supprimé — marqueur « … a supprimé ce message » (façon WhatsApp) */
 .deleted { font-size: 13.5px; font-style: italic; color: var(--nx-text-400); }
 
-/* ── Barre d'actions : pilule flottante au-dessus du message, hors du texte ── */
+/* ── Barre d'actions : pilule flottante À CÔTÉ du message, centrée ─────────── */
 .act {
-  position: absolute; top: -14px; right: 4px; z-index: 6;
+  position: absolute; top: 50%; transform: translateY(-50%); z-index: 6;
   display: flex; align-items: center; gap: 1px;
   padding: 2px; border-radius: 9px;
   background: #fff; border: 1px solid var(--nx-border-card); box-shadow: var(--nx-shadow-pop);
   opacity: 0; transition: opacity .12s;
 }
+/* Reçu : à droite du message ; envoyé : à gauche de la bulle. */
+.msg:not(.msg--me) .act { right: 6px; }
+.msg--me .act { left: 6px; }
 .msg:hover .act { opacity: 1; }
 .act__b {
   min-width: 26px; height: 24px; padding: 0 4px; border: none; border-radius: 7px;
@@ -170,6 +173,10 @@
 .rq__a { font-size: 11.5px; font-weight: 700; color: var(--nx-indigo-text); }
 .rq__x { font-size: 12.5px; color: var(--nx-text-500); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
 .rq--del .rq__x { font-style: italic; }
+.rq--link { cursor: pointer; }
+.rq--link:hover { background: rgba(91,95,233,.12); }
+/* Message envoyé : la barre d'emojis (barre d'actions à gauche) s'ouvre vers la droite. */
+.msg--me .ra__bar { left: 0; right: auto; }
 
 /* Réactions posées (pastilles sous le message) */
 .rx { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
