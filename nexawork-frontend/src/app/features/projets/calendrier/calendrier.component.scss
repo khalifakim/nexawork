@@ -1,0 +1,203 @@
+:host { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.cal { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.spacer { flex: 1; }
+
+/* ── Barre d'outils ───────────────────────────────────────────────────────── */
+.tbar { flex: none; display: flex; align-items: center; gap: 10px; padding: 14px 28px 12px; flex-wrap: wrap; }
+
+.nav { display: flex; align-items: center; gap: 4px; margin-left: 6px; }
+.nav__b {
+  width: 30px; height: 30px; flex: none;
+  border: 1px solid var(--nx-border); border-radius: 8px;
+  background: #fff; color: var(--nx-text-700); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.nav__b:hover { border-color: var(--nx-indigo); color: var(--nx-indigo); }
+.nav__today {
+  height: 30px; padding: 0 12px;
+  border: 1px solid var(--nx-border); border-radius: 8px;
+  background: #fff; color: var(--nx-text-600);
+  font-family: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+}
+.nav__today:hover { background: var(--nx-surface-2); border-color: var(--nx-indigo); color: var(--nx-indigo); }
+
+.period { font-size: 15px; font-weight: 700; color: var(--nx-text); letter-spacing: -.01em; margin-left: 4px; }
+
+.seg-ctl { display: flex; border: 1px solid var(--nx-border); border-radius: 8px; overflow: hidden; background: #fff; }
+.seg-ctl button {
+  height: 30px; padding: 0 13px; border: none; background: transparent;
+  color: var(--nx-text-500); font-family: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+  border-right: 1px solid var(--nx-border);
+}
+.seg-ctl button:last-child { border-right: none; }
+.seg-ctl button:hover { background: var(--nx-surface-2); }
+.seg-ctl .seg-ctl--on { background: var(--nx-indigo-50); color: var(--nx-indigo-text); }
+
+.add {
+  display: flex; align-items: center; gap: 7px; height: 34px; padding: 0 14px;
+  border: none; border-radius: 8px; background: var(--nx-indigo); color: #fff;
+  font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+  box-shadow: var(--nx-shadow-primary);
+}
+.add:hover { background: var(--nx-indigo-hover); }
+
+/* ── Corps ────────────────────────────────────────────────────────────────── */
+.body { flex: 1; min-height: 0; overflow-y: auto; padding: 0 28px 20px; }
+
+.dow {
+  display: grid; grid-template-columns: repeat(7, 1fr);
+  border: 1px solid var(--nx-border-card); border-bottom: none;
+  border-radius: var(--nx-r-card) var(--nx-r-card) 0 0; background: var(--nx-surface-3);
+  overflow: hidden;
+}
+.dow__c {
+  padding: 9px 10px; font-size: 11px; font-weight: 700; letter-spacing: .05em;
+  text-transform: uppercase; color: var(--nx-text-400); text-align: center;
+}
+.dow__c--today { color: var(--nx-indigo); }
+
+.weeks {
+  border: 1px solid var(--nx-border-card); border-radius: 0 0 var(--nx-r-card) var(--nx-r-card);
+  background: #fff; overflow: hidden;
+}
+
+/* ── Une ligne-semaine ────────────────────────────────────────────────────── */
+.wk {
+  position: relative;
+  display: grid; grid-template-columns: repeat(7, 1fr);
+  border-top: 1px solid var(--nx-border-card);
+}
+.weeks .wk:first-child { border-top: none; }
+
+.cell { grid-row: 1; border-right: 1px solid var(--nx-border-card); min-width: 0; }
+.cell:last-child { border-right: none; }
+.cell--out { background: #FBFAF8; }
+.cell--we { background: #FAF9F5; }
+.cell--out.cell--we { background: #F7F6F2; }
+.cell--drop { background: rgba(91, 95, 233, .07); box-shadow: inset 0 0 0 2px var(--nx-indigo); }
+
+/* Au-dessus du calque `.lanes` : l'en-tête (quantième + bouton « + ») reste
+   cliquable même là où une barre longue déborderait visuellement. */
+.cell__h { position: relative; z-index: 3; display: flex; align-items: center; gap: 4px; height: 30px; padding: 0 7px; }
+.cell__d { font-size: 12.5px; font-weight: 700; color: var(--nx-text-700); }
+.cell--out .cell__d { color: var(--nx-text-300); font-weight: 600; }
+.cell--today .cell__d {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 21px; height: 21px; padding: 0 5px; border-radius: 11px;
+  background: var(--nx-indigo); color: #fff;
+}
+.cell__add {
+  width: 21px; height: 21px; flex: none; border: none; border-radius: 6px;
+  background: transparent; color: var(--nx-text-400); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; transition: opacity .12s;
+}
+.cell:hover .cell__add { opacity: 1; }
+.cell__add:hover { background: var(--nx-indigo-50); color: var(--nx-indigo); }
+
+/* ── Pistes de barres (calque au-dessus des cases) ────────────────────────── */
+.lanes {
+  position: absolute; top: 30px; left: 0; right: 0; bottom: 0;
+  display: grid; grid-template-columns: repeat(7, 1fr);
+  grid-auto-rows: 22px; row-gap: 3px;
+  /* PAS de `pointer-events: none` ici : Chromium n'initie pas de glisser natif
+     sur un élément draggable dont un ancêtre a `pointer-events: none`, même si
+     l'élément a `pointer-events: auto`. C'était la seule différence de structure
+     avec le Kanban (qui glisse) et la cause de l'échec du glisser. Le dépôt est
+     désormais écouté au niveau de la ligne-semaine (par géométrie, voir
+     `dayAt()`), donc ce calque n'a plus besoin de laisser passer les events. */
+}
+
+/* Volontairement un <div> et non un <button> : Chrome et Safari n'initient pas
+   de glisser natif sur un contrôle de formulaire, même avec draggable="true". */
+.seg {
+  display: flex; align-items: center; gap: 6px; min-width: 0;
+  height: 22px; margin: 0 3px; padding: 0 8px;
+  border: 1px solid var(--nx-border-card); border-left: 3px solid var(--nx-text-400);
+  border-radius: 6px; background: #fff; box-shadow: var(--nx-shadow-rest);
+  font-family: inherit; text-align: left; overflow: hidden;
+  /* `grab` signale que la barre est déplaçable ; sans quoi la replanification
+     reste invisible. La sélection de texte est coupée : elle démarrerait à la
+     place du glisser. */
+  cursor: grab; user-select: none;
+  transition: box-shadow .12s, transform .12s, opacity .15s;
+}
+.seg:active { cursor: grabbing; }
+/* Projet archivé : la barre reste cliquable mais n'est pas déplaçable. */
+.seg[draggable="false"] { cursor: pointer; }
+.seg:hover { box-shadow: var(--nx-shadow-hover); transform: translateY(-1px); }
+.seg--drag { opacity: .4; }
+/* Bords plats du côté où la tâche se poursuit sur une autre ligne-semaine. */
+.seg--cl { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: 0; }
+.seg--cr { border-top-right-radius: 0; border-bottom-right-radius: 0; margin-right: 0; }
+.seg--late { background: #FEF3F2; border-color: #F8D5D2; }
+.seg--done { opacity: .62; }
+.seg--done .seg__t { text-decoration: line-through; }
+
+.seg__cont { flex: none; font-size: 13px; font-weight: 700; color: var(--nx-text-300); line-height: 1; }
+.seg__p { width: 7px; height: 7px; flex: none; border-radius: 2px; }
+.seg__k { flex: none; font-size: 10.5px; font-weight: 700; color: var(--nx-text-300); }
+.seg__t {
+  flex: 1; min-width: 0; font-size: 12px; font-weight: 600; color: var(--nx-text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.seg--late .seg__t { color: var(--nx-danger); }
+
+.more {
+  position: absolute; left: 10px; bottom: 5px; z-index: 2;
+  border: none; border-radius: 6px; padding: 3px 8px;
+  background: transparent; color: var(--nx-text-500);
+  font-family: inherit; font-size: 11.5px; font-weight: 600; cursor: pointer;
+}
+.more:hover { background: var(--nx-surface-2); color: var(--nx-indigo); }
+
+/* ── Vue Semaine ──────────────────────────────────────────────────────────── */
+.weeks--one { border-radius: 0 0 var(--nx-r-card) var(--nx-r-card); }
+.wk--tall .cell__h { justify-content: flex-end; }
+.wempty {
+  position: absolute; inset: 30px 0 0; display: flex; align-items: center; justify-content: center;
+  color: var(--nx-text-400); font-size: 13.5px; pointer-events: none;
+}
+
+/* ── Vue Jour ─────────────────────────────────────────────────────────────── */
+.day {
+  border: 1px solid var(--nx-border-card); border-radius: var(--nx-r-card);
+  background: #fff; padding: 6px 8px 12px;
+}
+.day__h { display: flex; align-items: center; gap: 10px; padding: 12px 12px 10px; }
+.day__t { font-size: 15px; font-weight: 700; color: var(--nx-text); letter-spacing: -.01em; }
+.day__n {
+  font-size: 11.5px; font-weight: 600; color: var(--nx-text-400);
+  background: #E2DFD8; border-radius: 10px; padding: 1px 9px;
+}
+.drow {
+  display: flex; align-items: center; gap: 9px;
+  padding: 11px 12px; border-radius: 10px; cursor: pointer;
+  border-top: 1px solid var(--nx-border-card);
+}
+.drow:hover { background: var(--nx-surface-2); }
+.drow--done { opacity: .62; }
+.drow--done .drow__t { text-decoration: line-through; }
+.pill { flex: none; font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: var(--nx-r-pill); }
+.drow__k { flex: none; font-size: 11.5px; font-weight: 600; color: var(--nx-text-300); }
+.drow__t {
+  font-size: 13.5px; font-weight: 600; color: var(--nx-text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.drow__dates { flex: none; font-size: 12px; font-weight: 600; color: var(--nx-text-500); }
+.drow__dates--late { color: var(--nx-danger); }
+.avs { display: flex; flex: none; }
+.av { width: 24px; height: 24px; border-radius: 50%; border: 2px solid #fff; margin-left: -8px; }
+.av:first-child { margin-left: 0; }
+
+.dempty { padding: 34px 12px; text-align: center; color: var(--nx-text-400); font-size: 13.5px; }
+.day__add {
+  margin: 10px 12px 2px;
+  display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 13px;
+  border: 1px dashed var(--nx-border); border-radius: 9px; background: transparent;
+  color: var(--nx-text-500); font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.day__add:hover { background: var(--nx-surface-2); border-color: var(--nx-indigo); color: var(--nx-indigo); }
+
+/* ── Pied de vue ──────────────────────────────────────────────────────────── */
+.foot { flex: none; padding: 0 28px 16px; font-size: 12px; color: var(--nx-text-400); }

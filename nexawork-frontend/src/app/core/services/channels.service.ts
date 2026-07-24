@@ -40,7 +40,14 @@ export abstract class ChannelsService {
    * est d'abord téléversé au File Service, puis rattaché à un message (le
    * backend porte une pièce jointe par message).
    */
-  abstract sendMessage(id: string, content: string, files?: File[], mentions?: MentionRef[]): Observable<void>;
+  abstract sendMessage(id: string, content: string, files?: File[], mentions?: MentionRef[], replyToMessageId?: string): Observable<MessageResponse | null>;
+
+  /** Supprime un message (soft delete) — auteur dans la fenêtre, ou admin. */
+  abstract deleteMessage(messageId: string): Observable<void>;
+  /** Modifie le contenu d'un message (auteur, fenêtre de temps). */
+  abstract editMessage(messageId: string, content: string): Observable<MessageResponse>;
+  /** Ajoute/retire (toggle) une réaction emoji sur un message. */
+  abstract toggleReaction(messageId: string, emoji: string): Observable<MessageResponse>;
 
   /** Signale la saisie dans un canal (STOMP, volatile) — alimente vue canal + sidebar. */
   abstract sendTyping(id: string, typing: boolean): void;
@@ -120,7 +127,10 @@ export class ChannelsMockService extends ChannelsService {
   list(): Observable<Channel[]> { return this.channels$; }
   thread(id: string): Observable<ChannelMessage[]> { return of(CHANNEL_THREADS[id] ?? DEFAULT_CHANNEL_THREAD).pipe(delay(80)); }
   live(_id: string): Observable<ChannelMessage> { return EMPTY; }
-  sendMessage(_id: string, _content: string, _files?: File[], _mentions?: MentionRef[]): Observable<void> { return of(void 0); }
+  sendMessage(_id: string, _content: string, _files?: File[], _mentions?: MentionRef[], _replyToMessageId?: string): Observable<MessageResponse | null> { return of(null); }
+  deleteMessage(_messageId: string): Observable<void> { return of(void 0); }
+  editMessage(_messageId: string, _content: string): Observable<MessageResponse> { return EMPTY; }
+  toggleReaction(_messageId: string, _emoji: string): Observable<MessageResponse> { return EMPTY; }
   sendTyping(_id: string, _typing: boolean): void { /* no-op en mock */ }
   typing(_id: string): Observable<boolean> { return EMPTY; }
   markRead(id: string): void {
@@ -289,22 +299,41 @@ export class ChannelsHttpService extends BaseHttpService implements ChannelsServ
     }));
   }
 
-  sendMessage(id: string, content: string, files: File[] = [], mentions: MentionRef[] = []): Observable<void> {
+  sendMessage(id: string, content: string, files: File[] = [], mentions: MentionRef[] = [], replyToMessageId?: string): Observable<MessageResponse | null> {
     const text = content.trim();
+    const reply = replyToMessageId ? { replyToMessageId } : {};
     return this.ensureUuid(id).pipe(switchMap(uuid => {
-      if (!uuid) return of(void 0);
+      if (!uuid) return of(null);
       const endpoint = `/channels/${uuid}/messages`;
       if (files.length === 0) {
+        // Le DTO renvoyé porte l'id réel : l'appelant le pose sur son message
+        // optimiste, sans quoi ce message ne serait ni modifiable ni supprimable
+        // avant un rechargement (il n'aurait pas d'id).
         return text
-          ? this.post$<MessageResponse>('messaging', endpoint, { content: text, mentions }).pipe(map(() => void 0))
-          : of(void 0);
+          ? this.post$<MessageResponse>('messaging', endpoint, { content: text, mentions, ...reply })
+          : of(null);
       }
       // Téléverse tous les fichiers puis envoie UN SEUL message qui les porte tous.
       const workspaceId = this.session.activeWorkspaceId();
       return forkJoin(files.map(f => this.filesSvc.upload('channel-msg', f, { workspaceId, channelId: uuid })))
         .pipe(switchMap(stored =>
-          this.post$<MessageResponse>('messaging', endpoint, messageBody(text, stored, mentions)).pipe(map(() => void 0))));
+          this.post$<MessageResponse>('messaging', endpoint, { ...messageBody(text, stored, mentions), ...reply })));
     }));
+  }
+
+  /** Suppression (soft delete) — ciblée par l'id du message, indépendante du canal. */
+  deleteMessage(messageId: string): Observable<void> {
+    return this.delete$<void>('messaging', `/messages/${messageId}`);
+  }
+
+  /** Édition du contenu — renvoie le message modifié (edited = true). */
+  editMessage(messageId: string, content: string): Observable<MessageResponse> {
+    return this.patch$<MessageResponse>('messaging', `/messages/${messageId}`, { content });
+  }
+
+  /** Toggle d'une réaction emoji — renvoie le message avec ses réactions à jour. */
+  toggleReaction(messageId: string, emoji: string): Observable<MessageResponse> {
+    return this.post$<MessageResponse>('messaging', `/messages/${messageId}/reactions`, { emoji });
   }
 
   rename(id: string, patch: UpdateChannelPayload): void {
@@ -505,7 +534,34 @@ function toChannelMessage(
     parts: parseRichText(msg.content),
     mine: msg.senderUserId === meId,
     files,
+    edited: !!msg.edited,
+    isDeleted: !!msg.isDeleted,
+    replyTo: mapReply(msg.replyTo, byId),
+    reactions: mapReactions(msg.reactions, meId),
   };
+}
+
+/** Aperçu du message cité, avec l'auteur résolu depuis l'annuaire. */
+export function mapReply(
+  r: import('@core/models/channel.models').ReplyPreviewResponse | undefined,
+  byId: Map<string | undefined, { name: string }>,
+): import('@core/models/channel.models').MessageReply | undefined {
+  if (!r) return undefined;
+  return {
+    id: r.id,
+    author: byId.get(r.authorUserId)?.name ?? 'Membre',
+    excerpt: r.deleted ? 'Message supprimé' : (r.excerpt ?? ''),
+    deleted: r.deleted,
+  };
+}
+
+/** Réactions prêtes à afficher : total + « ai-je réagi » dérivés de `userIds`. */
+export function mapReactions(
+  list: import('@core/models/channel.models').ReactionSummaryResponse[] | undefined,
+  meId: string | undefined,
+): import('@core/models/channel.models').MessageReaction[] | undefined {
+  if (!list?.length) return undefined;
+  return list.map(r => ({ emoji: r.emoji, count: r.userIds.length, mine: !!meId && r.userIds.includes(meId) }));
 }
 
 function formatTime(iso: string): string {

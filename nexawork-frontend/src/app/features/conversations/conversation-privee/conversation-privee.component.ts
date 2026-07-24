@@ -14,8 +14,9 @@ import { ConversationsService } from '@core/services/conversations.service';
 import { ProjectCatalogService } from '@core/services/project-catalog.service';
 import { Member } from '@core/models/member.models';
 import { ConversationFile, ConversationMessage } from '@core/models/conversation.models';
+import { MessageReply, toggleLocalReaction } from '@core/models/channel.models';
 import { ShellBus } from '@layouts/app-shell/shell.bus';
-import { chipTabFor, RichPart } from '@core/util/mention.util';
+import { chipTabFor, parseRichText, RichPart } from '@core/util/mention.util';
 import { downloadAttachedFile, saveBlob } from '@core/util/download.util';
 import { FilesHttpService } from '@core/http/files.http.service';
 
@@ -97,31 +98,96 @@ type Msg = ConversationMessage;
                  [class.line--focus]="m.id && m.id === focusMessageId()"
                  [attr.data-mid]="m.id">
               <div class="bubble" [class.bubble--me]="m.me">
-                @if (m.parts.length > 0) {
-                  <div>
-                    @for (p of m.parts; track $index) {
-                      @if (p.type === 't') {
-                        <app-highlight [text]="p.val" [query]="searchQ()" />
-                      } @else {
-                        <app-mention-chip [tab]="chipTabFor(p.type)" [value]="p.val" (opened)="onChipOpen($event)" />
+                @if (m.id && editingId() !== m.id && !m.isDeleted) {
+                  <div class="act">
+                    <div class="ra">
+                      <button class="act__b" title="Réagir" (click)="toggleReactBar(m); $event.stopPropagation()">
+                        <app-icon name="smile" [size]="15" />
+                      </button>
+                      @if (reactFor() === m.id) {
+                        <div class="ra__bd" (click)="reactFor.set(null)"></div>
+                        <div class="ra__bar" (click)="$event.stopPropagation()">
+                          @for (e of QUICK_EMOJIS; track e) {
+                            <button class="ra__e" (click)="react(m, e)">{{ e }}</button>
+                          }
+                        </div>
                       }
+                    </div>
+                    <button class="act__b" title="Répondre" (click)="startReply(m); $event.stopPropagation()">↩</button>
+                    @if (m.me && canModify(m)) {
+                      <div class="mm">
+                        <button class="mm__b" title="Options" (click)="toggleMenu(m); $event.stopPropagation()">
+                          <app-icon name="dots" [size]="15" [stroke]="2" />
+                        </button>
+                        @if (menuId() === m.id) {
+                          <div class="mm__bd" (click)="menuId.set(null)"></div>
+                          <div class="mm__menu" (click)="$event.stopPropagation()">
+                            @if (m.parts.length > 0) {
+                              <button class="mm__i" (click)="startEdit(m)"><app-icon name="edit" [size]="14" />Modifier</button>
+                            }
+                            <button class="mm__i mm__i--danger" (click)="removeMessage(m)"><app-icon name="trash" [size]="14" />Supprimer</button>
+                          </div>
+                        }
+                      </div>
                     }
                   </div>
                 }
-                @if (m.files?.length) {
-                  <div class="cm__files">
-                    @for (f of m.files!; track f.id) {
-                      <button class="cm__file" title="Télécharger" (click)="downloadFile(f)">
-                        <app-icon name="file" [size]="13" />
-                        <span class="cm__fn"><app-highlight [text]="f.name" [query]="searchQ()" /></span>
-                        <span class="cm__fs">{{ sizeOf(f.size) }}</span>
-                        <app-icon class="cm__dl" name="download" [size]="13" />
-                      </button>
-                    }
+                @if (m.isDeleted) {
+                  <div class="deleted">{{ m.me ? 'Vous avez' : peer().name + ' a' }} supprimé ce message</div>
+                } @else if (editingId() === m.id) {
+                  <div class="edit">
+                    <textarea class="edit__ta" [value]="editDraft()"
+                              (input)="editDraft.set($any($event.target).value)"
+                              (keydown.enter)="$event.preventDefault(); saveEdit(m)"
+                              (keydown.escape)="cancelEdit()"></textarea>
+                    <div class="edit__a">
+                      <button class="edit__x" (click)="cancelEdit()">Annuler</button>
+                      <button class="edit__ok" (click)="saveEdit(m)">Enregistrer</button>
+                    </div>
                   </div>
+                } @else {
+                  @if (m.replyTo; as r) {
+                    <div class="rq" [class.rq--del]="r.deleted">
+                      <span class="rq__a">{{ r.author }}</span>
+                      <span class="rq__x">{{ r.excerpt }}</span>
+                    </div>
+                  }
+                  @if (m.parts.length > 0) {
+                    <div>
+                      @for (p of m.parts; track $index) {
+                        @if (p.type === 't') {
+                          <app-highlight [text]="p.val" [query]="searchQ()" />
+                        } @else {
+                          <app-mention-chip [tab]="chipTabFor(p.type)" [value]="p.val" (opened)="onChipOpen($event)" />
+                        }
+                      }
+                    </div>
+                  }
+                  @if (m.files?.length) {
+                    <div class="cm__files">
+                      @for (f of m.files!; track f.id) {
+                        <button class="cm__file" title="Télécharger" (click)="downloadFile(f)">
+                          <app-icon name="file" [size]="13" />
+                          <span class="cm__fn"><app-highlight [text]="f.name" [query]="searchQ()" /></span>
+                          <span class="cm__fs">{{ sizeOf(f.size) }}</span>
+                          <app-icon class="cm__dl" name="download" [size]="13" />
+                        </button>
+                      }
+                    </div>
+                  }
+                  @if (m.reactions?.length) {
+                    <div class="rx">
+                      @for (r of m.reactions!; track r.emoji) {
+                        <button class="rx__c" [class.rx__c--mine]="r.mine" (click)="react(m, r.emoji)">
+                          <span>{{ r.emoji }}</span><span class="rx__n">{{ r.count }}</span>
+                        </button>
+                      }
+                    </div>
+                  }
                 }
                 <div class="t">
                   <span>{{ m.time }}</span>
+                  @if (m.edited && !m.isDeleted) { <span class="ed">· modifié</span> }
                   @if (m.me) {
                     <span class="rr" [class.rr--read]="m.read" [title]="m.read ? 'Lu' : 'Envoyé'">
                       <app-icon [name]="m.read ? 'checkDouble' : 'check'" [size]="13" [stroke]="2.2" />
@@ -150,6 +216,16 @@ type Msg = ConversationMessage;
       }
 
       <div class="composer">
+        @if (replyingTo(); as r) {
+          <div class="reply-bar">
+            <span class="reply-bar__i">↩</span>
+            <div class="reply-bar__c">
+              <span class="reply-bar__a">Réponse à {{ r.author }}</span>
+              <span class="reply-bar__x">{{ r.excerpt }}</span>
+            </div>
+            <button class="reply-bar__x2" title="Annuler" (click)="cancelReply()"><app-icon name="x" [size]="15" /></button>
+          </div>
+        }
         <app-comment-composer [placeholder]="'Votre message…'" (submitted)="onSend($event)" (typing)="onTyping()" />
       </div>
     </div>
@@ -308,12 +384,13 @@ export class ConversationPriveeComponent {
       .pipe(switchMap(s => this.conversationsSvc.live(s)), takeUntilDestroyed())
       .subscribe(msg => {
         this.msgs.update(list => {
-          // 1. Message déjà connu (même id) → mise à jour, typiquement l'accusé de
-          //    lecture : MON message passe « lu » sans que je recharge.
+          // 1. Message déjà connu (même id) → mise à jour : accusé de lecture,
+          //    édition (nouveau contenu + « modifié »), réaction, OU suppression
+          //    (marqueur « supprimé » conservé, façon WhatsApp).
           const known = list.findIndex(m => m.id && m.id === msg.id);
           if (known >= 0) {
             const next = [...list];
-            next[known] = { ...next[known], read: msg.read ?? next[known].read };
+            next[known] = { ...next[known], read: msg.read ?? next[known].read, isDeleted: msg.isDeleted, parts: msg.parts, files: msg.files, edited: msg.edited, reactions: msg.reactions, replyTo: msg.replyTo };
             return next;
           }
           // 2. MON propre message qui revient du serveur → remplace l'optimiste
@@ -387,6 +464,77 @@ export class ConversationPriveeComponent {
     else downloadAttachedFile(f.name, f.size);
   }
 
+  // ── Modification / suppression de message (§13.5) ────────────────────────────
+  menuId    = signal<string | null>(null);
+  editingId = signal<string | null>(null);
+  editDraft = signal('');
+
+  toggleMenu(m: Msg): void { this.menuId.set(this.menuId() === m.id ? null : (m.id ?? null)); }
+
+  /** Modifier/supprimer permis seulement dans les 15 min suivant l'envoi (aligné backend). */
+  canModify(m: Msg): boolean {
+    if (!m.sentAt) return true;
+    return Date.now() - new Date(m.sentAt).getTime() < 15 * 60 * 1000;
+  }
+
+  startEdit(m: Msg): void {
+    this.menuId.set(null);
+    if (!m.id) return;
+    this.editingId.set(m.id);
+    this.editDraft.set(m.parts.map(p => p.val).join(''));
+  }
+  cancelEdit(): void { this.editingId.set(null); this.editDraft.set(''); }
+
+  saveEdit(m: Msg): void {
+    const id = m.id;
+    const text = this.editDraft().trim();
+    if (!id) { this.cancelEdit(); return; }
+    if (!text || text === m.parts.map(p => p.val).join('')) { this.cancelEdit(); return; }
+    const snapshot = this.msgs();
+    // Optimiste : re-parse + « modifié » ; rétabli si le backend refuse (fenêtre).
+    this.msgs.update(l => l.map(x => x.id === id ? { ...x, parts: parseRichText(text), edited: true } : x));
+    this.cancelEdit();
+    this.conversationsSvc.editMessage(id, text).subscribe({ error: () => this.msgs.set(snapshot) });
+  }
+
+  removeMessage(m: Msg): void {
+    this.menuId.set(null);
+    const id = m.id;
+    if (!id) return;
+    const snapshot = this.msgs();
+    // Optimiste : marqueur « supprimé » (trace conservée) ; rétabli si le backend refuse.
+    this.msgs.update(l => l.map(x => x.id === id ? { ...x, isDeleted: true, parts: [], files: undefined, reactions: undefined, replyTo: undefined } : x));
+    this.conversationsSvc.deleteMessage(id).subscribe({ error: () => this.msgs.set(snapshot) });
+  }
+
+  // ── Réponse ciblée (reply) + réactions emoji ─────────────────────────────────
+  readonly QUICK_EMOJIS = ['👍', '❤️', '😂', '🎉', '✅', '👀'];
+  replyingTo = signal<MessageReply | null>(null);
+  reactFor = signal<string | null>(null);
+
+  startReply(m: Msg): void {
+    this.menuId.set(null);
+    if (!m.id) return;
+    this.replyingTo.set({
+      id: m.id,
+      author: m.me ? 'Vous' : this.peer().name,
+      excerpt: m.parts.map(p => p.val).join('').slice(0, 140) || (m.files?.length ? 'Pièce jointe' : ''),
+      deleted: false,
+    });
+  }
+  cancelReply(): void { this.replyingTo.set(null); }
+
+  toggleReactBar(m: Msg): void { this.reactFor.set(this.reactFor() === m.id ? null : (m.id ?? null)); }
+
+  react(m: Msg, emoji: string): void {
+    this.reactFor.set(null);
+    const id = m.id;
+    if (!id) return;
+    const snapshot = this.msgs();
+    this.msgs.update(l => l.map(x => x.id === id ? { ...x, reactions: toggleLocalReaction(x.reactions, emoji) } : x));
+    this.conversationsSvc.toggleReaction(id, emoji).subscribe({ error: () => this.msgs.set(snapshot) });
+  }
+
   toggleSearch(): void {
     this.searchOpen.update(v => !v);
     if (!this.searchOpen()) this.searchQ.set('');
@@ -410,12 +558,14 @@ export class ConversationPriveeComponent {
       ? payload.files.map(f => ({ id: f.id, name: f.name, size: f.size }))
       : undefined;
     // Affichage optimiste immédiat, puis persistance réelle (texte + fichiers).
-    this.msgs.update(list => [...list, { me: true, parts: payload.parts, time, read: false, files }]);
+    const reply = this.replyingTo();
+    this.msgs.update(list => [...list, { me: true, parts: payload.parts, time, read: false, files, replyTo: reply ?? undefined }]);
     const text = payload.text ?? payload.parts.map(p => p.val).join('');
     const rawFiles = payload.files.map(f => f.file).filter((f): f is File => !!f);
     // Mentions résolues en cibles réelles (cf. canal.component).
     const mentions = this.catalog.resolveMentions(payload.parts);
-    this.conversationsSvc.sendMessage(this.slug(), text, rawFiles, mentions).subscribe();
+    this.cancelReply();
+    this.conversationsSvc.sendMessage(this.slug(), text, rawFiles, mentions, reply?.id).subscribe();
   }
 
   onChipOpen(ev: MentionChipEvent): void {

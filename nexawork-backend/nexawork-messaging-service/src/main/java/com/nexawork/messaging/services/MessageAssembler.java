@@ -12,6 +12,8 @@ import com.nexawork.messaging.events.publishers.MessageMentionEvent;
 import com.nexawork.messaging.events.publishers.MessagingEventPublisher;
 import com.nexawork.messaging.mappers.MessageMapper;
 import com.nexawork.messaging.repositories.MessageMentionRepository;
+import com.nexawork.messaging.repositories.MessageReactionRepository;
+import com.nexawork.messaging.repositories.MessageRepository;
 import com.nexawork.messaging.security.CallerContext;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -35,6 +37,8 @@ public class MessageAssembler {
 
     MentionParser mentionParser;
     MessageMentionRepository mentionRepository;
+    MessageRepository messageRepository;
+    MessageReactionRepository reactionRepository;
     MessageMapper messageMapper;
     MessagingEventPublisher eventPublisher;
     CallerContext caller;
@@ -177,10 +181,50 @@ public class MessageAssembler {
         return type + ":" + targetText.replace(' ', ' ').trim().toLowerCase();
     }
 
-    /** Assemble un MessageResponse avec ses mentions. */
+    /** Assemble un MessageResponse avec ses mentions et l'aperçu du message cité. */
     public MessageResponse toDto(Message message) {
         MessageResponse dto = messageMapper.asDto(message);
+        // Message supprimé : on ne renvoie qu'un MARQUEUR (auteur + isDeleted) — jamais
+        // le contenu, les mentions, la citation, les réactions ni les pièces jointes.
+        // Le client affiche « … a supprimé son message » à la place (façon WhatsApp).
+        if (Boolean.TRUE.equals(message.getIsDeleted())) {
+            dto.setContent("");
+            dto.setAttachments(null);
+            dto.setAttachmentUrl(null);
+            dto.setAttachmentName(null);
+            dto.setMentions(List.of());
+            dto.setReplyTo(null);
+            dto.setReactions(List.of());
+            return dto;
+        }
         dto.setMentions(messageMapper.parseMentions(mentionRepository.findByMessageId(message.getId())));
+        if (message.getReplyToMessageId() != null) {
+            dto.setReplyTo(buildReplyPreview(message.getReplyToMessageId()));
+        }
+        dto.setReactions(buildReactions(message.getId()));
         return dto;
+    }
+
+    /** Regroupe les réactions du message par emoji, dans l'ordre de première apparition. */
+    private List<MessageResponse.ReactionSummary> buildReactions(java.util.UUID messageId) {
+        java.util.Map<String, List<java.util.UUID>> byEmoji = new java.util.LinkedHashMap<>();
+        for (var r : reactionRepository.findByMessageId(messageId)) {
+            byEmoji.computeIfAbsent(r.getEmoji(), k -> new java.util.ArrayList<>()).add(r.getUserId());
+        }
+        return byEmoji.entrySet().stream()
+                .map(e -> MessageResponse.ReactionSummary.builder().emoji(e.getKey()).userIds(e.getValue()).build())
+                .toList();
+    }
+
+    /** Aperçu du message cité : auteur + court extrait, ou marqueur « supprimé ». */
+    private MessageResponse.ReplyPreview buildReplyPreview(java.util.UUID parentId) {
+        return messageRepository.findById(parentId)
+                .map(p -> MessageResponse.ReplyPreview.builder()
+                        .id(p.getId())
+                        .authorUserId(p.getSenderUserId())
+                        .deleted(Boolean.TRUE.equals(p.getIsDeleted()))
+                        .excerpt(Boolean.TRUE.equals(p.getIsDeleted()) ? null : excerptOf(p.getContent()))
+                        .build())
+                .orElse(null);
     }
 }

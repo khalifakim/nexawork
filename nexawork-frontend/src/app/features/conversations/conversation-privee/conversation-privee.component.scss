@@ -74,3 +74,122 @@
 .unreadsep { display: flex; align-items: center; gap: 10px; margin: 8px 0; padding: 0 8px; }
 .unreadsep::before, .unreadsep::after { content: ''; flex: 1; height: 1px; background: var(--nx-danger, #e5484d); opacity: .5; }
 .unreadsep span { font-size: 11px; font-weight: 700; color: var(--nx-danger, #e5484d); text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
+
+/* ── Modifier / supprimer un message ─────────────────────────────────────── */
+.bubble { position: relative; }
+.ed { font-style: italic; color: var(--nx-text-300); }
+
+/* Menu ⋯ — révélé au survol du message. */
+.mm { position: absolute; top: 6px; right: 8px; }
+.mm__b {
+  width: 22px; height: 20px; border: none; border-radius: 6px;
+  background: rgba(255,255,255,.7); color: var(--nx-text-400); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; transition: opacity .12s;
+}
+.line:hover .mm__b { opacity: 1; }
+.mm__b:hover { background: #fff; color: var(--nx-text-600); }
+.mm__bd { position: fixed; inset: 0; z-index: 40; }
+.mm__menu {
+  position: absolute; top: 24px; right: 0; z-index: 41; width: 168px;
+  background: #fff; border-radius: 10px; border: 1px solid var(--nx-border-card);
+  box-shadow: var(--nx-shadow-pop); padding: 6px;
+}
+.mm__i {
+  width: 100%; display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px; border: none; border-radius: 7px; background: transparent;
+  cursor: pointer; font-family: inherit; font-size: 13px; font-weight: 600;
+  color: var(--nx-text-600); text-align: left;
+}
+.mm__i app-icon { color: var(--nx-text-500); }
+.mm__i:hover { background: var(--nx-surface-2); }
+.mm__i--danger, .mm__i--danger app-icon { color: var(--nx-danger); }
+.mm__i--danger:hover { background: #FBE9E7; }
+
+/* Édition inline */
+.edit { display: flex; flex-direction: column; gap: 8px; }
+.edit__ta {
+  width: 100%; box-sizing: border-box; min-height: 40px; resize: vertical;
+  border: 1px solid var(--nx-indigo); border-radius: 10px; outline: none;
+  padding: 8px 11px; font-family: inherit; font-size: 14px; line-height: 1.45;
+  color: var(--nx-text); background: #fff;
+}
+.edit__a { display: flex; gap: 8px; justify-content: flex-end; }
+.edit__x, .edit__ok {
+  height: 28px; padding: 0 12px; border-radius: 8px; cursor: pointer;
+  font-family: inherit; font-size: 12px; font-weight: 600;
+}
+.edit__x { border: 1px solid var(--nx-border); background: #fff; color: var(--nx-text-600); }
+.edit__x:hover { background: var(--nx-surface-2); }
+.edit__ok { border: none; background: var(--nx-indigo); color: #fff; }
+.edit__ok:hover { background: var(--nx-indigo-hover); }
+
+/* Message supprimé — marqueur « … a supprimé ce message » (façon WhatsApp) */
+.deleted { font-style: italic; color: var(--nx-text-400); }
+
+/* ── Barre d'actions : pilule flottante au-dessus de la bulle, hors du texte ── */
+.act {
+  position: absolute; top: -14px; right: 6px; z-index: 6;
+  display: flex; align-items: center; gap: 1px;
+  padding: 2px; border-radius: 9px;
+  background: #fff; border: 1px solid var(--nx-border-card); box-shadow: var(--nx-shadow-pop);
+  opacity: 0; transition: opacity .12s;
+}
+.line:hover .act { opacity: 1; }
+.act__b {
+  min-width: 26px; height: 24px; padding: 0 4px; border: none; border-radius: 7px;
+  background: transparent; color: var(--nx-text-500); cursor: pointer;
+  display: flex; align-items: center; justify-content: center; font-size: 14px; line-height: 1;
+}
+.act__b:hover { background: var(--nx-surface-2); color: var(--nx-text-700); }
+
+.ra { position: relative; }
+.ra__bd { position: fixed; inset: 0; z-index: 40; }
+.ra__bar {
+  position: absolute; top: 24px; right: 0; z-index: 41;
+  display: flex; gap: 2px; padding: 4px;
+  background: #fff; border: 1px solid var(--nx-border-card);
+  border-radius: 10px; box-shadow: var(--nx-shadow-pop);
+}
+.ra__e { border: none; background: transparent; cursor: pointer; font-size: 18px; line-height: 1; padding: 4px 5px; border-radius: 7px; }
+.ra__e:hover { background: var(--nx-surface-2); transform: scale(1.15); }
+
+/* Citation dans la bulle */
+.rq {
+  display: flex; flex-direction: column; gap: 1px; margin-bottom: 6px;
+  padding: 5px 9px; border-left: 3px solid var(--nx-indigo);
+  background: rgba(91,95,233,.06); border-radius: 4px 8px 8px 4px;
+}
+.rq__a { font-size: 11.5px; font-weight: 700; color: var(--nx-indigo-text); }
+.rq__x { font-size: 12.5px; color: var(--nx-text-500); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 240px; }
+.rq--del .rq__x { font-style: italic; }
+
+/* Réactions posées */
+.rx { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+.rx__c {
+  display: inline-flex; align-items: center; gap: 4px;
+  height: 24px; padding: 0 8px; border-radius: 12px; cursor: pointer;
+  border: 1px solid var(--nx-border); background: #fff;
+  font-family: inherit; font-size: 13px; line-height: 1;
+}
+.rx__c:hover { background: var(--nx-surface-2); }
+.rx__c--mine { background: var(--nx-indigo-50); border-color: var(--nx-indigo); }
+.rx__n { font-size: 11.5px; font-weight: 700; color: var(--nx-text-600); }
+.rx__c--mine .rx__n { color: var(--nx-indigo-text); }
+
+/* Bandeau « Réponse à … » au-dessus du composer */
+.reply-bar {
+  display: flex; align-items: center; gap: 10px; margin: 0 0 8px;
+  padding: 8px 12px; border-radius: 10px;
+  background: var(--nx-surface-2); border-left: 3px solid var(--nx-indigo);
+}
+.reply-bar__i { color: var(--nx-indigo); font-size: 15px; }
+.reply-bar__c { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.reply-bar__a { font-size: 12px; font-weight: 700; color: var(--nx-indigo-text); }
+.reply-bar__x { font-size: 12.5px; color: var(--nx-text-500); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.reply-bar__x2 {
+  width: 28px; height: 28px; flex: none; border: none; border-radius: 7px;
+  background: transparent; color: var(--nx-text-400); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.reply-bar__x2:hover { background: rgba(0,0,0,.06); color: var(--nx-text-600); }

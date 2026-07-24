@@ -18,7 +18,7 @@ public interface MessageRepository extends JpaRepository<Message, UUID> {
 
     @Query("""
             SELECT m FROM Message m
-            WHERE m.channel.id = :channelId AND m.isDeleted = false
+            WHERE m.channel.id = :channelId
             ORDER BY m.sentAt DESC
             """)
     List<Message> findChannelFirstPage(@Param("channelId") UUID channelId, Pageable pageable);
@@ -32,7 +32,7 @@ public interface MessageRepository extends JpaRepository<Message, UUID> {
 
     @Query("""
             SELECT m FROM Message m
-            WHERE m.channel.id = :channelId AND m.isDeleted = false AND m.sentAt < :before
+            WHERE m.channel.id = :channelId AND m.sentAt < :before
             ORDER BY m.sentAt DESC
             """)
     List<Message> findChannelBefore(@Param("channelId") UUID channelId,
@@ -40,14 +40,14 @@ public interface MessageRepository extends JpaRepository<Message, UUID> {
 
     @Query("""
             SELECT m FROM Message m
-            WHERE m.conversationId = :conversationId AND m.isDeleted = false
+            WHERE m.conversationId = :conversationId
             ORDER BY m.sentAt DESC
             """)
     List<Message> findConversationFirstPage(@Param("conversationId") UUID conversationId, Pageable pageable);
 
     @Query("""
             SELECT m FROM Message m
-            WHERE m.conversationId = :conversationId AND m.isDeleted = false AND m.sentAt < :before
+            WHERE m.conversationId = :conversationId AND m.sentAt < :before
             ORDER BY m.sentAt DESC
             """)
     List<Message> findConversationBefore(@Param("conversationId") UUID conversationId,

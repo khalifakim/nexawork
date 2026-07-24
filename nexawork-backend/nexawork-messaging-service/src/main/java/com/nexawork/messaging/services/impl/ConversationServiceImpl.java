@@ -102,6 +102,7 @@ public class ConversationServiceImpl implements ConversationService {
                 .messageType(MessageType.USER)
                 .isDeleted(false)
                 .edited(false)
+                .replyToMessageId(request.getReplyToMessageId())
                 .build();
         assembler.applyAttachments(message, request, caller.userId());
         // saveAndFlush : peuple `sentAt` (@CreationTimestamp) avant le DTO diffusé,

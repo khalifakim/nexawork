@@ -24,6 +24,15 @@ const PRIOS: { name: string; color: string; value: TaskPriority }[] = [
 
 const EST_OPTIONS = ['0,5 h', '1 h', '2 h', '4 h', '1 j', '2 j', '3 j', '1 sem'];
 
+/**
+ * `yyyy-MM-dd` du jour, en heure **locale**. Volontairement sans `toISOString()`,
+ * qui bascule en UTC et renverrait la veille en fin de journée.
+ */
+function todayIso(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 /** Personne assignable (membre réel du projet). */
 interface AssignableMember { id: string; name: string; c: string; }
 /** Équipe assignable (équipe réelle du projet). */
@@ -745,6 +754,12 @@ export class CreerTacheComponent implements OnInit, AfterViewInit {
   @Input() projectName = '';
   /** Nom de la colonne d'origine — affiché dans le fil d'Ariane. */
   @Input() column      = '';
+  /**
+   * Dates pré-remplies (`yyyy-MM-dd`) — renseignées quand la création part d'un
+   * jour du Calendrier. Vides ailleurs : le comportement d'origine est inchangé.
+   */
+  @Input() initialStartDate = '';
+  @Input() initialDueDate   = '';
   @Output() closed  = new EventEmitter<void>();
   @Output() created = new EventEmitter<TaskCard>();
 
@@ -820,6 +835,12 @@ export class CreerTacheComponent implements OnInit, AfterViewInit {
       ?? this.columns[0]?.id
       ?? null;
     this.statusId.set(initial);
+
+    // Date de début pré-remplie à AUJOURD'HUI par défaut — cas de très loin le
+    // plus fréquent. Depuis le Calendrier, le jour cliqué prime. L'échéance
+    // reste vide : elle relève d'une décision, pas d'un défaut raisonnable.
+    this.dateDebut.set(this.initialStartDate || todayIso());
+    if (this.initialDueDate) this.dateFin.set(this.initialDueDate);
 
     // Membres et équipes RÉELS du projet (assignables).
     if (this.projectId) {

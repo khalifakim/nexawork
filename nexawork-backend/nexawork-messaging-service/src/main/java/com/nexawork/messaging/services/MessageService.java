@@ -20,6 +20,15 @@ public interface MessageService {
 
     MessageResponse sendChannelMessage(UUID channelId, SendMessageRequest request);
 
+    /**
+     * Modifie le contenu d'un message. Réservé à l'auteur et à une fenêtre de
+     * temps après l'envoi. Diffuse la version modifiée en temps réel.
+     */
+    MessageResponse editMessage(UUID messageId, String content);
+
+    /** Ajoute/retire (toggle) une réaction emoji de l'appelant, et diffuse le résultat. */
+    MessageResponse toggleReaction(UUID messageId, String emoji);
+
     void deleteMessage(UUID messageId);
 
     // ─── Threads (canal ou conversation) ───

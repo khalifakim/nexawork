@@ -7,6 +7,7 @@ import { IconComponent } from '@shared/ui/icon/icon.component';
 import { KanbanComponent } from '@features/projets/kanban/kanban.component';
 import { VueDEnsembleComponent } from '@features/projets/vue-d-ensemble/vue-d-ensemble.component';
 import { GanttComponent } from '@features/projets/gantt/gantt.component';
+import { CalendrierComponent } from '@features/projets/calendrier/calendrier.component';
 import { CanauxProjetComponent } from '@features/projets/canaux-projet/canaux-projet.component';
 import { EquipesComponent } from '@features/equipes/equipes/equipes.component';
 import { GedViewComponent } from '@features/documents/ged-view/ged-view.component';
@@ -37,7 +38,7 @@ interface ConfirmCfg { title: string; danger: boolean; btn: string; icon: string
   selector: 'app-projet-shell',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, IconComponent, KanbanComponent, VueDEnsembleComponent, GanttComponent, CanauxProjetComponent, EquipesComponent, GedViewComponent, FicheTacheComponent, CreerTacheComponent, StatutsComponent, WorkflowComponent, ConfirmDialogComponent],
+  imports: [RouterLink, IconComponent, KanbanComponent, VueDEnsembleComponent, GanttComponent, CalendrierComponent, CanauxProjetComponent, EquipesComponent, GedViewComponent, FicheTacheComponent, CreerTacheComponent, StatutsComponent, WorkflowComponent, ConfirmDialogComponent],
   providers: [KanbanStore],
   template: `
     <div class="shell">
@@ -112,6 +113,7 @@ interface ConfirmCfg { title: string; danger: boolean; btn: string; icon: string
           @case ('vue-d-ensemble') { <app-vue-d-ensemble [readonly]="isRo()" /> }
           @case ('kanban') { <app-kanban [readonly]="isRo()" [canManageBoard]="isAdmin()" (openTask)="openTask($event)" (create)="createCol.set($event)" (openStatuses)="statutsOpen.set(true)" (openWorkflow)="workflowOpen.set(true)" /> }
           @case ('gantt') { <app-gantt /> }
+          @case ('calendrier') { <app-calendrier [readonly]="isRo()" (openTask)="openTask($event)" (create)="createOnDay($event)" /> }
           @case ('documents') { <app-ged-view [projectId]="id()" [readonly]="isRo()" /> }
           @case ('equipes') { <app-equipes [readonly]="isRo()" [canManage]="isAdmin() || isProjectLead()" /> }
           @case ('canaux') { <app-canaux-projet [readonly]="isRo()" [projectName]="displayName()" /> }
@@ -134,7 +136,9 @@ interface ConfirmCfg { title: string; danger: boolean; btn: string; icon: string
         [initialStatusId]="createCol()"
         [column]="createColName()"
         [projectName]="displayName()"
-        (closed)="createCol.set(null)"
+        [initialStartDate]="createDate() ?? ''"
+        [initialDueDate]="createDate() ?? ''"
+        (closed)="closeCreate()"
         (created)="onTaskCreated($event)" />
     }
     @if (statutsOpen()) { <app-statuts [projectName]="displayName()" (closed)="statutsOpen.set(false)" /> }
@@ -211,6 +215,8 @@ export class ProjetShellComponent {
   setOpen      = signal(false);
   selected     = signal<(TaskCard & { proj?: string }) | null>(null);
   createCol    = signal<string | null>(null);
+  /** Jour pré-rempli quand la création part du Calendrier (`yyyy-MM-dd`). */
+  createDate   = signal<string | null>(null);
   statutsOpen  = signal(false);
   workflowOpen = signal(false);
   confirmKind  = signal<ConfirmKind | null>(null);
@@ -230,6 +236,7 @@ export class ProjetShellComponent {
     { key: 'vue-d-ensemble', label: "Vue d'ensemble", icon: 'dashboard' },
     { key: 'kanban',         label: 'Kanban',         icon: 'kanban'    },
     { key: 'gantt',          label: 'Gantt',           icon: 'gantt'     },
+    { key: 'calendrier',     label: 'Calendrier',      icon: 'calendar'  },
     { key: 'documents',      label: 'Documents',       icon: 'documents' },
     { key: 'equipes',        label: 'Équipes',         icon: 'teams'     },
     { key: 'canaux',         label: 'Canaux',          icon: 'channels'  },
@@ -277,10 +284,25 @@ export class ProjetShellComponent {
 
   openTask(t: TaskCard): void { this.selected.set({ ...t, proj: this.displayName() }); }
 
+  /**
+   * Création depuis le Calendrier : le jour cliqué pré-remplit les deux dates,
+   * et le modal retombe sur le statut initial du workflow (`''` = pas de colonne
+   * imposée, comme depuis la barre d'outils du Kanban).
+   */
+  createOnDay(dayIso: string): void {
+    this.createDate.set(dayIso);
+    this.createCol.set('');
+  }
+
+  closeCreate(): void {
+    this.createCol.set(null);
+    this.createDate.set(null);
+  }
+
   /** Une tâche vient d'être créée → l'insérer dans sa colonne sans recharger. */
   onTaskCreated(card: TaskCard): void {
     this.store.addCard(card);
-    this.createCol.set(null);
+    this.closeCreate();
   }
 
   /** Une tâche a été supprimée depuis sa fiche → la retirer du board et fermer. */

@@ -70,6 +70,13 @@ export class KanbanStore {
   }
 
   /**
+   * Toutes les cartes du board, à plat et **sans filtre** — alimente les vues qui
+   * ne raisonnent pas par colonne (Calendrier). Les filtres du Kanban ne s'y
+   * appliquent pas volontairement : chaque vue porte ses propres critères.
+   */
+  readonly allCards = computed<TaskCard[]>(() => Object.values(this.board()).flat());
+
+  /**
    * Identifiants des assignés (utilisateurs) réellement présents sur le board —
    * c.-à-d. qui portent au moins une tâche. Alimente le filtre « Assigné à » :
    * un membre du projet sans tâche assignée n'y figure pas (il ne filtrerait
@@ -153,6 +160,43 @@ export class KanbanStore {
       },
       error: () => this.board.set(snapshot),
     });
+  }
+
+  /** Remplace une carte in situ, sans la changer de colonne. */
+  private patchCard(id: string, patch: Partial<TaskCard>): void {
+    this.board.update(b => {
+      const next: Record<string, TaskCard[]> = {};
+      for (const [col, list] of Object.entries(b)) next[col] = list.map(t => t.id === id ? { ...t, ...patch } : t);
+      return next;
+    });
+  }
+
+  /**
+   * Replanifie une tâche (glisser-déposer du Calendrier) : nouvelles dates de
+   * début et d'échéance, la durée étant conservée par l'appelant. Optimiste dans
+   * le même esprit que `moveTask` — la barre bouge tout de suite, on rétablit
+   * l'état d'origine si le backend refuse (toast d'erreur par l'intercepteur).
+   * Le statut n'est pas touché : aucune transition de workflow n'est déclenchée.
+   */
+  reschedule(taskId: string, startDate: string, dueDate: string): void {
+    const snapshot = this.board();
+    const target = Object.values(snapshot).flat().find(t => t.id === taskId);
+    if (!target || (target.startDate === startDate && target.dueDate === dueDate)) return;
+
+    this.patchCard(taskId, { startDate, dueDate });
+    this.tasksSvc.updateTask(taskId, { startDate, dueDate }).subscribe({
+      next: fresh => {
+        this.patchCard(taskId, fresh);
+        this.toast.show({ message: `${fresh.taskKey} replanifiée au ${this.fmtDay(startDate)}` });
+      },
+      error: () => this.board.set(snapshot),
+    });
+  }
+
+  /** « 2026-07-14 » → « 14 juil. » (message de confirmation de replanification). */
+  private fmtDay(iso: string): string {
+    const [y, m, d] = iso.split('-').map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
   }
 
   // ── Column / status mutations (shared with the status modal) ────────────────

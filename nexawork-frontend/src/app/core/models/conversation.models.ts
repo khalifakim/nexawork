@@ -1,4 +1,5 @@
 import { RichPart } from '@core/util/mention.util';
+import { MessageReaction, MessageReply } from '@core/models/channel.models';
 
 /** A conversation entry in the sidebar / conversations list. */
 export interface Conversation {
@@ -37,6 +38,8 @@ export interface ConversationFile { id: number; name: string; size: number; /** 
 export interface ConversationMessage {
   /** UUID backend — sert à cibler un message (mention : « ouvrir et encadrer »). */
   id?: string;
+  /** Date d'envoi (ISO) — borne la fenêtre de modification/suppression (15 min). */
+  sentAt?: string;
   me: boolean;
   parts: RichPart[];   // rich text (mentions rendered as chips)
   time: string;
@@ -48,4 +51,12 @@ export interface ConversationMessage {
   unreadByMe?: boolean;
   /** Files attached to the message — same preview format as canaux / task comments. */
   files?: ConversationFile[];
+  /** Le message a été modifié après envoi (affiche « · modifié »). */
+  edited?: boolean;
+  /** Reçu à `true` en temps réel quand le message est supprimé → retrait de la liste. */
+  isDeleted?: boolean;
+  /** Message cité (réponse ciblée), prêt à afficher. */
+  replyTo?: MessageReply;
+  /** Réactions emoji prêtes à afficher. */
+  reactions?: MessageReaction[];
 }

@@ -98,4 +98,8 @@ public class Message {
     /** Accusé de lecture par le destinataire (conversations directes uniquement). */
     @Column(name = "read_at")
     private Instant readAt;
+
+    /** Message cité (réponse ciblée, type WhatsApp). Nul = message ordinaire. */
+    @Column(name = "reply_to_message_id")
+    private UUID replyToMessageId;
 }

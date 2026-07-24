@@ -93,9 +93,62 @@ export interface MessageResponse {
   attachmentName?: string;
   messageType: 'USER';
   edited: boolean;
+  /** Message supprimé (soft delete) : diffusé à `true` pour un retrait en temps réel. */
+  isDeleted?: boolean;
   sentAt: string;
   readAt?: string;
   mentions: MentionResponse[];
+  /** Aperçu du message cité (réponse ciblée). */
+  replyTo?: ReplyPreviewResponse;
+  /** Réactions emoji agrégées (chaque client dérive son « réagi » de `userIds`). */
+  reactions?: ReactionSummaryResponse[];
+}
+
+/** Aperçu brut du message cité, renvoyé par le backend. */
+export interface ReplyPreviewResponse {
+  id: string;
+  authorUserId: string;
+  excerpt?: string;
+  deleted: boolean;
+}
+
+/** Réaction brute : un emoji + les utilisateurs qui l'ont posé. */
+export interface ReactionSummaryResponse {
+  emoji: string;
+  userIds: string[];
+}
+
+/** Aperçu d'un message cité, prêt à afficher (auteur résolu). */
+export interface MessageReply {
+  id: string;
+  author: string;
+  excerpt: string;
+  deleted: boolean;
+}
+
+/** Réaction prête à afficher : emoji, total, et si J'ai réagi. */
+export interface MessageReaction {
+  emoji: string;
+  count: number;
+  mine: boolean;
+}
+
+/**
+ * Applique localement un toggle de MA réaction à un emoji (affichage optimiste).
+ * Le temps réel remplacera ensuite par l'état serveur exact.
+ */
+export function toggleLocalReaction(list: MessageReaction[] | undefined, emoji: string): MessageReaction[] {
+  const arr = [...(list ?? [])];
+  const i = arr.findIndex(r => r.emoji === emoji);
+  if (i < 0) return [...arr, { emoji, count: 1, mine: true }];
+  const r = arr[i];
+  if (r.mine) {
+    if (r.count <= 1) arr.splice(i, 1);
+    else arr[i] = { ...r, count: r.count - 1, mine: false };
+  } else {
+    arr[i] = { ...r, count: r.count + 1, mine: true };
+  }
+  return arr;
 }
 
 /** Page de messages (historique paginé par curseur). */
@@ -122,6 +175,14 @@ export interface ChannelMessage {
   parts: RichPart[];
   mine?: boolean;
   files?: ChannelFile[];
+  /** Le message a été modifié après envoi (affiche « · modifié »). */
+  edited?: boolean;
+  /** Reçu à `true` en temps réel quand le message est supprimé → retrait de la liste. */
+  isDeleted?: boolean;
+  /** Message cité (réponse ciblée), prêt à afficher. */
+  replyTo?: MessageReply;
+  /** Réactions emoji prêtes à afficher. */
+  reactions?: MessageReaction[];
 }
 
 /** Visibility restriction of a channel (private = restricted to specific grants). */

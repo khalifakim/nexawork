@@ -32,7 +32,33 @@ public class MessageResponse {
     private String attachmentName;
     private MessageType messageType;
     private Boolean edited;
+    /** Aperçu du message cité (réponse ciblée). Nul = message ordinaire. */
+    private ReplyPreview replyTo;
+    /** Message supprimé (soft delete) : diffusé à {@code true} pour que les clients
+     *  connectés le retirent en temps réel. Les rechargements l'excluent déjà. */
+    private Boolean isDeleted;
     private LocalDateTime sentAt;
     private Instant readAt;
     private List<MentionResponse> mentions;
+    /** Réactions emoji agrégées. `userIds` permet à chaque client de savoir s'il a réagi. */
+    private List<ReactionSummary> reactions;
+
+    /** Extrait du message cité, résolu à l'affichage (auteur + court aperçu). */
+    @Data
+    @Builder
+    public static class ReplyPreview {
+        private UUID id;
+        private UUID authorUserId;
+        private String excerpt;
+        /** Le message cité a été supprimé entre-temps. */
+        private boolean deleted;
+    }
+
+    /** Un emoji + qui l'a posé. Le client dérive le total et son propre « réagi ». */
+    @Data
+    @Builder
+    public static class ReactionSummary {
+        private String emoji;
+        private List<UUID> userIds;
+    }
 }

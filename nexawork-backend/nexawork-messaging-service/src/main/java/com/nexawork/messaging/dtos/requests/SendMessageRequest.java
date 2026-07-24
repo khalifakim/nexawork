@@ -20,6 +20,9 @@ public class SendMessageRequest {
 
     private String content;
 
+    /** Id du message cité (réponse ciblée). Nul = message ordinaire. */
+    private UUID replyToMessageId;
+
     /**
      * Cibles des mentions saisies, résolues **par le client** au moment de la
      * saisie (il choisit dans un catalogue réel : membres, tâches, documents,

@@ -7,6 +7,7 @@ import { FilesHttpService } from '@core/http/files.http.service';
 import { StompClientService } from '@core/ws/stomp-client.service';
 import { Conversation, ConversationMessage, ConversationResponse } from '@core/models/conversation.models';
 import { MessageResponse } from '@core/models/channel.models';
+import { mapReactions, mapReply } from '@core/services/channels.service';
 import { messageBody, messageFiles } from './channels.service';
 import { MentionRef } from '@core/models/mention.models';
 import { CONVERSATIONS_BY_WORKSPACE, CONVERSATION_THREADS, DEFAULT_CONVERSATION_THREAD } from '@core/mock/conversations';
@@ -37,7 +38,13 @@ export abstract class ConversationsService {
    * Send a message to the peer identified by the route slug, with optional file
    * attachments (téléversées au File Service puis rattachées, une par message).
    */
-  abstract sendMessage(id: string, content: string, files?: File[], mentions?: MentionRef[]): Observable<void>;
+  abstract sendMessage(id: string, content: string, files?: File[], mentions?: MentionRef[], replyToMessageId?: string): Observable<MessageResponse | null>;
+  /** Supprime un message (soft delete) — auteur dans la fenêtre, ou admin. */
+  abstract deleteMessage(messageId: string): Observable<void>;
+  /** Modifie le contenu d'un message (auteur, fenêtre de temps). */
+  abstract editMessage(messageId: string, content: string): Observable<MessageResponse>;
+  /** Ajoute/retire (toggle) une réaction emoji sur un message. */
+  abstract toggleReaction(messageId: string, emoji: string): Observable<MessageResponse>;
   /** Marque comme lus les messages reçus de la conversation. */
   abstract markRead(id: string): void;
   /** Accusé de lecture d'un message reçu (`PATCH /messages/{id}/read`) — temps réel. */
@@ -73,7 +80,10 @@ export class ConversationsMockService extends ConversationsService {
     return of(CONVERSATION_THREADS[id] ?? DEFAULT_CONVERSATION_THREAD).pipe(delay(80));
   }
   live(_id: string): Observable<ConversationMessage> { return EMPTY; }
-  sendMessage(_id: string, _content: string, _files?: File[], _mentions?: MentionRef[]): Observable<void> { return of(void 0); }
+  sendMessage(_id: string, _content: string, _files?: File[], _mentions?: MentionRef[], _replyToMessageId?: string): Observable<MessageResponse | null> { return of(null); }
+  deleteMessage(_messageId: string): Observable<void> { return of(void 0); }
+  editMessage(_messageId: string, _content: string): Observable<MessageResponse> { return EMPTY; }
+  toggleReaction(_messageId: string, _emoji: string): Observable<MessageResponse> { return EMPTY; }
   markRead(id: string): void {
     this._items.update(list => list.map(c => c.id === id ? { ...c, unread: 0 } : c));
   }
@@ -143,21 +153,39 @@ export class ConversationsHttpService extends BaseHttpService implements Convers
     }));
   }
 
-  sendMessage(id: string, content: string, files: File[] = [], mentions: MentionRef[] = []): Observable<void> {
+  sendMessage(id: string, content: string, files: File[] = [], mentions: MentionRef[] = [], replyToMessageId?: string): Observable<MessageResponse | null> {
     const text = content.trim();
-    if (!text && files.length === 0) return of(void 0);
+    if (!text && files.length === 0) return of(null);
+    const reply = replyToMessageId ? { replyToMessageId } : {};
     return this.ensureConversation(id).pipe(switchMap(conv => {
-      if (!conv?.uuid) return of(void 0);
+      if (!conv?.uuid) return of(null);
       const endpoint = `/conversations/${conv.uuid}/messages`;
       if (files.length === 0) {
-        return this.post$<MessageResponse>('messaging', endpoint, { content: text, mentions }).pipe(map(() => void 0));
+        // Le DTO renvoyé porte l'id réel : posé sur le message optimiste pour
+        // le rendre modifiable/supprimable sans rechargement.
+        return this.post$<MessageResponse>('messaging', endpoint, { content: text, mentions, ...reply });
       }
       // Téléverse tous les fichiers puis envoie UN SEUL message qui les porte tous.
       const workspaceId = this.session.activeWorkspaceId();
       return forkJoin(files.map(f => this.filesSvc.upload('conversation-msg', f, { workspaceId, conversationId: conv.uuid })))
         .pipe(switchMap(stored =>
-          this.post$<MessageResponse>('messaging', endpoint, messageBody(text, stored, mentions)).pipe(map(() => void 0))));
+          this.post$<MessageResponse>('messaging', endpoint, { ...messageBody(text, stored, mentions), ...reply })));
     }));
+  }
+
+  /** Suppression (soft delete) — ciblée par l'id du message. */
+  deleteMessage(messageId: string): Observable<void> {
+    return this.delete$<void>('messaging', `/messages/${messageId}`);
+  }
+
+  /** Édition du contenu — renvoie le message modifié (edited = true). */
+  editMessage(messageId: string, content: string): Observable<MessageResponse> {
+    return this.patch$<MessageResponse>('messaging', `/messages/${messageId}`, { content });
+  }
+
+  /** Toggle d'une réaction emoji — renvoie le message avec ses réactions à jour. */
+  toggleReaction(messageId: string, emoji: string): Observable<MessageResponse> {
+    return this.post$<MessageResponse>('messaging', `/messages/${messageId}/reactions`, { emoji });
   }
 
   /**
@@ -257,17 +285,22 @@ function toConversation(c: ConversationResponse, meId: string | undefined, byId:
 }
 
 /** `MessageResponse` → `ConversationMessage`. */
-function toConversationMessage(msg: MessageResponse, meId: string | undefined, _byId: Map<string | undefined, unknown>): ConversationMessage {
+function toConversationMessage(msg: MessageResponse, meId: string | undefined, byId: Map<string | undefined, { name: string }>): ConversationMessage {
   const mine = msg.senderUserId === meId;
   const files = messageFiles(msg);
   return {
     id: msg.id,
+    sentAt: msg.sentAt,
     me: mine,
     parts: parseRichText(msg.content),
     time: formatTime(msg.sentAt),
     read: mine ? !!msg.readAt : undefined,
     unreadByMe: !mine && !msg.readAt,
     files,
+    edited: !!msg.edited,
+    isDeleted: !!msg.isDeleted,
+    replyTo: mapReply(msg.replyTo, byId),
+    reactions: mapReactions(msg.reactions, meId),
   };
 }
 

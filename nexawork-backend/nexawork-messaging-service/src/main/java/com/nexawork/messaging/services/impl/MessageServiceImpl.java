@@ -12,10 +12,12 @@ import com.nexawork.messaging.entities.Channel;
 import com.nexawork.messaging.entities.Message;
 import com.nexawork.messaging.entities.MessageAttachment;
 import com.nexawork.messaging.entities.MessageMention;
+import com.nexawork.messaging.entities.MessageReaction;
 import com.nexawork.messaging.entities.enums.MentionType;
 import com.nexawork.messaging.entities.enums.MessageType;
 import com.nexawork.messaging.repositories.ChannelMemberRepository;
 import com.nexawork.messaging.repositories.MessageMentionRepository;
+import com.nexawork.messaging.repositories.MessageReactionRepository;
 import com.nexawork.messaging.repositories.MessageRepository;
 import com.nexawork.messaging.security.CallerContext;
 import com.nexawork.messaging.services.ChannelAccessGuard;
@@ -46,6 +48,7 @@ public class MessageServiceImpl implements MessageService {
 
     MessageRepository messageRepository;
     MessageMentionRepository mentionRepository;
+    MessageReactionRepository reactionRepository;
     ChannelMemberRepository channelMemberRepository;
     ChannelAccessGuard channelGuard;
     MessageAssembler assembler;
@@ -79,6 +82,7 @@ public class MessageServiceImpl implements MessageService {
                 .messageType(MessageType.USER)
                 .isDeleted(false)
                 .edited(false)
+                .replyToMessageId(request.getReplyToMessageId())
                 .build();
         assembler.applyAttachments(message, request, caller.userId());
         // saveAndFlush : force l'INSERT immédiat pour que `@CreationTimestamp` peuple
@@ -120,16 +124,95 @@ public class MessageServiceImpl implements MessageService {
         return dto;
     }
 
+    /**
+     * Fenêtre commune d'édition ET de suppression : l'auteur ne peut modifier ni
+     * supprimer son message que dans ce délai après l'envoi. La règle est la
+     * MÊME pour tout le monde — aucune exception pour les administrateurs (pas de
+     * modération des messages d'autrui). Au-delà, l'historique est figé.
+     */
+    private static final java.time.Duration EDIT_WINDOW = java.time.Duration.ofMinutes(15);
+
+    @Override
+    public MessageResponse editMessage(UUID messageId, String content) {
+        Message message = messageRepository.findById(messageId)
+                .orElseThrow(() -> new ResourceNotFoundException("Message introuvable."));
+        if (Boolean.TRUE.equals(message.getIsDeleted())) {
+            throw new ForbiddenException("Ce message a été supprimé.");
+        }
+        // On ne modifie QUE ses propres messages (pas d'édition par un tiers, même admin).
+        if (!message.getSenderUserId().equals(caller.userId())) {
+            throw new ForbiddenException("Vous ne pouvez modifier que vos propres messages.");
+        }
+        if (message.getSentAt() != null
+                && message.getSentAt().isBefore(LocalDateTime.now().minus(EDIT_WINDOW))) {
+            throw new ForbiddenException("La modification n'est plus possible passé "
+                    + EDIT_WINDOW.toMinutes() + " minutes.");
+        }
+        String trimmed = content == null ? "" : content.trim();
+        if (trimmed.isEmpty()) {
+            throw new ForbiddenException("Un message modifié ne peut pas être vide.");
+        }
+        message.setContent(trimmed);
+        message.setEdited(true);
+        message = messageRepository.saveAndFlush(message);
+
+        MessageResponse dto = assembler.toDto(message);
+        broadcastUpdate(message, dto); // temps réel : les clients remplacent le message
+        return dto;
+    }
+
     @Override
     public void deleteMessage(UUID messageId) {
         Message message = messageRepository.findById(messageId)
                 .orElseThrow(() -> new ResourceNotFoundException("Message introuvable."));
-        // Soft delete : l'auteur, ou un administrateur du workspace.
-        if (!message.getSenderUserId().equals(caller.userId()) && !caller.isWorkspaceAdmin()) {
+        // On ne supprime QUE ses propres messages — aucune exception administrateur.
+        if (!message.getSenderUserId().equals(caller.userId())) {
             throw new ForbiddenException("Vous ne pouvez supprimer que vos propres messages.");
         }
+        if (message.getSentAt() != null
+                && message.getSentAt().isBefore(LocalDateTime.now().minus(EDIT_WINDOW))) {
+            throw new ForbiddenException("La suppression n'est plus possible passé "
+                    + EDIT_WINDOW.toMinutes() + " minutes.");
+        }
         message.setIsDeleted(true);
-        messageRepository.save(message);
+        message = messageRepository.saveAndFlush(message);
+
+        // Temps réel : on rediffuse le message marqué supprimé ; les clients le
+        // retirent. Les rechargements l'excluent déjà (requêtes `isDeleted = false`).
+        broadcastUpdate(message, assembler.toDto(message));
+    }
+
+    @Override
+    public MessageResponse toggleReaction(UUID messageId, String emoji) {
+        Message message = messageRepository.findById(messageId)
+                .orElseThrow(() -> new ResourceNotFoundException("Message introuvable."));
+        if (Boolean.TRUE.equals(message.getIsDeleted())) {
+            throw new ForbiddenException("Ce message a été supprimé.");
+        }
+        String e = emoji == null ? "" : emoji.trim();
+        if (e.isEmpty()) {
+            throw new ForbiddenException("Emoji requis.");
+        }
+        UUID me = caller.userId();
+        // Toggle : reposer un emoji qu'on a déjà mis le retire.
+        reactionRepository.findByMessageIdAndUserIdAndEmoji(messageId, me, e).ifPresentOrElse(
+                reactionRepository::delete,
+                () -> reactionRepository.save(MessageReaction.builder()
+                        .id(UUID.randomUUID()).messageId(messageId).userId(me).emoji(e).build()));
+        reactionRepository.flush();
+
+        MessageResponse dto = assembler.toDto(message);
+        broadcastUpdate(message, dto); // temps réel : chacun recalcule son « réagi »
+        return dto;
+    }
+
+    /** Rediffuse un message (édité/supprimé/réagi) sur le bon topic — canal ou conversation. */
+    private void broadcastUpdate(Message message, MessageResponse dto) {
+        if (message.getChannel() != null) {
+            broadcaster.broadcastChannelMessage(message.getChannel().getId(), dto);
+        } else if (message.getConversationId() != null) {
+            broadcaster.broadcastConversationMessage(message.getConversationId(), dto);
+        }
     }
 
     @Override

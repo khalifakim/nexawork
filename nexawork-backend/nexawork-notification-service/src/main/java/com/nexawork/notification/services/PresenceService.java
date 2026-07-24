@@ -28,8 +28,14 @@ import java.util.stream.Collectors;
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class PresenceService {
 
-    /** TTL de la clé de présence (V5.1 §3.9 : 30 s ; heartbeat client toutes les 20 s). */
-    public static final Duration PRESENCE_TTL = Duration.ofSeconds(30);
+    /**
+     * TTL de la clé de présence. Porté de 30 s à 90 s : le heartbeat client est un
+     * {@code setInterval} (20 s) que le navigateur RALENTIT quand l'onglet passe en
+     * arrière-plan (throttling ≈ 1/min). Avec 30 s, la clé expirait alors à tort et
+     * l'utilisateur « tombait » hors ligne bien qu'actif. 90 s tolère ce throttling ;
+     * {@link #ensureOnline} recrée la clé si elle a malgré tout expiré.
+     */
+    public static final Duration PRESENCE_TTL = Duration.ofSeconds(90);
     private static final String KEY_PREFIX = "presence:user:";
 
     StringRedisTemplate redis;
@@ -45,6 +51,24 @@ public class PresenceService {
     /** Heartbeat : réarme le TTL sans changer le compteur. */
     public void heartbeat(UUID userId) {
         redis.expire(key(userId), PRESENCE_TTL);
+    }
+
+    /**
+     * Garantit la présence d'un utilisateur qui envoie un heartbeat : si sa clé
+     * n'existe pas (session échappée au {@code SessionConnectedEvent}, ou clé
+     * expirée à tort), on la (re)crée. Retourne {@code true} si l'utilisateur
+     * passe NOUVELLEMENT en ligne (→ à diffuser). Filet de sécurité contre les
+     * présences manquées, cause d'une présence asymétrique entre deux clients.
+     */
+    public boolean ensureOnline(UUID userId) {
+        String key = key(userId);
+        if (Boolean.TRUE.equals(redis.hasKey(key))) {
+            redis.expire(key, PRESENCE_TTL);
+            return false;
+        }
+        redis.opsForValue().set(key, "1", PRESENCE_TTL);
+        log.debug("Présence : {} (re)mis en ligne via heartbeat", userId);
+        return true;
     }
 
     /** Fermeture d'une session : décrémente ; supprime la clé si plus aucune session. */

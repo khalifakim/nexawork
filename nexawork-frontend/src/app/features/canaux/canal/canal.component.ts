@@ -12,8 +12,8 @@ import { ShellBus } from '@layouts/app-shell/shell.bus';
 import { ChannelsService } from '@core/services/channels.service';
 import { ProjectCatalogService } from '@core/services/project-catalog.service';
 import { ArchivedProjectsService } from '@core/services/archived-projects.service';
-import { ChannelFile, ChannelMessage } from '@core/models/channel.models';
-import { chipTabFor, RichPart } from '@core/util/mention.util';
+import { ChannelFile, ChannelMessage, MessageReply, toggleLocalReaction } from '@core/models/channel.models';
+import { chipTabFor, parseRichText, RichPart } from '@core/util/mention.util';
 import { downloadAttachedFile, saveBlob } from '@core/util/download.util';
 import { FilesHttpService } from '@core/http/files.http.service';
 
@@ -105,29 +105,95 @@ type ChMsg = ChannelMessage;
                     </span>
                   }
                   <span class="t">{{ m.time }}</span>
-                </div>
-                @if (m.parts.length > 0) {
-                  <div class="x">
-                    @for (p of m.parts; track $index) {
-                      @if (p.type === 't') {
-                        <app-highlight [text]="p.val" [query]="searchQ()" />
-                      } @else {
-                        <app-mention-chip [tab]="chipTabFor(p.type)" [value]="p.val" (opened)="onChipOpen($event)" />
+                  @if (m.edited && !m.isDeleted) { <span class="ed">· modifié</span> }
+                  @if (m.id && canWrite() && editingId() !== m.id && !m.isDeleted) {
+                    <div class="act">
+                      <div class="ra">
+                        <button class="act__b" title="Réagir" (click)="toggleReactBar(m); $event.stopPropagation()">
+                          <app-icon name="smile" [size]="15" />
+                        </button>
+                        @if (reactFor() === m.id) {
+                          <div class="ra__bd" (click)="reactFor.set(null)"></div>
+                          <div class="ra__bar" (click)="$event.stopPropagation()">
+                            @for (e of QUICK_EMOJIS; track e) {
+                              <button class="ra__e" (click)="react(m, e)">{{ e }}</button>
+                            }
+                          </div>
+                        }
+                      </div>
+                      <button class="act__b" title="Répondre" (click)="startReply(m); $event.stopPropagation()">↩</button>
+                      @if (m.mine && canModify(m)) {
+                        <div class="mm">
+                          <button class="mm__b" title="Options" (click)="toggleMenu(m); $event.stopPropagation()">
+                            <app-icon name="dots" [size]="15" [stroke]="2" />
+                          </button>
+                          @if (menuId() === m.id) {
+                            <div class="mm__bd" (click)="menuId.set(null)"></div>
+                            <div class="mm__menu" (click)="$event.stopPropagation()">
+                              @if (m.parts.length > 0) {
+                                <button class="mm__i" (click)="startEdit(m)"><app-icon name="edit" [size]="14" />Modifier</button>
+                              }
+                              <button class="mm__i mm__i--danger" (click)="removeMessage(m)"><app-icon name="trash" [size]="14" />Supprimer</button>
+                            </div>
+                          }
+                        </div>
                       }
-                    }
+                    </div>
+                  }
+                </div>
+
+                @if (m.isDeleted) {
+                  <div class="deleted">{{ m.mine ? 'Vous avez' : m.author + ' a' }} supprimé ce message</div>
+                } @else if (editingId() === m.id) {
+                  <div class="edit">
+                    <textarea class="edit__ta" [value]="editDraft()"
+                              (input)="editDraft.set($any($event.target).value)"
+                              (keydown.enter)="$event.preventDefault(); saveEdit(m)"
+                              (keydown.escape)="cancelEdit()"></textarea>
+                    <div class="edit__a">
+                      <button class="edit__x" (click)="cancelEdit()">Annuler</button>
+                      <button class="edit__ok" (click)="saveEdit(m)">Enregistrer</button>
+                    </div>
                   </div>
-                }
-                @if (m.files?.length) {
-                  <div class="cm__files">
-                    @for (f of m.files!; track f.id) {
-                      <button class="cm__file" title="Télécharger" (click)="downloadFile(f)">
-                        <app-icon name="file" [size]="13" />
-                        <span class="cm__fn"><app-highlight [text]="f.name" [query]="searchQ()" /></span>
-                        <span class="cm__fs">{{ sizeOf(f.size) }}</span>
-                        <app-icon class="cm__dl" name="download" [size]="13" />
-                      </button>
-                    }
-                  </div>
+                } @else {
+                  @if (m.replyTo; as r) {
+                    <div class="rq" [class.rq--del]="r.deleted">
+                      <span class="rq__a">{{ r.author }}</span>
+                      <span class="rq__x">{{ r.excerpt }}</span>
+                    </div>
+                  }
+                  @if (m.parts.length > 0) {
+                    <div class="x">
+                      @for (p of m.parts; track $index) {
+                        @if (p.type === 't') {
+                          <app-highlight [text]="p.val" [query]="searchQ()" />
+                        } @else {
+                          <app-mention-chip [tab]="chipTabFor(p.type)" [value]="p.val" (opened)="onChipOpen($event)" />
+                        }
+                      }
+                    </div>
+                  }
+                  @if (m.files?.length) {
+                    <div class="cm__files">
+                      @for (f of m.files!; track f.id) {
+                        <button class="cm__file" title="Télécharger" (click)="downloadFile(f)">
+                          <app-icon name="file" [size]="13" />
+                          <span class="cm__fn"><app-highlight [text]="f.name" [query]="searchQ()" /></span>
+                          <span class="cm__fs">{{ sizeOf(f.size) }}</span>
+                          <app-icon class="cm__dl" name="download" [size]="13" />
+                        </button>
+                      }
+                    </div>
+                  }
+                  @if (m.reactions?.length) {
+                    <div class="rx">
+                      @for (r of m.reactions!; track r.emoji) {
+                        <button class="rx__c" [class.rx__c--mine]="r.mine" (click)="react(m, r.emoji)">
+                          <span>{{ r.emoji }}</span><span class="rx__n">{{ r.count }}</span>
+                        </button>
+                      }
+                    </div>
+                  }
                 }
               </div>
             </div>
@@ -151,6 +217,16 @@ type ChMsg = ChannelMessage;
 
       @if (canWrite()) {
         <div class="composer">
+          @if (replyingTo(); as r) {
+            <div class="reply-bar">
+              <span class="reply-bar__i">↩</span>
+              <div class="reply-bar__c">
+                <span class="reply-bar__a">Réponse à {{ r.author }}</span>
+                <span class="reply-bar__x">{{ r.excerpt }}</span>
+              </div>
+              <button class="reply-bar__x2" title="Annuler" (click)="cancelReply()"><app-icon name="x" [size]="15" /></button>
+            </div>
+          }
           <app-comment-composer
             [placeholder]="'Écrire dans #' + displayName() + '…'"
             (submitted)="onSend($event)"
@@ -345,11 +421,11 @@ export class CanalComponent {
         clearTimeout(this.typingTimer);
         if (isTyping) this.typingTimer = setTimeout(() => this.typingRaw.set(false), 4000);
       });
-    // Réception temps réel : on n'ajoute que les messages des autres (mon propre
-    // message est déjà affiché de façon optimiste à l'envoi, évitant un doublon).
+    // Réception temps réel : un même message peut arriver comme NOUVEAU, MODIFIÉ
+    // ou SUPPRIMÉ — on applique un upsert/retrait par id plutôt qu'un simple ajout.
     toObservable(this.name)
       .pipe(switchMap(id => this.channelsSvc.live(id)), takeUntilDestroyed())
-      .subscribe(msg => { if (!msg.mine) this.msgs.update(list => [...list, msg]); });
+      .subscribe(msg => this.applyLive(msg));
     // Défilement vers le message mentionné, une fois le fil peint.
     effect(() => {
       const id = this.focusMessageId();
@@ -422,13 +498,114 @@ export class CanalComponent {
     const time = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
     const files: ChannelFile[] | undefined = payload.files.length ? payload.files.map(f => ({ id: f.id, name: f.name, size: f.size })) : undefined;
     // Affichage optimiste immédiat, puis persistance réelle (texte + fichiers).
-    this.msgs.update(list => [...list, { author: 'Akim Koné', color: '#F5A623', time, parts: payload.parts, mine: true, files }]);
+    const reply = this.replyingTo();
+    const optimistic: ChMsg = { author: 'Akim Koné', color: '#F5A623', time, parts: payload.parts, mine: true, files, replyTo: reply ?? undefined };
+    this.msgs.update(list => [...list, optimistic]);
     const text = payload.text ?? payload.parts.map(p => p.val).join('');
     const rawFiles = payload.files.map(f => f.file).filter((f): f is File => !!f);
     // Mentions résolues en cibles réelles : sans elles, le backend ne peut
     // rattacher la mention à personne (« Mentions reçues » resterait vide).
     const mentions = this.catalog.resolveMentions(payload.parts);
-    this.channelsSvc.sendMessage(this.name(), text, rawFiles, mentions).subscribe();
+    this.cancelReply();
+    this.channelsSvc.sendMessage(this.name(), text, rawFiles, mentions, reply?.id).subscribe(resp => {
+      // Récupère l'id réel : sans lui, ce message ne serait ni modifiable ni
+      // supprimable avant un rechargement.
+      if (resp?.id) this.msgs.update(l => l.map(m => m === optimistic ? { ...m, id: resp.id, sentAt: resp.sentAt } : m));
+    });
+  }
+
+  // ── Modification / suppression de message (§13.5) ────────────────────────────
+  /** Menu ⋯ ouvert (par id de message), édition en cours, brouillon d'édition. */
+  menuId    = signal<string | null>(null);
+  editingId = signal<string | null>(null);
+  editDraft = signal('');
+
+  /** Applique un message reçu en temps réel : upsert (édition, réaction, suppression). */
+  private applyLive(msg: ChMsg): void {
+    this.msgs.update(list => {
+      const idx = list.findIndex(m => m.id && m.id === msg.id);
+      if (idx >= 0) {
+        // Déjà présent (édité, réagi, supprimé, ou écho de mon envoi) → on remplace.
+        const next = [...list];
+        next[idx] = { ...next[idx], isDeleted: msg.isDeleted, parts: msg.parts, files: msg.files, edited: msg.edited, reactions: msg.reactions, replyTo: msg.replyTo };
+        return next;
+      }
+      // Nouveau message : les miens sont déjà affichés de façon optimiste.
+      return msg.mine ? list : [...list, msg];
+    });
+  }
+
+  // ── Réponse ciblée (reply) + réactions emoji ─────────────────────────────────
+  /** Emojis proposés en réaction rapide (barre au survol). */
+  readonly QUICK_EMOJIS = ['👍', '❤️', '😂', '🎉', '✅', '👀'];
+  /** Message auquel on est en train de répondre (bandeau au-dessus du composer). */
+  replyingTo = signal<MessageReply | null>(null);
+  /** Message dont la barre d'emojis rapides est ouverte. */
+  reactFor = signal<string | null>(null);
+
+  startReply(m: ChMsg): void {
+    this.menuId.set(null);
+    if (!m.id) return;
+    this.replyingTo.set({
+      id: m.id,
+      author: m.mine ? 'Vous' : m.author,
+      excerpt: m.parts.map(p => p.val).join('').slice(0, 140) || (m.files?.length ? 'Pièce jointe' : ''),
+      deleted: false,
+    });
+  }
+  cancelReply(): void { this.replyingTo.set(null); }
+
+  toggleReactBar(m: ChMsg): void { this.reactFor.set(this.reactFor() === m.id ? null : (m.id ?? null)); }
+
+  /** Toggle d'une réaction : optimiste local puis persistance (le temps réel confirme). */
+  react(m: ChMsg, emoji: string): void {
+    this.reactFor.set(null);
+    const id = m.id;
+    if (!id) return;
+    const snapshot = this.msgs();
+    this.msgs.update(l => l.map(x => x.id === id ? { ...x, reactions: toggleLocalReaction(x.reactions, emoji) } : x));
+    this.channelsSvc.toggleReaction(id, emoji).subscribe({ error: () => this.msgs.set(snapshot) });
+  }
+
+  toggleMenu(m: ChMsg): void { this.menuId.set(this.menuId() === m.id ? null : (m.id ?? null)); }
+
+  /** Modifier/supprimer permis seulement dans les 15 min suivant l'envoi (aligné backend). */
+  canModify(m: ChMsg): boolean {
+    if (!m.sentAt) return true; // message à peine envoyé (optimiste) → récent
+    return Date.now() - new Date(m.sentAt).getTime() < 15 * 60 * 1000;
+  }
+
+  startEdit(m: ChMsg): void {
+    this.menuId.set(null);
+    if (!m.id) return;
+    this.editingId.set(m.id);
+    // Texte brut reconstruit depuis les fragments (mentions comprises).
+    this.editDraft.set(m.parts.map(p => p.val).join(''));
+  }
+  cancelEdit(): void { this.editingId.set(null); this.editDraft.set(''); }
+
+  saveEdit(m: ChMsg): void {
+    const id = m.id;
+    const text = this.editDraft().trim();
+    if (!id) { this.cancelEdit(); return; }
+    if (!text || text === m.parts.map(p => p.val).join('')) { this.cancelEdit(); return; }
+    const snapshot = this.msgs();
+    // Optimiste : re-parse le texte en fragments + marque « modifié ». Le temps
+    // réel confirmera (mêmes valeurs) ; on rétablit si le backend refuse (fenêtre).
+    this.msgs.update(l => l.map(x => x.id === id ? { ...x, parts: parseRichText(text), edited: true } : x));
+    this.cancelEdit();
+    this.channelsSvc.editMessage(id, text).subscribe({ error: () => this.msgs.set(snapshot) });
+  }
+
+  removeMessage(m: ChMsg): void {
+    this.menuId.set(null);
+    const id = m.id;
+    if (!id) return;
+    const snapshot = this.msgs();
+    // Optimiste : on remplace par le marqueur « supprimé » (trace conservée), on
+    // rétablit si le backend refuse (au-delà de la fenêtre de 15 min).
+    this.msgs.update(l => l.map(x => x.id === id ? { ...x, isDeleted: true, parts: [], files: undefined, reactions: undefined, replyTo: undefined } : x));
+    this.channelsSvc.deleteMessage(id).subscribe({ error: () => this.msgs.set(snapshot) });
   }
 
   onChipOpen(ev: MentionChipEvent): void {
