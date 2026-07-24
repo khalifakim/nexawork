@@ -108,20 +108,6 @@ type ChMsg = ChannelMessage;
                   @if (m.edited && !m.isDeleted) { <span class="ed">· modifié</span> }
                   @if (m.id && canWrite() && editingId() !== m.id && !m.isDeleted) {
                     <div class="act">
-                      <div class="ra">
-                        <button class="act__b" title="Réagir" (click)="toggleReactBar(m); $event.stopPropagation()">
-                          <app-icon name="smile" [size]="15" />
-                        </button>
-                        @if (reactFor() === m.id) {
-                          <div class="ra__bd" (click)="reactFor.set(null)"></div>
-                          <div class="ra__bar" (click)="$event.stopPropagation()">
-                            @for (e of QUICK_EMOJIS; track e) {
-                              <button class="ra__e" (click)="react(m, e)">{{ e }}</button>
-                            }
-                          </div>
-                        }
-                      </div>
-                      <button class="act__b" title="Répondre" (click)="startReply(m); $event.stopPropagation()">↩</button>
                       @if (m.mine && canModify(m)) {
                         <div class="mm">
                           <button class="mm__b" title="Options" (click)="toggleMenu(m); $event.stopPropagation()">
@@ -138,6 +124,20 @@ type ChMsg = ChannelMessage;
                           }
                         </div>
                       }
+                      <div class="ra">
+                        <button class="act__b" title="Réagir" (click)="toggleReactBar(m); $event.stopPropagation()">
+                          <app-icon name="smile" [size]="15" />
+                        </button>
+                        @if (reactFor() === m.id) {
+                          <div class="ra__bd" (click)="reactFor.set(null)"></div>
+                          <div class="ra__bar" (click)="$event.stopPropagation()">
+                            @for (e of QUICK_EMOJIS; track e) {
+                              <button class="ra__e" (click)="react(m, e)">{{ e }}</button>
+                            }
+                          </div>
+                        }
+                      </div>
+                      <button class="act__b" title="Répondre" (click)="startReply(m); $event.stopPropagation()">↩</button>
                     </div>
                   }
                 </div>

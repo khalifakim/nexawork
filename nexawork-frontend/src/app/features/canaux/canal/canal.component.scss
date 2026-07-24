@@ -33,7 +33,8 @@
 .msg { display: flex; gap: 12px; position: relative; }
 .msg--me { flex-direction: row-reverse; }
 .av { width: 38px; height: 38px; border-radius: 11px; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; flex: none; }
-.b { flex: 1; min-width: 0; }
+/* Bulle compacte (comme les conversations) : la barre d'actions s'ancre dessus. */
+.b { position: relative; max-width: 76%; min-width: 0; }
 /* Message envoyé par moi : bulle alignée à droite, teinte ambrée compatible mentions */
 .b--me { flex: 0 1 auto; max-width: 62%; background: #FFF5DC; border: 1px solid #F4E2A3; border-radius: 16px 4px 16px 16px; padding: 10px 14px; box-shadow: var(--nx-shadow-rest); }
 .b--me .h { justify-content: flex-end; margin-bottom: 4px; }
@@ -133,17 +134,16 @@
 /* Message supprimé — marqueur « … a supprimé ce message » (façon WhatsApp) */
 .deleted { font-size: 13.5px; font-style: italic; color: var(--nx-text-400); }
 
-/* ── Barre d'actions : pilule flottante À CÔTÉ du message, centrée ─────────── */
+/* ── Barre d'actions : pilule flottante À CÔTÉ de la bulle, centrée ────────── */
 .act {
   position: absolute; top: 50%; transform: translateY(-50%); z-index: 6;
+  left: 100%; margin-left: 6px;  /* reçu : à droite de la bulle */
   display: flex; align-items: center; gap: 1px;
   padding: 2px; border-radius: 9px;
   background: #fff; border: 1px solid var(--nx-border-card); box-shadow: var(--nx-shadow-pop);
   opacity: 0; transition: opacity .12s;
 }
-/* Reçu : à droite du message ; envoyé : à gauche de la bulle. */
-.msg:not(.msg--me) .act { right: 6px; }
-.msg--me .act { left: 6px; }
+.b--me .act { left: auto; margin-left: 0; right: 100%; margin-right: 6px; }  /* envoyé : à gauche */
 .msg:hover .act { opacity: 1; }
 .act__b {
   min-width: 26px; height: 24px; padding: 0 4px; border: none; border-radius: 7px;

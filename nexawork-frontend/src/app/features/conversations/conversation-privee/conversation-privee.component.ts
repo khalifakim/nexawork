@@ -100,20 +100,6 @@ type Msg = ConversationMessage;
               <div class="bubble" [class.bubble--me]="m.me">
                 @if (m.id && editingId() !== m.id && !m.isDeleted) {
                   <div class="act">
-                    <div class="ra">
-                      <button class="act__b" title="Réagir" (click)="toggleReactBar(m); $event.stopPropagation()">
-                        <app-icon name="smile" [size]="15" />
-                      </button>
-                      @if (reactFor() === m.id) {
-                        <div class="ra__bd" (click)="reactFor.set(null)"></div>
-                        <div class="ra__bar" (click)="$event.stopPropagation()">
-                          @for (e of QUICK_EMOJIS; track e) {
-                            <button class="ra__e" (click)="react(m, e)">{{ e }}</button>
-                          }
-                        </div>
-                      }
-                    </div>
-                    <button class="act__b" title="Répondre" (click)="startReply(m); $event.stopPropagation()">↩</button>
                     @if (m.me && canModify(m)) {
                       <div class="mm">
                         <button class="mm__b" title="Options" (click)="toggleMenu(m); $event.stopPropagation()">
@@ -130,6 +116,20 @@ type Msg = ConversationMessage;
                         }
                       </div>
                     }
+                    <div class="ra">
+                      <button class="act__b" title="Réagir" (click)="toggleReactBar(m); $event.stopPropagation()">
+                        <app-icon name="smile" [size]="15" />
+                      </button>
+                      @if (reactFor() === m.id) {
+                        <div class="ra__bd" (click)="reactFor.set(null)"></div>
+                        <div class="ra__bar" (click)="$event.stopPropagation()">
+                          @for (e of QUICK_EMOJIS; track e) {
+                            <button class="ra__e" (click)="react(m, e)">{{ e }}</button>
+                          }
+                        </div>
+                      }
+                    </div>
+                    <button class="act__b" title="Répondre" (click)="startReply(m); $event.stopPropagation()">↩</button>
                   </div>
                 }
                 @if (m.isDeleted) {
