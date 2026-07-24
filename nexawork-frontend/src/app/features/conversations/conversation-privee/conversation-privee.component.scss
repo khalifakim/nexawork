@@ -149,12 +149,12 @@
 .ra { position: relative; }
 .ra__bd { position: fixed; inset: 0; z-index: 40; }
 .ra__bar {
-  position: absolute; top: 24px; right: 0; z-index: 41;
-  display: flex; gap: 2px; padding: 4px;
+  position: absolute; top: 24px; right: 0; z-index: 41; width: max-content;
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; padding: 4px;
   background: #fff; border: 1px solid var(--nx-border-card);
   border-radius: 10px; box-shadow: var(--nx-shadow-pop);
 }
-.ra__e { border: none; background: transparent; cursor: pointer; font-size: 18px; line-height: 1; padding: 4px 5px; border-radius: 7px; }
+.ra__e { border: none; background: transparent; cursor: pointer; font-size: 20px; line-height: 1; padding: 5px; border-radius: 7px; }
 .ra__e:hover { background: var(--nx-surface-2); transform: scale(1.15); }
 
 /* Citation dans la bulle */
