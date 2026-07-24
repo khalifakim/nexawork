@@ -86,16 +86,14 @@
 .ed { font-size: 11px; font-style: italic; color: var(--nx-text-300); }
 
 /* Menu ⋯ — révélé au survol du message, ancré dans l'en-tête de la bulle. */
-.mm { position: relative; margin-left: auto; }
-.b--me .mm { margin-left: 4px; }
+/* Menu ⋯ : simple bouton dans la barre d'actions (l'opacité est gérée par .act). */
+.mm { position: relative; display: flex; }
 .mm__b {
-  width: 24px; height: 22px; border: none; border-radius: 6px;
-  background: transparent; color: var(--nx-text-400); cursor: pointer;
+  min-width: 26px; height: 24px; padding: 0 4px; border: none; border-radius: 7px;
+  background: transparent; color: var(--nx-text-500); cursor: pointer;
   display: flex; align-items: center; justify-content: center;
-  opacity: 0; transition: opacity .12s;
 }
-.msg:hover .mm__b { opacity: 1; }
-.mm__b:hover { background: rgba(0,0,0,.06); color: var(--nx-text-600); }
+.mm__b:hover { background: var(--nx-surface-2); color: var(--nx-text-700); }
 .mm__bd { position: fixed; inset: 0; z-index: 40; }
 .mm__menu {
   position: absolute; top: 26px; right: 0; z-index: 41; width: 168px;

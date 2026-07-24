@@ -80,15 +80,14 @@
 .ed { font-style: italic; color: var(--nx-text-300); }
 
 /* Menu ⋯ — révélé au survol du message. */
-.mm { position: absolute; top: 6px; right: 8px; }
+/* Menu ⋯ : simple bouton dans la barre d'actions (l'opacité est gérée par .act). */
+.mm { position: relative; display: flex; }
 .mm__b {
-  width: 22px; height: 20px; border: none; border-radius: 6px;
-  background: rgba(255,255,255,.7); color: var(--nx-text-400); cursor: pointer;
+  min-width: 26px; height: 24px; padding: 0 4px; border: none; border-radius: 7px;
+  background: transparent; color: var(--nx-text-500); cursor: pointer;
   display: flex; align-items: center; justify-content: center;
-  opacity: 0; transition: opacity .12s;
 }
-.line:hover .mm__b { opacity: 1; }
-.mm__b:hover { background: #fff; color: var(--nx-text-600); }
+.mm__b:hover { background: var(--nx-surface-2); color: var(--nx-text-700); }
 .mm__bd { position: fixed; inset: 0; z-index: 40; }
 .mm__menu {
   position: absolute; top: 24px; right: 0; z-index: 41; width: 168px;
