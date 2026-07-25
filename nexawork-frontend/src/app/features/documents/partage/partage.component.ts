@@ -55,7 +55,11 @@ interface Shared {
             </div>
           </div>
         } @empty {
-          <div class="empty">Aucun document ne correspond à votre recherche.</div>
+          @if (hasFilters()) {
+            <div class="empty">Aucun document ne correspond à votre recherche.</div>
+          } @else {
+            <div class="empty">Aucun document n'a encore été partagé avec vous.</div>
+          }
         }
       </div>
     </div>
@@ -95,6 +99,9 @@ export class DocumentsPartageComponent {
     { value: 'week', label: 'Cette semaine' },
     { value: 'month', label: 'Ce mois' },
   ];
+
+  /** Vrai si une recherche/un filtre est actif (distingue « vide » de « aucun résultat »). */
+  hasFilters = computed(() => !!(this.q().trim() || this.fType() || this.fDate()));
 
   /** Documents affichés : réels (backend) ou fixtures (mock). */
   private docs = computed<Shared[]>(() => {

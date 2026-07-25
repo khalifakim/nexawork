@@ -24,6 +24,9 @@
 .res__ctx { font-size: 12.5px; color: var(--nx-text-400); white-space: nowrap; flex: none; }
 .res__d { font-size: 12px; color: var(--nx-text-300); flex: none; }
 .res-empty { padding: 28px 14px; text-align: center; font-size: 13.5px; color: var(--nx-text-400); }
+.res-loading { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 28px 14px; font-size: 13.5px; color: var(--nx-text-500); }
+.res-loading .spin { width: 18px; height: 18px; border-radius: 50%; border: 2.5px solid var(--nx-border, #E6E3DC); border-top-color: var(--nx-indigo, #5b5fe9); animation: rgspin .6s linear infinite; }
+@keyframes rgspin { to { transform: rotate(360deg); } }
 .foot { display: flex; align-items: center; gap: 18px; padding: 11px 20px; border-top: 1px solid var(--nx-border-card); font-size: 12px; color: var(--nx-text-400); flex-wrap: wrap; }
 .foot span { display: flex; align-items: center; gap: 4px; }
 .k { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 5px; background: var(--nx-surface-2); border: 1px solid var(--nx-border); font-size: 11px; font-weight: 600; color: var(--nx-text-500); }

@@ -55,7 +55,11 @@ const SPACE_COLOR: Record<string, string> = {
       </div>
 
       @if (shown().length === 0) {
-        <div class="none"><app-icon name="search" [size]="40" /><span>Aucun document ne correspond à votre recherche</span></div>
+        @if (hasFilters()) {
+          <div class="none"><app-icon name="search" [size]="40" /><span>Aucun document ne correspond à votre recherche</span></div>
+        } @else {
+          <div class="none"><app-icon name="documents" [size]="40" /><span>Vous n'avez encore partagé aucun document.</span></div>
+        }
       } @else {
         <div class="tbl">
           <div class="thead"><span>Nom</span><span>Emplacement</span><span>Date de partage</span><span>Type</span><span>Taille</span><span></span></div>
@@ -150,6 +154,9 @@ export class MesDocumentsComponent {
     { name: 'Tokens couleurs.xlsx',       space: 'Design System Nexa',    scope: 'Projet',       date: '6 mai 2026',         type: 'Tableur', size: '48 Ko',  it: 'sheet' },
     { name: 'Livrables client',           space: 'Espace Organisation',   scope: 'Organisation', date: '3 mai 2026',         type: 'Dossier', size: '—',      it: 'folder' },
   ];
+
+  /** Vrai si une recherche/un filtre est actif (distingue « vide » de « aucun résultat »). */
+  hasFilters = computed(() => !!(this.q().trim() || this.fSpace() || this.fType()));
 
   shown = computed<Doc[]>(() => {
     const q = this.q().toLowerCase().trim();

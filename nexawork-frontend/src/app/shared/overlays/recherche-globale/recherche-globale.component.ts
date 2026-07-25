@@ -3,7 +3,7 @@ import {
   HostListener, Output, QueryList, ViewChild, ViewChildren, computed, effect, inject, signal,
 } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
-import { debounceTime, distinctUntilChanged, switchMap } from 'rxjs/operators';
+import { debounceTime, distinctUntilChanged, finalize, switchMap, tap } from 'rxjs/operators';
 import { Router } from '@angular/router';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 import { SearchService } from '@core/services/search.service';
@@ -34,7 +34,10 @@ import { ShellBus } from '@layouts/app-shell/shell.bus';
           }
         </div>
         <div class="results" #resList>
-          <div class="rh">{{ shown().length }} résultat{{ shown().length > 1 ? 's' : '' }}</div>
+          <div class="rh">{{ loading() ? 'Recherche…' : (shown().length + ' résultat' + (shown().length > 1 ? 's' : '')) }}</div>
+          @if (loading() && shown().length === 0) {
+            <div class="res-loading"><span class="spin"></span><span>Chargement des résultats…</span></div>
+          } @else {
           @for (r of shown(); track r.name; let i = $index) {
             <div class="res" #resRow [class.res--on]="i===highlight()"
                  (mouseenter)="highlight.set(i)" (click)="open(r)">
@@ -59,6 +62,7 @@ import { ShellBus } from '@layouts/app-shell/shell.bus';
             </div>
           } @empty {
             <div class="res-empty">Aucun résultat pour votre recherche.</div>
+          }
           }
         </div>
         <div class="foot">
@@ -109,11 +113,20 @@ export class RechercheGlobaleComponent implements AfterViewInit {
    * 250 ms) qui interroge chaque domaine en respectant les droits ; le filtre
    * par type reste appliqué côté client sur le jeu renvoyé.
    */
+  /**
+   * Vrai tant qu'une requête de recherche est en vol. Initialisé à `true` car une
+   * première recherche part dès l'ouverture (la fédération interroge 4 services) :
+   * sans cet indicateur, le modal affiche « Aucun résultat » pendant le chargement
+   * et donne l'impression d'être vide/cassé.
+   */
+  loading = signal(true);
+
   private results = toSignal(
     toObservable(this.query).pipe(
       debounceTime(250),
       distinctUntilChanged(),
-      switchMap(q => this.searchSvc.query(q)),
+      tap(() => this.loading.set(true)),
+      switchMap(q => this.searchSvc.query(q).pipe(finalize(() => this.loading.set(false)))),
     ),
     { initialValue: [] as Result[] },
   );
