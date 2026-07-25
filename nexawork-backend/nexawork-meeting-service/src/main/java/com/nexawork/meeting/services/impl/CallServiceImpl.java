@@ -170,13 +170,16 @@ public class CallServiceImpl implements CallService {
 
     /** Clôture effective : statut, sortie de tous les présents, événement `call.ended`. */
     private void endCall(Call call) {
-        if (call.getStatus() == CallStatus.ENDED) {
+        LocalDateTime now = LocalDateTime.now();
+        // Transition ATOMIQUE ACTIVE → ENDED : un seul thread réussit (lignes = 1) et
+        // publiera call.ended. Les appels concurrents (hôte qui termine + dernier
+        // participant qui part, départs simultanés) obtiennent 0 et s'arrêtent là,
+        // ce qui supprime les notifications « réunion terminée » en double.
+        if (callRepository.markEndedIfActive(call.getId(), now) == 0) {
             return;
         }
-        LocalDateTime now = LocalDateTime.now();
         call.setStatus(CallStatus.ENDED);
         call.setEndedAt(now);
-        callRepository.save(call);
 
         // Tous les participants encore présents quittent.
         participantRepository.findByCallId(call.getId()).stream()
