@@ -40,7 +40,7 @@ function pickPrefixToken(word: string): { tab: MentionTab; query: string } | nul
  *   as they will look once sent (blue name for @person, boxed chip for
  *   @@task / @@@doc / #channel). The token being typed stays plain so the
  *   picker can filter it; it becomes a chip as soon as the caret leaves it.
- * - Enter = newline only. Sending happens exclusively via the Send button.
+ * - Entrée = envoyer ; Maj+Entrée = retour à la ligne (le bouton Envoyer marche aussi).
  * - Emits the parsed RichPart[] (+ attached files) so consumers render mentions
  *   without re-parsing.
  */
@@ -221,11 +221,18 @@ export class CommentComposerComponent {
   }
 
   protected onKey(ev: KeyboardEvent): void {
-    // Enter = newline only. Sending is done via the Send button.
+    // Entrée = envoyer ; Maj+Entrée = retour à la ligne. Si un menu (mentions/emoji)
+    // est ouvert, Entrée ne doit pas envoyer : l'utilisateur est en train de choisir.
     if (ev.key === 'Enter') {
+      if (ev.shiftKey) {
+        ev.preventDefault();
+        this.insertText('\n');
+        this.rerender();
+        return;
+      }
       ev.preventDefault();
-      this.insertText('\n');
-      this.rerender();
+      if (this.mentionOpen() || this.browseOpen() || this.emojiOpen()) return;
+      this.send();
       return;
     }
     // Ctrl/Cmd + A → select all contents of the editor (native contenteditable
