@@ -93,4 +93,17 @@ public class GedFile {
 
     @Column(name = "last_opened_by")
     private UUID lastOpenedBy;
+
+    /**
+     * Paternité d'un dépôt EXTERNE (Brique 4, boîte de dépôt). Renseignés quand le
+     * fichier a été déposé par un externe sans compte via un lien de partage :
+     * {@code addedByUserId} reste alors le créateur du lien (identité de confiance),
+     * et le nom/email déclarés de l'externe sont conservés ici. Null pour un dépôt
+     * interne classique.
+     */
+    @Column(name = "external_uploader_name", length = 120)
+    private String externalUploaderName;
+
+    @Column(name = "external_uploader_email", length = 180)
+    private String externalUploaderEmail;
 }

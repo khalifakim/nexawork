@@ -31,6 +31,12 @@ public class SecurityConfiguration {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .addFilterBefore(new GatewayIdentityFilter(), UsernamePasswordAuthenticationFilter.class)
                 .authorizeHttpRequests(registry -> registry
+                        // Liens de partage externes (Brique 4) : accessibles SANS compte.
+                        // La sécurité repose sur le token du lien + expiration + mot de
+                        // passe + révocation, validés en couche service — pas sur une
+                        // authentification (il n'y en a pas). La Gateway ouvre le même
+                        // préfixe dans sa liste blanche (PublicPathMatcher).
+                        .requestMatchers("/api/v1/public/**").permitAll()
                         .requestMatchers(
                                 "/v3/api-docs",
                                 "/v3/api-docs/**",

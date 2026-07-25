@@ -8,6 +8,7 @@ import { FilterChipComponent, FilterOption } from '@shared/ui/filter-chip/filter
 import { DocMenuComponent, DocMenuItem } from '@shared/ui/doc-menu/doc-menu.component';
 import { NouveauDossierComponent } from '@features/documents/modals/nouveau-dossier/nouveau-dossier.component';
 import { ImporterFichierComponent } from '@features/documents/modals/importer-fichier/importer-fichier.component';
+import { PartagerLienComponent } from '@features/documents/modals/partager-lien/partager-lien.component';
 import { GedService } from '@core/services/ged.service';
 import { GedOverlayBus } from '@core/services/ged-overlay.bus';
 import { ShellBus } from '@layouts/app-shell/shell.bus';
@@ -18,7 +19,7 @@ import { GED_COLOR, GED_ICON, TASK_FOLDER } from '@core/util/ui.util';
   selector: 'app-ged-view',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IconComponent, ApercuDocumentComponent, FilterChipComponent, DocMenuComponent, NouveauDossierComponent, ImporterFichierComponent, LoaderComponent],
+  imports: [IconComponent, ApercuDocumentComponent, FilterChipComponent, DocMenuComponent, NouveauDossierComponent, ImporterFichierComponent, PartagerLienComponent, LoaderComponent],
   template: `
     <div class="ged">
       <!-- toolbar -->
@@ -128,6 +129,7 @@ import { GED_COLOR, GED_ICON, TASK_FOLDER } from '@core/util/ui.util';
 
     @if (preview(); as p) { <app-apercu-document [name]="p.name" [url]="p.url" (closed)="preview.set(null)" /> }
     @if (newFolder()) { <app-nouveau-dossier [scope]="modalScope()" (closed)="newFolder.set(false)" (created)="onCreateFolder($event)" /> }
+    @if (shareItem(); as s) { <app-partager-lien [targetType]="s.type === 'folder' ? 'FOLDER' : 'FILE'" [targetId]="s.id!" [targetName]="s.name" (closed)="shareItem.set(null)" /> }
     @if (upload()) { <app-importer-fichier [scope]="modalScope()" [busy]="uploadBusy()" [error]="uploadError()" (closed)="closeUpload()" (imported)="onImportFile($event)" /> }
 
     @if (toastMsg(); as t) { <div class="gtoast"><span class="gtoast__i"><app-icon name="check" [size]="14" /></span>{{ t }}</div> }
@@ -158,6 +160,8 @@ export class GedViewComponent {
   /** Message d'erreur d'upload (affiché dans le modal, qui reste ouvert). */
   uploadError = signal('');
   menu = signal<string | null>(null);
+  /** Élément dont on génère/gère le lien de partage externe (Brique 4). */
+  shareItem = signal<GedItem | null>(null);
   toastMsg = signal<string | null>(null);
   private toastTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -320,6 +324,8 @@ export class GedViewComponent {
     ];
     if (isFile) items.push({ action: 'versions', label: 'Historique des versions', icon: 'clock' });
     items.push({ action: 'access', label: 'Gérer les accès', icon: 'lock', sep: true });
+    // Lien de partage externe (Brique 4) — nécessite l'UUID backend de l'élément.
+    if (it.id) items.push({ action: 'share', label: 'Générer un lien de partage', icon: 'share' });
     items.push({ action: 'rename', label: 'Renommer', icon: 'edit' });
     // R12 — Supprimer only for the creator or an admin.
     if (this.gedOverlay.canDelete(it.name, it.owner)) {
@@ -344,6 +350,7 @@ export class GedViewComponent {
       case 'download': this.toast('Téléchargement de « ' + it.name + ' »…'); break;
       case 'versions': this.gedOverlay.openVersionsFor(it); break;
       case 'access':   this.gedOverlay.openAccessFor(it); break;
+      case 'share':    this.shareItem.set(it); break;
       case 'rename':   this.toast('Renommer « ' + it.name + ' »'); break;
       case 'delete':
         this.deleted.update(d => [...d, it.name]);

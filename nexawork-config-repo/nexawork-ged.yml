@@ -12,6 +12,13 @@ spring:
     password: ${DB_PASSWORD:passe}
   flyway:
     locations: classpath:db/migration
+  servlet:
+    multipart:
+      # Dépôt externe (Brique 4, boîte de dépôt) : le GED reçoit le multipart et le
+      # relaie au File Service. Sans relèvement, la limite Spring par défaut (1 Mo)
+      # ferait échouer tout dépôt un peu volumineux. Aligné sur le File Service (25 Mo).
+      max-file-size: 25MB
+      max-request-size: 30MB
 
 nexawork:
   ged:
@@ -19,6 +26,9 @@ nexawork:
     # « Pièces jointes aux tâches » (§10.5bis). Timeout court : 503 si dépassé.
     project-service-url: http://${PROJECT_SERVICE_HOST:localhost}:8082/nexawork-project-api-v1
     project-call-timeout-ms: 3000
+    # Relais d'octets GED → File Service pour les liens de partage externes (Brique 4).
+    file-service-url: http://${FILE_SERVICE_HOST:localhost}:8086/nexawork-file-api-v1
+    file-call-timeout-ms: 20000
 
 management:
   health:

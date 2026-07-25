@@ -18,6 +18,9 @@ const PUBLIC_PATHS = [
   '/auth/verify-email',
   '/auth/email/confirm-change',
   '/api/v1/guest/',
+  // Liens de partage externes GED (Brique 4) : le visiteur n'a pas de compte, aucun
+  // Bearer ne doit être posé (il fausserait l'isolation et pourrait échouer au refresh).
+  '/api/v1/public/shares/',
 ];
 
 /**

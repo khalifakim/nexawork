@@ -470,6 +470,8 @@ services:
       RABBITMQ_HOST: rabbitmq
       # Appel synchrone GED → Project pour le dossier virtuel TASK_ATTACHMENTS (§10.5bis)
       PROJECT_SERVICE_HOST: project-service
+      # Relais d'octets GED → File Service pour les liens de partage externes (Brique 4)
+      FILE_SERVICE_HOST: file-service
     ports:
       - "8087:8087"
     networks:

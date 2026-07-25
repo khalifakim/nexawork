@@ -96,6 +96,72 @@ export type TargetType = 'FOLDER' | 'FILE';
 export type GranteeType = 'USER' | 'TEAM';
 export type AccessLevel = 'READER' | 'EDITOR';
 
+// ── Liens de partage externes (Brique 4) ─────────────────────────────────────
+
+export type ShareMode = 'READ' | 'DROP';
+
+/** Création d'un lien de partage externe (endpoint authentifié). */
+export interface CreateShareLinkRequest {
+  targetType: TargetType;
+  targetId: string;
+  mode: ShareMode;
+  /** Mot de passe en clair (optionnel) — haché côté serveur. */
+  password?: string;
+  /** Date d'expiration ISO (optionnelle). */
+  expiresAt?: string;
+  /** Expiration par nombre d'accès (optionnelle ; 1 = usage unique). */
+  maxAccess?: number;
+  /** Garde-fous de dépôt (mode DROP). */
+  maxUploadBytes?: number;
+  allowedExtensions?: string;
+}
+
+/** Vue authentifiée d'un lien (créateur / gestion). */
+export interface ShareLinkResponse {
+  id: string;
+  token: string;
+  path: string;
+  targetType: TargetType;
+  targetId: string;
+  targetName: string;
+  mode: ShareMode;
+  hasPassword: boolean;
+  expiresAt?: string;
+  maxAccess?: number;
+  accessCount: number;
+  maxUploadBytes?: number;
+  allowedExtensions?: string;
+  revoked: boolean;
+  active: boolean;
+  createdAt: string;
+}
+
+/** Une ligne de fichier exposée par un lien READ sur un dossier. */
+export interface PublicShareFileLine {
+  id: string;
+  name: string;
+  contentType?: string;
+  fileSize?: number;
+}
+
+/** Vue publique d'un lien (page /s/:token, sans compte). */
+export interface PublicShareInfo {
+  mode: ShareMode;
+  targetType: TargetType;
+  active: boolean;
+  reason: string;
+  passwordRequired: boolean;
+  unlocked: boolean;
+  targetName?: string;
+  fileName?: string;
+  contentType?: string;
+  fileSize?: number;
+  files?: PublicShareFileLine[];
+  remainingAccess?: number;
+  maxUploadBytes?: number;
+  allowedExtensions?: string;
+}
+
 export interface GrantResponse {
   id: string;
   targetType: TargetType;

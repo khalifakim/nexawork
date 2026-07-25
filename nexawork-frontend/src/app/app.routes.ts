@@ -103,6 +103,13 @@ export const routes: Routes = [
     path: 'guest/:token',
     loadComponent: () => import('@features/reunions/invite/salle-invite.component').then(m => m.SalleInviteComponent),
   },
+  // Lien de partage externe GED (Brique 4) : page PUBLIQUE atteinte par le lien
+  // partagé. Aucun compte requis — le token du lien vaut l'accès (consultation,
+  // téléchargement, ou dépôt selon le mode du lien).
+  {
+    path: 's/:token',
+    loadComponent: () => import('@features/documents/partage-public/partage-public.component').then(m => m.PartagePublicComponent),
+  },
 
   // Racine et routes inconnues → l'app ; l'authGuard renvoie vers /auth/landing si
   // l'utilisateur n'est pas connecté (voir auth.guard.ts).

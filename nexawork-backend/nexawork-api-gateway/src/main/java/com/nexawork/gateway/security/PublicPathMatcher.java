@@ -50,6 +50,13 @@ public class PublicPathMatcher {
             "/nexawork-meeting-api-v1/api/v1/guest/*/files",
             "/nexawork-meeting-api-v1/api/v1/guest/*/files/*/download",
 
+            // ─── GED : liens de partage EXTERNES par token (Brique 4) ───
+            // Le destinataire n'a pas de compte : il présente le token du lien, validé
+            // côté GED (expiration, mot de passe, mode, portée). Tout /public/** du GED
+            // est donc ouvert SANS JWT — download et upload (dépôt) compris, quel que
+            // soit le nombre de segments (le préfixe /** couvre déjà les sous-chemins).
+            "/nexawork-ged-api-v1/api/v1/public/**",
+
             // ─── Photos de profil (File Service) ───
             // Un avatar s'affiche via <img src>, et le navigateur n'y joint AUCUN
             // en-tête Authorization : la route protégée renvoyait 401 → image cassée

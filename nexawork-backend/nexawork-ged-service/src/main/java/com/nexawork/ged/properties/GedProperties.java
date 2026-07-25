@@ -17,4 +17,14 @@ public class GedProperties {
 
     /** Timeout de l'appel synchrone (ms) : au-delà → 503 (pas de contenu partiel). */
     private int projectCallTimeoutMs = 3000;
+
+    /**
+     * Base URL du File Service (context-path inclus). Utilisée pour relayer les
+     * octets d'un lien de partage externe (download / upload) au nom d'un visiteur
+     * sans compte (Brique 4).
+     */
+    private String fileServiceUrl = "http://localhost:8086/nexawork-file-api-v1";
+
+    /** Timeout de l'appel synchrone au File Service (ms). */
+    private int fileCallTimeoutMs = 20000;
 }
