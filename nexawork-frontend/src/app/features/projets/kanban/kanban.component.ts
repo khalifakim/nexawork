@@ -26,6 +26,7 @@ import { KanbanStore } from './kanban.store';
         <app-filter-chip label="Échéance" [options]="ECH_OPTS" [value]="store.filters().ech"
                          (valueChange)="store.setFilter('ech', $any($event))" />
         <span class="spacer"></span>
+        <button class="tb-export" (click)="export.emit()" title="Exporter les taches du projet au format Excel"><app-icon name="sheet" [size]="15" />Exporter Excel</button>
         @if (!readonly) {
           <button class="add-task" (click)="create.emit('')"><app-icon name="plus" [size]="15" [stroke]="2.2" />Ajouter une tâche</button>
           @if (canManageBoard) {
@@ -163,6 +164,8 @@ export class KanbanComponent {
   @Output() create = new EventEmitter<string>();
   @Output() openStatuses = new EventEmitter<void>();
   @Output() openWorkflow = new EventEmitter<void>();
+  /** Demande l'export Excel des tâches (traité par le projet-shell). */
+  @Output() export = new EventEmitter<void>();
 
   store = inject(KanbanStore);
   private el = inject(ElementRef);

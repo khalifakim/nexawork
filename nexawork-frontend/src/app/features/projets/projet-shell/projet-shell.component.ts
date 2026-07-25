@@ -62,10 +62,6 @@ interface ConfirmCfg { title: string; danger: boolean; btn: string; icon: string
           }
           <span class="spacer"></span>
 
-          <button class="set" (click)="exportExcel()" title="Exporter les taches du projet au format Excel">
-            <app-icon name="download" [size]="15" />Exporter Excel
-          </button>
-
           @if (isRo() && isAdmin()) {
             <button class="btn-restore" (click)="openConfirm('restore')"><app-icon name="restore" [size]="15" />Restaurer</button>
             <button class="btn-del" (click)="openConfirm('deleteArchived')"><app-icon name="trash" [size]="15" />Supprimer</button>
@@ -116,7 +112,7 @@ interface ConfirmCfg { title: string; danger: boolean; btn: string; icon: string
       <div class="body">
         @switch (tab()) {
           @case ('vue-d-ensemble') { <app-vue-d-ensemble [readonly]="isRo()" /> }
-          @case ('kanban') { <app-kanban [readonly]="isRo()" [canManageBoard]="isAdmin()" (openTask)="openTask($event)" (create)="createCol.set($event)" (openStatuses)="statutsOpen.set(true)" (openWorkflow)="workflowOpen.set(true)" /> }
+          @case ('kanban') { <app-kanban [readonly]="isRo()" [canManageBoard]="isAdmin()" (openTask)="openTask($event)" (create)="createCol.set($event)" (openStatuses)="statutsOpen.set(true)" (openWorkflow)="workflowOpen.set(true)" (export)="exportExcel()" /> }
           @case ('gantt') { <app-gantt /> }
           @case ('calendrier') { <app-calendrier [readonly]="isRo()" (openTask)="openTask($event)" (create)="createOnDay($event)" /> }
           @case ('documents') { <app-ged-view [projectId]="id()" [readonly]="isRo()" /> }

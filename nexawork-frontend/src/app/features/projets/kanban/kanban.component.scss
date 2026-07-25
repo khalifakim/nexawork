@@ -3,6 +3,10 @@
 .fbar { flex: none; display: flex; align-items: center; gap: 10px; padding: 14px 28px 12px; }
 .spacer { flex: 1; }
 .add-task { display: flex; align-items: center; gap: 7px; height: 34px; padding: 0 14px; border: none; border-radius: 8px; background: var(--nx-indigo); color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; box-shadow: var(--nx-shadow-primary); }
+/* Export Excel : bouton neutre, icône tableur teintée « vert Excel » pour lever l'ambiguïté sur le périmètre (tâches). */
+.tb-export { display: flex; align-items: center; gap: 7px; height: 34px; padding: 0 13px; border: 1px solid var(--nx-border); border-radius: 8px; background: #fff; color: var(--nx-text-700); font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; }
+.tb-export:hover { background: var(--nx-surface-2); border-color: #d7d3cb; }
+.tb-export app-icon { color: #1F8A5B; display: flex; }
 .gearwrap { position: relative; }
 .gear { width: 34px; height: 34px; border: 1px solid var(--nx-border); border-radius: 8px; background: #fff; color: var(--nx-text-700); cursor: pointer; display: flex; align-items: center; justify-content: center; }
 .gear--on { border-color: var(--nx-indigo); background: rgba(91,95,233,.06); color: var(--nx-indigo); }
