@@ -266,7 +266,11 @@ public class SharedLinkServiceImpl implements SharedLinkService {
                 // Identité de confiance = créateur du lien ; paternité réelle conservée à part.
                 .addedByUserId(link.getCreatedByUserId())
                 .isDeleted(false)
-                .externalUploaderName(trimToNull(uploaderName))
+                // Toujours renseigné pour un dépôt externe (« Anonyme » si non nommé) :
+                // c'est le signal qui permet à l'UI de NE PAS afficher le créateur du
+                // lien comme auteur. Sans ce fallback, un dépôt anonyme retombait sur
+                // addedByUserId et s'affichait au nom du créateur du lien.
+                .externalUploaderName(StringUtils.hasText(uploaderName) ? uploaderName.trim() : "Anonyme")
                 .externalUploaderEmail(trimToNull(uploaderEmail))
                 .build());
 

@@ -450,19 +450,24 @@ function toFolderItem(f: FolderResponse, byId: Map<string, Member>): GedItem {
 }
 
 function toFileItem(f: FileResponse, byId: Map<string, Member>): GedItem {
+  // Déposant externe (lien de partage) : l'auteur affiché est le nom saisi (ou
+  // « Anonyme »), JAMAIS addedByUserId qui reste le créateur du lien.
+  const external = !!f.externalUploaderName;
+  const author = external ? f.externalUploaderName! : (byId.get(f.addedByUserId)?.name ?? 'Membre');
   return {
     id: f.id,
     type: gedType(f.name, f.contentType),
     name: f.name,
-    owner: byId.get(f.addedByUserId)?.name ?? 'Membre',
+    owner: author,
     size: formatSize(f.fileSize),
     mod: formatDate(f.addedAt),
-    by: byId.get(f.addedByUserId)?.name ?? 'Membre',
+    by: author,
     added: formatDate(f.addedAt),
     restricted: f.restricted,
     projectId: f.projectId,
     url: f.fileUrl,
     rawDate: f.addedAt,
+    external,
   };
 }
 
@@ -511,9 +516,27 @@ function formatSize(bytes?: number): string {
   return (bytes / (1024 * 1024)).toFixed(1).replace('.', ',').replace(',0', '') + ' Mo';
 }
 
-/** Date EXACTE (jj mois aaaa) — suivi précis de chaque élément (plus de libellé relatif). */
+/**
+ * Date d'un élément GED :
+ * - < 24 h → libellé relatif (« à l'instant », « il y a 5 min », « il y a 3 h ») ;
+ * - ≥ 24 h → date ET heure exactes (« 12 juil. 2026 à 14:01 »).
+ * L'heure est toujours visible au-delà de 24 h (exigence de suivi précis).
+ */
 function formatDate(iso: string): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return '';
-  return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+  const diffMs = Date.now() - d.getTime();
+  const DAY = 86_400_000;
+  // Dans les 24 h (et non daté dans le futur) : relatif.
+  if (diffMs >= 0 && diffMs < DAY) {
+    const min = Math.floor(diffMs / 60_000);
+    if (min < 1) return "à l'instant";
+    if (min < 60) return `il y a ${min} min`;
+    const h = Math.floor(min / 60);
+    return `il y a ${h} h`;
+  }
+  // Au-delà de 24 h (ou date future) : date + heure exactes.
+  const date = d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+  const time = d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  return `${date} à ${time}`;
 }

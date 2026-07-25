@@ -109,7 +109,7 @@ import { GED_COLOR, GED_ICON, TASK_FOLDER } from '@core/util/ui.util';
                 }
               </span>
             } @else {
-              <span class="muted">{{ it.system ? '—' : it.owner }}</span>
+              <span class="muted">{{ it.system ? '—' : it.owner }}@if (it.external) { <span class="ext" title="Déposé via un lien de partage externe">externe</span> }</span>
               <span class="muted">{{ it.size }}</span>
               <span class="mod">@if (!it.system) { <span class="mod__a">{{ it.mod }}</span><span class="mod__b">par {{ it.by }}</span> } @else { <span class="muted">—</span> }</span>
               <span class="act">@if (!it.system && !readonly) {

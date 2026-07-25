@@ -51,6 +51,8 @@
 .muted { font-size: 13px; color: var(--nx-text-500); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mod__a { display: block; font-size: 13px; color: var(--nx-text-600); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mod__b { display: block; font-size: 11.5px; color: var(--nx-text-300); }
+/* Marqueur discret : auteur = déposant externe (lien de partage), pas un membre. */
+.ext { display: inline-block; margin-left: 5px; padding: 0 5px; border-radius: 4px; font-size: 10px; font-weight: 600; color: #A85B00; background: rgba(232,154,44,.14); vertical-align: 1px; }
 /* Chip cliquable qui ouvre le modal de détail de la tâche associée */
 .task { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 4px 6px; border: none; border-radius: 6px; background: transparent; cursor: pointer; font-family: inherit; text-align: left; }
 .task:hover { background: rgba(91,95,233,.06); }

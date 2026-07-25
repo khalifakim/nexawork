@@ -20,6 +20,8 @@ export interface GedItem {
   restricted?: boolean;
   /** Projet d'appartenance (vide = GED d'organisation). */
   projectId?: string;
+  /** Vrai si l'auteur est un déposant EXTERNE (lien de partage), pas un membre. */
+  external?: boolean;
 }
 
 // ── Payloads backend (GED service) ──────────────────────────────────────────
@@ -54,6 +56,10 @@ export interface FileResponse {
   addedByUserId: string;
   addedAt: string;
   deletedAt?: string;
+  /** Déposant externe (lien de partage) : nom saisi ou « Anonyme » ; nul si import interne. */
+  externalUploaderName?: string;
+  /** E-mail éventuel du déposant externe. */
+  externalUploaderEmail?: string;
 }
 
 export interface TaskAttachmentLineResponse {
