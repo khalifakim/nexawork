@@ -10,10 +10,13 @@ import * as XLSX from 'xlsx';
 // envoi externe. Contrairement à mammoth (contenu seul), docx-preview reproduit la
 // mise en page façon Word.
 import { renderAsync } from 'docx-preview';
+// Aperçu PowerPoint (.pptx) 100 % navigateur, aucun envoi externe. Fidélité
+// approximative (pas d'animations/SmartArt avancés), mais rend les diapositives.
+import { init as initPptx } from 'pptx-preview';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 import { saveBlob } from '@core/util/download.util';
 
-type Kind = 'pdf' | 'image' | 'video' | 'audio' | 'zip' | 'word' | 'excel' | 'unsupported';
+type Kind = 'pdf' | 'image' | 'video' | 'audio' | 'zip' | 'word' | 'excel' | 'ppt' | 'unsupported';
 
 interface ZipEntry { path: string; name: string; size: number; }
 
@@ -79,6 +82,17 @@ interface ZipEntry { path: string; name: string; size: number; }
           }
         }
         @case ('excel') { <ng-container *ngTemplateOutlet="office"></ng-container> }
+        @case ('ppt')   {
+          @if (officeError()) {
+            <div class="msg msg--lg">
+              <div class="msg__t">Aperçu de la présentation impossible</div>
+              <div class="msg__s">Cette présentation n'a pas pu être rendue. Téléchargez-la pour l'ouvrir.</div>
+            </div>
+          } @else {
+            <div class="pptxwrap"><div #pptxHost></div></div>
+            @if (!pptRendered()) { <div class="docxload">Rendu de la présentation…</div> }
+          }
+        }
         @default {
           <div class="msg msg--lg">
             <div class="msg__t">Format non prévisualisable</div>
@@ -143,6 +157,9 @@ interface ZipEntry { path: string; name: string; size: number; }
     .docxwrap::ng-deep .docx-wrapper { background: transparent; padding: 20px; }
     .docxwrap::ng-deep .docx-wrapper > section.docx { box-shadow: 0 2px 14px rgba(20,15,40,.12); margin-bottom: 18px; }
     .docxload { flex: none; text-align: center; color: var(--nx-text-500); font-size: 13px; padding: 12px; }
+    /* PowerPoint via pptx-preview : conteneur scrollable, diapositives empilées. */
+    .pptxwrap { flex: 1; min-height: 0; overflow: auto; background: #f2f1ee; border: 1px solid var(--nx-border-card); border-radius: 12px; padding: 12px; }
+    .pptxwrap::ng-deep .pptx-preview-wrapper { margin: 0 auto; }
   `],
 })
 export class FilePreviewComponent implements OnChanges, OnDestroy {
@@ -160,6 +177,8 @@ export class FilePreviewComponent implements OnChanges, OnDestroy {
   officeError = signal(false);
   /** Vrai une fois le rendu Word (docx-preview) injecté dans le conteneur. */
   wordRendered = signal(false);
+  /** Vrai une fois la présentation (pptx-preview) rendue dans le conteneur. */
+  pptRendered = signal(false);
   zipEntries = signal<ZipEntry[]>([]);
   entry = signal<{ name: string; kind: Kind; url: string; safe: SafeResourceUrl | null; blob: Blob } | null>(null);
 
@@ -184,6 +203,23 @@ export class FilePreviewComponent implements OnChanges, OnDestroy {
     }
   }
 
+  /** Conteneur DOM où pptx-preview injecte les diapositives. */
+  private pptxHostEl: HTMLElement | null = null;
+  /** Présentation en attente tant que le conteneur n'est pas dans le DOM. */
+  private pendingPptx: Blob | null = null;
+  /** Instance pptx-preview courante (détruite au reset pour libérer le DOM). */
+  private pptxPreviewer: { destroy(): void } | null = null;
+
+  /** Analogue de {@link docxHost} pour PowerPoint. */
+  @ViewChild('pptxHost') set pptxHost(ref: ElementRef<HTMLElement> | undefined) {
+    this.pptxHostEl = ref?.nativeElement ?? null;
+    if (this.pptxHostEl && this.pendingPptx) {
+      const blob = this.pendingPptx;
+      this.pendingPptx = null;
+      this.renderPptx(blob, this.pptxHostEl);
+    }
+  }
+
   ngOnChanges(): void {
     if (this.blob === this.loadedBlob) return;
     this.reset();
@@ -195,6 +231,7 @@ export class FilePreviewComponent implements OnChanges, OnDestroy {
     if (k === 'zip') { this.loadZip(this.blob); return; }
     if (k === 'word') { this.loadWord(this.blob); return; }
     if (k === 'excel') { this.loadExcel(this.blob); return; }
+    if (k === 'ppt') { this.loadPpt(this.blob); return; }
     const url = this.track(URL.createObjectURL(this.blob));
     this.rawUrl.set(url);
     this.safeUrl.set(this.sanitizer.bypassSecurityTrustResourceUrl(url));
@@ -227,6 +264,32 @@ export class FilePreviewComponent implements OnChanges, OnDestroy {
       .catch(() => this.officeError.set(true));
   }
 
+  /**
+   * PowerPoint (.pptx) → diapositives via pptx-preview. Même logique différée que
+   * Word : si le conteneur n'est pas encore monté, on garde le blob en attente.
+   */
+  private loadPpt(blob: Blob): void {
+    this.pptRendered.set(false);
+    if (this.pptxHostEl) {
+      this.renderPptx(blob, this.pptxHostEl);
+    } else {
+      this.pendingPptx = blob;
+    }
+  }
+
+  /** Rend les diapositives dans le conteneur (mode liste, scrollable). */
+  private renderPptx(blob: Blob, host: HTMLElement): void {
+    host.innerHTML = '';
+    const width = host.clientWidth || 900;
+    // Diapositives 16:9 empilées ; la hauteur suit la largeur.
+    const previewer = initPptx(host, { mode: 'list', width, height: Math.round(width * 9 / 16) });
+    this.pptxPreviewer = previewer;
+    blob.arrayBuffer()
+      .then(buf => previewer.preview(buf))
+      .then(() => this.pptRendered.set(true))
+      .catch(() => this.officeError.set(true));
+  }
+
   /** Tableur (.xlsx/.xls/.csv) → table(s) HTML via SheetJS (navigateur). */
   private loadExcel(blob: Blob): void {
     blob.arrayBuffer()
@@ -241,7 +304,13 @@ export class FilePreviewComponent implements OnChanges, OnDestroy {
       .catch(() => this.officeError.set(true));
   }
 
-  ngOnDestroy(): void { this.revokeAll(); }
+  ngOnDestroy(): void { this.revokeAll(); this.destroyPptx(); }
+
+  /** Détruit proprement l'instance pptx-preview (le composant réutilise le DOM). */
+  private destroyPptx(): void {
+    try { this.pptxPreviewer?.destroy(); } catch { /* déjà libéré */ }
+    this.pptxPreviewer = null;
+  }
 
   private loadZip(blob: Blob): void {
     JSZip.loadAsync(blob).then(zip => {
@@ -295,6 +364,7 @@ export class FilePreviewComponent implements OnChanges, OnDestroy {
     this.rawUrl.set(null); this.safeUrl.set(null); this.zipEntries.set([]); this.entry.set(null);
     this.officeHtml.set(null); this.officeError.set(false);
     this.wordRendered.set(false); this.pendingDocx = null;
+    this.pptRendered.set(false); this.pendingPptx = null; this.destroyPptx();
     this.kind.set('unsupported');
   }
 }
@@ -318,6 +388,7 @@ function kindOf(name: string): Kind {
   if (['mp3', 'wav', 'm4a', 'aac', 'oga', 'flac'].includes(ext)) return 'audio';
   if (ext === 'docx') return 'word';
   if (['xlsx', 'xls', 'csv'].includes(ext)) return 'excel';
+  if (ext === 'pptx') return 'ppt';
   if (ext === 'zip') return 'zip';
   return 'unsupported';
 }
