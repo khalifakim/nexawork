@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { BehaviorSubject, Observable, combineLatest, map, of, timer } from 'rxjs';
-import { catchError, delay, switchMap } from 'rxjs/operators';
+import { catchError, delay, shareReplay, switchMap } from 'rxjs/operators';
 import { BaseHttpService } from '@core/http/base-http.service';
 import { SILENT } from '@core/http/http-context';
 import { StompClientService } from '@core/ws/stomp-client.service';
@@ -96,15 +96,38 @@ export class MembersHttpService extends BaseHttpService implements MembersServic
   /** Dernière présence connue — sert à teinter l'annuaire, qui doit rester « complétable ». */
   private get lastPresence(): Set<string> { return this.presenceSet.value; }
 
+  /**
+   * Annuaire BRUT (sans présence) du workspace, MIS EN CACHE et PARTAGÉ pendant une
+   * courte fenêtre. Sans ce cache, chaque composant qui affiche des noms de membres
+   * (en-tête, sidebar, équipes, réunion, conversations…) déclenchait un appel auth
+   * indépendant : sous charge, cela SATURAIT l'auth-service (pool DB limité) et
+   * cascadait sur tout le backend. `shareReplay` → un seul appel réseau pour tous
+   * les abonnés simultanés ; le TTL le rafraîchit périodiquement.
+   */
+  private static readonly DIR_TTL_MS = 30_000;
+  private readonly dirCache = new Map<string, { at: number; obs: Observable<Member[]> }>();
+
+  private rawDirectory(wsId: string): Observable<Member[]> {
+    const cached = this.dirCache.get(wsId);
+    if (cached && Date.now() - cached.at < MembersHttpService.DIR_TTL_MS) {
+      return cached.obs;
+    }
+    const obs = this.get$<MemberResponse[]>('auth', `/workspaces/${wsId}/members`).pipe(
+      map(rs => rs.filter(r => !r.isDeactivated).map(toMember)),
+      shareReplay({ bufferSize: 1, refCount: false }),
+    );
+    this.dirCache.set(wsId, { at: Date.now(), obs });
+    return obs;
+  }
+
   /** Membres actifs du workspace courant (annuaire), triés par nom, présence incluse. */
   directory(): Observable<Member[]> {
     const wsId = this.session.activeWorkspaceId();
     if (!wsId) return of([]);
-    return this.get$<MemberResponse[]>('auth', `/workspaces/${wsId}/members`).pipe(
-      map(rs => rs.filter(r => !r.isDeactivated)
-        .map(toMember)
-        // Sans cette fusion, `online` restait à false partout : fiche profil,
-        // en-tête de conversation, page Membres affichaient tout le monde hors ligne.
+    // Un seul appel réseau partagé (cache TTL) ; la présence est fusionnée en
+    // instantané à la lecture (le flux vivant reste `online()`).
+    return this.rawDirectory(wsId).pipe(
+      map(list => list
         .map(m => ({ ...m, online: !!m.userId && this.lastPresence.has(m.userId) }))
         .sort((a, b) => a.name.localeCompare(b.name))),
     );
