@@ -24,6 +24,9 @@
 .chef--on { border-color: #5B5FE9; }
 .chef--set { padding: 0 10px 0 6px; }
 .chef__a { width: 28px; height: 28px; flex: none; border-radius: 50%; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; }
+.chef:disabled { cursor: default; opacity: .9; }
+.chef__spin { width: 20px; height: 20px; flex: none; border-radius: 50%; border: 2.5px solid var(--nx-border, #E6E3DC); border-top-color: var(--nx-indigo, #5b5fe9); animation: chefsp .6s linear infinite; }
+@keyframes chefsp { to { transform: rotate(360deg); } }
 .chef__i { display: flex; color: #b4b0bb; flex: none; }
 .chef__t { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.15; }
 .chef__l { font-size: 10.5px; font-weight: 600; letter-spacing: .02em; text-transform: uppercase; color: #a9a5b0; }
@@ -181,7 +184,11 @@
 .viewtabs__on app-icon { color: var(--nx-indigo) !important; }
 
 /* ── Vue « Charge de travail » ─────────────────────────────────────────────── */
-.chg__h { margin: 2px 28px 16px; }
+.chg__h { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin: 2px 28px 16px; }
+.chg__tt { display: flex; flex-direction: column; min-width: 0; }
+/* Sous-sélecteur Par membre / Par équipe (dans l'en-tête de la vue Progression). */
+.viewtabs--sm { align-self: center; margin: 0; }
+.viewtabs--sm button { height: 28px; padding: 0 12px; font-size: 12px; }
 .chg__t { display: block; font-size: 15px; font-weight: 700; color: var(--nx-text); }
 .chg__s { display: block; font-size: 12.5px; color: var(--nx-text-500); margin-top: 3px; }
 

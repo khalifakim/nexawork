@@ -29,6 +29,11 @@ interface WorkloadRow {
   /** Progression = part des tâches terminées (0–100). */
   pct: number;
 }
+/** Progression agrégée d'une équipe (somme des tâches de ses membres). */
+interface TeamWorkloadRow {
+  id: string; name: string; color: string; count: number;
+  todo: number; active: number; done: number; overdue: number; total: number; pct: number;
+}
 
 @Component({
   selector: 'app-equipes',
@@ -128,10 +133,10 @@ interface WorkloadRow {
             </div>
           </div>
         }
-        <!-- Bascule Composition / Charge de travail (identique dans /app/equipes et l'onglet projet) -->
+        <!-- Bascule Membres du projet / Progression (identique dans /app/equipes et l'onglet projet) -->
         <div class="viewtabs">
-          <button type="button" [class.viewtabs__on]="view()==='composition'" (click)="setView('composition')"><app-icon name="teams" [size]="15" />Composition</button>
-          <button type="button" [class.viewtabs__on]="view()==='charge'" (click)="setView('charge')"><app-icon name="dashboard" [size]="15" />Progression</button>
+          <button type="button" [class.viewtabs__on]="view()==='composition'" (click)="setView('composition')"><app-icon name="teams" [size]="15" />Membres du projet</button>
+          <button type="button" [class.viewtabs__on]="view()==='charge'" (click)="setView('charge')"><app-icon name="dashboard" [size]="15" />Progression par membre / équipe</button>
         </div>
 
         @if (view() === 'composition') {
@@ -149,8 +154,14 @@ interface WorkloadRow {
 
           @if (!readonly && canManageEff()) {
             <div class="chefwrap">
-              <button class="chef" [class.chef--on]="chefOpen()" [class.chef--set]="!!chef()" (click)="toggleChef($event)">
-                @if (chef(); as c) {
+              <button class="chef" [class.chef--on]="chefOpen()" [class.chef--set]="!!chef()" [disabled]="chefSaving()" (click)="toggleChef($event)">
+                @if (chefSaving()) {
+                  <span class="chef__spin"></span>
+                  <span class="chef__t">
+                    <span class="chef__l">Chef de projet</span>
+                    <span class="chef__n">Assignation de {{ pendingChefName() }}…</span>
+                  </span>
+                } @else if (chef(); as c) {
                   <span class="chef__a" [style.background]="memberColor(c)">{{ ini(c) }}</span>
                   <span class="chef__t">
                     <span class="chef__l">Chef de projet</span>
@@ -314,37 +325,68 @@ interface WorkloadRow {
             <app-loader label="Calcul de la charge…" [minHeight]="200" />
           } @else {
             <div class="chg__h">
-              <span class="chg__t">Progression par membre</span>
-              <span class="chg__s">Répartition des tâches et progression (part des tâches terminées) sur « {{ projectName() }} ».</span>
+              <div class="chg__tt">
+                <span class="chg__t">{{ chargeBy()==='team' ? 'Progression par équipe' : 'Progression par membre' }}</span>
+                <span class="chg__s">Répartition des tâches et progression (part des tâches terminées) sur « {{ projectName() }} ».</span>
+              </div>
+              <div class="viewtabs viewtabs--sm">
+                <button type="button" [class.viewtabs__on]="chargeBy()==='member'" (click)="chargeBy.set('member')">Par membre</button>
+                <button type="button" [class.viewtabs__on]="chargeBy()==='team'" (click)="chargeBy.set('team')">Par équipe</button>
+              </div>
             </div>
             <div class="chg">
-              @for (r of workload(); track r.userId) {
-                <div class="chgrow">
-                  <span class="chgav" [style.background]="r.color">{{ ini(r.name) }}</span>
-                  <div class="chgb">
-                    <div class="chgtop">
-                      <span class="chgn">{{ r.name }}<span class="chgrole">{{ r.role }}</span></span>
-                      <span class="chgcounts">
-                        <span class="ct ct--todo">{{ r.todo }} à faire</span>
-                        <span class="ct ct--active">{{ r.active }} en cours</span>
-                        <span class="ct ct--done">{{ r.done }} terminé{{ r.done > 1 ? 's' : '' }}</span>
-                        @if (r.overdue) { <span class="ct ct--late"><app-icon name="alert" [size]="11" [stroke]="2" />{{ r.overdue }} en retard</span> }
-                      </span>
-                    </div>
-                    <div class="chgprog" [title]="r.done + ' / ' + r.total + ' tâches terminées'">
-                      <div class="chgprog__track"><div class="chgprog__fill" [style.width.%]="r.pct"></div></div>
-                      <span class="chgprog__pct">{{ r.total ? r.pct + '%' : '—' }}</span>
+              @if (chargeBy() === 'member') {
+                @for (r of workload(); track r.userId) {
+                  <div class="chgrow">
+                    <span class="chgav" [style.background]="r.color">{{ ini(r.name) }}</span>
+                    <div class="chgb">
+                      <div class="chgtop">
+                        <span class="chgn">{{ r.name }}<span class="chgrole">{{ r.role }}</span></span>
+                        <span class="chgcounts">
+                          <span class="ct ct--todo">{{ r.todo }} à faire</span>
+                          <span class="ct ct--active">{{ r.active }} en cours</span>
+                          <span class="ct ct--done">{{ r.done }} terminé{{ r.done > 1 ? 's' : '' }}</span>
+                          @if (r.overdue) { <span class="ct ct--late"><app-icon name="alert" [size]="11" [stroke]="2" />{{ r.overdue }} en retard</span> }
+                        </span>
+                      </div>
+                      <div class="chgprog" [title]="r.done + ' / ' + r.total + ' tâches terminées'">
+                        <div class="chgprog__track"><div class="chgprog__fill" [style.width.%]="r.pct"></div></div>
+                        <span class="chgprog__pct">{{ r.total ? r.pct + '%' : '—' }}</span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              } @empty {
-                <div class="chg__empty">Aucun membre sur ce projet.</div>
-              }
-              @if (unassignedCount()) {
-                <div class="chgrow chgrow--un">
-                  <span class="chgav chgav--un"><app-icon name="user" [size]="16" /></span>
-                  <div class="chgb"><span class="chgn">Non assigné<span class="chgrole">{{ unassignedCount() }} tâche{{ unassignedCount() > 1 ? 's' : '' }} sans responsable</span></span></div>
-                </div>
+                } @empty {
+                  <div class="chg__empty">Aucun membre sur ce projet.</div>
+                }
+                @if (unassignedCount()) {
+                  <div class="chgrow chgrow--un">
+                    <span class="chgav chgav--un"><app-icon name="user" [size]="16" /></span>
+                    <div class="chgb"><span class="chgn">Non assigné<span class="chgrole">{{ unassignedCount() }} tâche{{ unassignedCount() > 1 ? 's' : '' }} sans responsable</span></span></div>
+                  </div>
+                }
+              } @else {
+                @for (t of workloadByTeam(); track t.id) {
+                  <div class="chgrow">
+                    <span class="chgav" [style.background]="t.color">{{ ini(t.name) }}</span>
+                    <div class="chgb">
+                      <div class="chgtop">
+                        <span class="chgn">{{ t.name }}<span class="chgrole">{{ t.count }} membre{{ t.count > 1 ? 's' : '' }}</span></span>
+                        <span class="chgcounts">
+                          <span class="ct ct--todo">{{ t.todo }} à faire</span>
+                          <span class="ct ct--active">{{ t.active }} en cours</span>
+                          <span class="ct ct--done">{{ t.done }} terminé{{ t.done > 1 ? 's' : '' }}</span>
+                          @if (t.overdue) { <span class="ct ct--late"><app-icon name="alert" [size]="11" [stroke]="2" />{{ t.overdue }} en retard</span> }
+                        </span>
+                      </div>
+                      <div class="chgprog" [title]="t.done + ' / ' + t.total + ' tâches terminées'">
+                        <div class="chgprog__track"><div class="chgprog__fill" [style.width.%]="t.pct"></div></div>
+                        <span class="chgprog__pct">{{ t.total ? t.pct + '%' : '—' }}</span>
+                      </div>
+                    </div>
+                  </div>
+                } @empty {
+                  <div class="chg__empty">Aucune équipe sur ce projet.</div>
+                }
               }
             </div>
           }
@@ -433,6 +475,10 @@ export class EquipesComponent implements OnInit, OnDestroy {
   q        = signal('');
   chef     = signal<string | null>(null);
   chefOpen = signal(false);
+  /** Assignation du chef de projet en cours (loader dans le champ). */
+  chefSaving = signal(false);
+  /** Nom du membre en cours d'assignation comme chef (affiché pendant le chargement). */
+  pendingChefName = signal<string | null>(null);
   chefQ    = signal('');
 
   // team detail (inline) + card menu + rename
@@ -463,6 +509,8 @@ export class EquipesComponent implements OnInit, OnDestroy {
   // ── Charge de travail (vue « Charge ») ──────────────────────────────────────
   /** Vue active de l'onglet Équipes : composition (équipes/membres) ou charge. */
   view = signal<'composition' | 'charge'>('composition');
+  /** Dans la vue Progression : agrégation par membre ou par équipe. */
+  chargeBy = signal<'member' | 'team'>('member');
   /** Board du projet (statuts + cartes) chargé à la demande pour calculer la charge. */
   private board = signal<BoardData | null>(null);
   /** Projet pour lequel `board` est chargé (évite un rechargement inutile). */
@@ -505,6 +553,24 @@ export class EquipesComponent implements OnInit, OnDestroy {
     });
     rows.sort((a, b2) => (b2.activeTotal - a.activeTotal) || (b2.overdue - a.overdue) || a.name.localeCompare(b2.name));
     return rows;
+  });
+
+  /** Progression agrégée PAR ÉQUIPE : somme des tâches des membres de chaque équipe. */
+  workloadByTeam = computed<TeamWorkloadRow[]>(() => {
+    const byUser = new Map(this.workload().map(r => [r.userId, r]));
+    return this.teams().map(t => {
+      let todo = 0, active = 0, done = 0, overdue = 0;
+      for (const m of t.members) {
+        const r = byUser.get(m.userId);
+        if (r) { todo += r.todo; active += r.active; done += r.done; overdue += r.overdue; }
+      }
+      const total = todo + active + done;
+      return {
+        id: t.id, name: t.name, color: t.color, count: t.members.length,
+        todo, active, done, overdue, total,
+        pct: total ? Math.round((done / total) * 100) : 0,
+      };
+    }).sort((a, b2) => (b2.active - a.active) || (b2.overdue - a.overdue) || a.name.localeCompare(b2.name));
   });
 
   /** Tâches ouvertes non assignées à une personne (info complémentaire de la charge). */
@@ -845,12 +911,27 @@ export class EquipesComponent implements OnInit, OnDestroy {
     if (!wasOpen) this.chefQ.set('');
   }
   pickChef(m: MemberPick): void {
-    this.chef.set(m.name);
     this.chefOpen.set(false);
     this.chefQ.set('');
     const pid = this.projectId();
-    if (pid) this.projectsSvc.setProjectChief(pid, m.userId).subscribe({
-      next: () => this.toast.show({ message: m.name + ' est désormais chef de projet' }),
+    if (!pid) return;
+    // Pas d'affichage optimiste : on montre un loader tant que le serveur n'a pas
+    // confirmé, puis on applique le chef (et le toast) — l'assignation est alors
+    // réellement effective.
+    this.pendingChefName.set(m.name);
+    this.chefSaving.set(true);
+    this.projectsSvc.setProjectChief(pid, m.userId).subscribe({
+      next: () => {
+        this.chef.set(m.name);
+        this.chefSaving.set(false);
+        this.pendingChefName.set(null);
+        this.toast.show({ message: m.name + ' est désormais chef de projet' });
+      },
+      error: () => {
+        this.chefSaving.set(false);
+        this.pendingChefName.set(null);
+        this.toast.show({ message: 'Impossible de désigner le chef de projet. Réessayez.', icon: 'warning' });
+      },
     });
   }
   removeChef(): void {
