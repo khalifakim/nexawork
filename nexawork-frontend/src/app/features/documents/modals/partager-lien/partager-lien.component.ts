@@ -36,7 +36,7 @@ type ExpiryKind = 'never' | 'date' | 'count';
               <span class="link__url" [title]="absolute(l)">{{ absolute(l) }}</span>
               <span class="link__meta">{{ metaLabel(l) }}</span>
               <button class="ic" title="Copier" (click)="copy(l)"><app-icon name="link" [size]="15" /></button>
-              <button class="ic ic--danger" title="Révoquer" [disabled]="!l.active || busyId() === l.id" (click)="revoke(l)"><app-icon name="trash" [size]="15" /></button>
+              <button class="ic ic--danger" title="Supprimer le lien" [disabled]="busyId() === l.id" (click)="revoke(l)"><app-icon name="trash" [size]="15" /></button>
             </div>
           }
         </div>
@@ -230,10 +230,12 @@ export class PartagerLienComponent implements OnInit {
     this.shares.revoke(l.id).subscribe({
       next: () => {
         this.busyId.set(null);
-        this.existing.update(list => list.map(x => x.id === l.id ? { ...x, revoked: true, active: false } : x));
-        this.toast.show({ message: 'Lien révoqué' });
+        // Suppression réelle : le lien disparaît de la liste (pour re-partager,
+        // on régénère un nouveau lien).
+        this.existing.update(list => list.filter(x => x.id !== l.id));
+        this.toast.show({ message: 'Lien supprimé' });
       },
-      error: () => { this.busyId.set(null); this.toast.show({ message: 'Révocation impossible.', icon: 'warning' }); },
+      error: () => { this.busyId.set(null); this.toast.show({ message: 'Suppression impossible.', icon: 'warning' }); },
     });
   }
 

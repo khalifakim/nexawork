@@ -139,9 +139,10 @@ public class SharedLinkServiceImpl implements SharedLinkService {
                 || !link.getCreatedByUserId().equals(caller.userId())) {
             throw new ResourceNotFoundException("Lien introuvable.");
         }
-        link.setRevoked(true);
-        sharedLinkRepository.save(link);
-        log.info("Lien de partage {} révoqué par {}", id, caller.userId());
+        // Suppression réelle : un lien révoqué ne doit pas subsister dans la liste.
+        // Pour re-partager, on régénère simplement un nouveau lien sur l'élément.
+        sharedLinkRepository.delete(link);
+        log.info("Lien de partage {} supprimé par {}", id, caller.userId());
     }
 
     // ═══════════════════════════ Public (token) ═════════════════════════════════
