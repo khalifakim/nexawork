@@ -1,19 +1,17 @@
 import {
-  ChangeDetectionStrategy, Component, EventEmitter, Input, OnChanges, OnDestroy, Output, inject, signal,
+  ChangeDetectionStrategy, Component, ElementRef, EventEmitter, Input, OnChanges, OnDestroy,
+  Output, ViewChild, inject, signal,
 } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { DomSanitizer, SafeHtml, SafeResourceUrl } from '@angular/platform-browser';
 import JSZip from 'jszip';
 import * as XLSX from 'xlsx';
-// Bundle navigateur autonome (aucun module Node), sans déclarations de types.
-// @ts-expect-error - pas de types pour le sous-chemin navigateur ; l'API .convertToHtml suffit.
-import mammothBrowser from 'mammoth/mammoth.browser.js';
+// Rendu Word fidèle (pages, marges, polices, tableaux) — 100 % navigateur, aucun
+// envoi externe. Contrairement à mammoth (contenu seul), docx-preview reproduit la
+// mise en page façon Word.
+import { renderAsync } from 'docx-preview';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 import { saveBlob } from '@core/util/download.util';
-
-const mammoth = mammothBrowser as {
-  convertToHtml(input: { arrayBuffer: ArrayBuffer }): Promise<{ value: string }>;
-};
 
 type Kind = 'pdf' | 'image' | 'video' | 'audio' | 'zip' | 'word' | 'excel' | 'unsupported';
 
@@ -69,7 +67,17 @@ interface ZipEntry { path: string; name: string; size: number; }
         @case ('image') { <div class="pv pv--center"><img [src]="url" [alt]="name" /></div> }
         @case ('video') { <div class="pv pv--center pv--dark"><video [src]="url" controls playsinline></video></div> }
         @case ('audio') { <div class="pv pv--center"><audio [src]="url" controls></audio></div> }
-        @case ('word')  { <ng-container *ngTemplateOutlet="office"></ng-container> }
+        @case ('word')  {
+          @if (officeError()) {
+            <div class="msg msg--lg">
+              <div class="msg__t">Aperçu du document impossible</div>
+              <div class="msg__s">Ce document n'a pas pu être rendu. Téléchargez-le pour l'ouvrir.</div>
+            </div>
+          } @else {
+            <div class="docxwrap"><div #docxHost></div></div>
+            @if (!wordRendered()) { <div class="docxload">Rendu du document…</div> }
+          }
+        }
         @case ('excel') { <ng-container *ngTemplateOutlet="office"></ng-container> }
         @default {
           <div class="msg msg--lg">
@@ -129,6 +137,12 @@ interface ZipEntry { path: string; name: string; size: number; }
     .office::ng-deep td, .office::ng-deep th { border: 1px solid #DDD9D1; padding: 4px 9px; font-size: 12.5px; white-space: nowrap; }
     .office::ng-deep h4.sheet { position: sticky; left: 0; margin: 18px 0 6px; font-size: 13px; font-weight: 700; color: var(--nx-indigo); }
     .office--xls { padding: 16px; }
+    /* Word via docx-preview : le conteneur scrolle ; docx-preview stylise les pages
+       (fond gris, pages blanches ombrées) façon Word à l'intérieur. */
+    .docxwrap { flex: 1; min-height: 0; overflow: auto; background: #f2f1ee; border: 1px solid var(--nx-border-card); border-radius: 12px; }
+    .docxwrap::ng-deep .docx-wrapper { background: transparent; padding: 20px; }
+    .docxwrap::ng-deep .docx-wrapper > section.docx { box-shadow: 0 2px 14px rgba(20,15,40,.12); margin-bottom: 18px; }
+    .docxload { flex: none; text-align: center; color: var(--nx-text-500); font-size: 13px; padding: 12px; }
   `],
 })
 export class FilePreviewComponent implements OnChanges, OnDestroy {
@@ -144,11 +158,31 @@ export class FilePreviewComponent implements OnChanges, OnDestroy {
   safeUrl = signal<SafeResourceUrl | null>(null);
   officeHtml = signal<SafeHtml | null>(null);
   officeError = signal(false);
+  /** Vrai une fois le rendu Word (docx-preview) injecté dans le conteneur. */
+  wordRendered = signal(false);
   zipEntries = signal<ZipEntry[]>([]);
   entry = signal<{ name: string; kind: Kind; url: string; safe: SafeResourceUrl | null; blob: Blob } | null>(null);
 
   private urls: string[] = [];
   private loadedBlob: Blob | null = null;
+  /** Conteneur DOM où docx-preview injecte le rendu Word (résolu à l'affichage). */
+  private docxHostEl: HTMLElement | null = null;
+  /** Blob Word en attente tant que le conteneur n'est pas encore dans le DOM. */
+  private pendingDocx: Blob | null = null;
+
+  /**
+   * Le conteneur `#docxHost` n'existe dans le DOM que quand `kind === 'word'`. Ce
+   * setter se déclenche à son apparition : si un Word attend d'être rendu, on le
+   * rend alors (sinon on garde la référence pour un prochain document).
+   */
+  @ViewChild('docxHost') set docxHost(ref: ElementRef<HTMLElement> | undefined) {
+    this.docxHostEl = ref?.nativeElement ?? null;
+    if (this.docxHostEl && this.pendingDocx) {
+      const blob = this.pendingDocx;
+      this.pendingDocx = null;
+      this.renderDocx(blob, this.docxHostEl);
+    }
+  }
 
   ngOnChanges(): void {
     if (this.blob === this.loadedBlob) return;
@@ -166,11 +200,30 @@ export class FilePreviewComponent implements OnChanges, OnDestroy {
     this.safeUrl.set(this.sanitizer.bypassSecurityTrustResourceUrl(url));
   }
 
-  /** Word (.docx) → HTML sémantique via mammoth (100 % navigateur, aucun envoi externe). */
+  /**
+   * Word (.docx) → rendu fidèle façon pages Word via docx-preview (100 % navigateur,
+   * aucun envoi externe). Le conteneur peut ne pas être encore dans le DOM au moment
+   * du changement de blob : on diffère alors via {@link docxHost}.
+   */
   private loadWord(blob: Blob): void {
-    blob.arrayBuffer()
-      .then(buf => mammoth.convertToHtml({ arrayBuffer: buf }))
-      .then(res => this.officeHtml.set(this.sanitizer.bypassSecurityTrustHtml(res.value || '<p>(document vide)</p>')))
+    this.wordRendered.set(false);
+    if (this.docxHostEl) {
+      this.renderDocx(blob, this.docxHostEl);
+    } else {
+      this.pendingDocx = blob; // rendu à l'apparition du conteneur
+    }
+  }
+
+  /** Injecte le rendu docx-preview dans le conteneur ; bascule en erreur si échec. */
+  private renderDocx(blob: Blob, host: HTMLElement): void {
+    host.innerHTML = '';
+    renderAsync(blob, host, undefined, {
+      inWrapper: true,
+      breakPages: true,
+      ignoreLastRenderedPageBreak: true,
+      useBase64URL: true,
+    } as Parameters<typeof renderAsync>[3])
+      .then(() => this.wordRendered.set(true))
       .catch(() => this.officeError.set(true));
   }
 
@@ -241,6 +294,7 @@ export class FilePreviewComponent implements OnChanges, OnDestroy {
     this.revokeAll();
     this.rawUrl.set(null); this.safeUrl.set(null); this.zipEntries.set([]); this.entry.set(null);
     this.officeHtml.set(null); this.officeError.set(false);
+    this.wordRendered.set(false); this.pendingDocx = null;
     this.kind.set('unsupported');
   }
 }
