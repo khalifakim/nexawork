@@ -87,7 +87,7 @@ public class ConversationServiceImpl implements ConversationService {
     public MessagePageResponse listMessages(UUID conversationId, String cursor, int size) {
         requireParticipant(conversationId);
         // Ne renvoie que les messages postérieurs à MA suppression éventuelle.
-        LocalDateTime since = clearedAtFor(conversationId, caller.userId());
+        LocalDateTime since = sinceFor(conversationId, caller.userId());
         LocalDateTime before = parseCursor(cursor);
         int pageSize = normalizeSize(size);
         PageRequest limit = PageRequest.of(0, pageSize + 1);
@@ -185,6 +185,15 @@ public class ConversationServiceImpl implements ConversationService {
                 .map(ConversationParticipant::getClearedAt).orElse(null);
     }
 
+    /** Plancher utilisé quand l'appelant n'a jamais supprimé la conversation (tout l'historique). */
+    private static final LocalDateTime SINCE_FLOOR = LocalDateTime.of(1970, 1, 1, 0, 0);
+
+    /** Borne basse NON NULLE des messages visibles pour l'appelant (clearedAt, sinon plancher). */
+    private LocalDateTime sinceFor(UUID conversationId, UUID userId) {
+        LocalDateTime cleared = clearedAtFor(conversationId, userId);
+        return cleared != null ? cleared : SINCE_FLOOR;
+    }
+
     private Conversation createDirect(UUID workspaceId, UUID me, UUID other) {
         Conversation conversation = conversationRepository.save(Conversation.builder()
                 .workspaceId(workspaceId)
@@ -211,7 +220,7 @@ public class ConversationServiceImpl implements ConversationService {
         // booléen `is_read` du participant, jamais remis à jour après création →
         // le badge restait figé à « 1 ». `isRead` en découle (= aucun non-lu).
         // Borné à MA suppression éventuelle : les anciens messages ne comptent plus.
-        long unread = messageRepository.countUnreadInConversation(c.getId(), me, clearedAtFor(c.getId(), me));
+        long unread = messageRepository.countUnreadInConversation(c.getId(), me, sinceFor(c.getId(), me));
         return ConversationResponse.builder()
                 .id(c.getId()).workspaceId(c.getWorkspaceId()).type(c.getType())
                 .participantUserIds(participants)

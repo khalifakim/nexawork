@@ -38,12 +38,13 @@ public interface MessageRepository extends JpaRepository<Message, UUID> {
     List<Message> findChannelBefore(@Param("channelId") UUID channelId,
                                     @Param("before") LocalDateTime before, Pageable pageable);
 
-    // `since` (nullable) = `cleared_at` de l'appelant : ne renvoie que les messages
-    // POSTÉRIEURS à sa suppression de la conversation (null ⇒ tout l'historique).
+    // `since` = `cleared_at` de l'appelant (ou un plancher epoch s'il n'a jamais
+    // supprimé) : ne renvoie que les messages POSTÉRIEURS. Toujours NON NULL — sinon
+    // PostgreSQL n'arrive pas à typer un paramètre utilisé seulement dans `? IS NULL`.
     @Query("""
             SELECT m FROM Message m
             WHERE m.conversationId = :conversationId
-              AND (:since IS NULL OR m.sentAt > :since)
+              AND m.sentAt > :since
             ORDER BY m.sentAt DESC
             """)
     List<Message> findConversationFirstPage(@Param("conversationId") UUID conversationId,
@@ -52,7 +53,7 @@ public interface MessageRepository extends JpaRepository<Message, UUID> {
     @Query("""
             SELECT m FROM Message m
             WHERE m.conversationId = :conversationId AND m.sentAt < :before
-              AND (:since IS NULL OR m.sentAt > :since)
+              AND m.sentAt > :since
             ORDER BY m.sentAt DESC
             """)
     List<Message> findConversationBefore(@Param("conversationId") UUID conversationId,
@@ -81,7 +82,7 @@ public interface MessageRepository extends JpaRepository<Message, UUID> {
               AND m.isDeleted = false
               AND m.senderUserId <> :userId
               AND m.readAt IS NULL
-              AND (:since IS NULL OR m.sentAt > :since)
+              AND m.sentAt > :since
             """)
     long countUnreadInConversation(@Param("conversationId") UUID conversationId,
                                    @Param("userId") UUID userId,

@@ -62,17 +62,23 @@ public class MessagingSearchController {
                     .build());
         }
 
-        for (Message m : messageRepository.search(caller.organisationId(), caller.userId(), term, page)) {
-            // REF F — un message d'un canal non visible ne doit pas fuiter.
-            if (m.getChannel() != null && !guard.canView(m.getChannel())) {
-                continue;
+        // La recherche de messages fait un LIKE '%q%' NON indexable (scan complet) :
+        // sur terme vide/1 caractère (préchargement de l'overlay), elle balayait TOUS
+        // les messages → timeout. On ne la lance qu'à partir de 2 caractères ; les
+        // messages n'ont de toute façon pas de sens en simple suggestion.
+        if (term.length() >= 2) {
+            for (Message m : messageRepository.search(caller.organisationId(), caller.userId(), term, page)) {
+                // REF F — un message d'un canal non visible ne doit pas fuiter.
+                if (m.getChannel() != null && !guard.canView(m.getChannel())) {
+                    continue;
+                }
+                hits.add(SearchHitResponse.builder()
+                        .type("messages")
+                        .id(m.getId())
+                        .name(snippet(m.getContent()))
+                        .ctx(m.getChannel() != null ? "#" + m.getChannel().getName() : "Conversation")
+                        .build());
             }
-            hits.add(SearchHitResponse.builder()
-                    .type("messages")
-                    .id(m.getId())
-                    .name(snippet(m.getContent()))
-                    .ctx(m.getChannel() != null ? "#" + m.getChannel().getName() : "Conversation")
-                    .build());
         }
 
         return Response.<List<SearchHitResponse>>ok().setPayload(hits);
