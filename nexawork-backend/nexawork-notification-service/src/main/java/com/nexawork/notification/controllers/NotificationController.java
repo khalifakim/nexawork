@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -36,6 +37,16 @@ public class NotificationController {
                                                    @RequestParam(defaultValue = "0") int page,
                                                    @RequestParam(defaultValue = "20") int size) {
         return Response.<NotificationPageResponse>ok().setPayload(notificationService.list(unread, type, page, size));
+    }
+
+    /**
+     * Non-lues par workspace (tous espaces de l'utilisateur). Alimente l'indicateur
+     * discret du sélecteur d'espace : un point sur un espace ≠ actif ayant des non-lus,
+     * sans jamais révéler le contenu (isolation par workspace préservée).
+     */
+    @GetMapping("/unread-by-workspace")
+    public Response<Map<UUID, Long>> unreadByWorkspace() {
+        return Response.<Map<UUID, Long>>ok().setPayload(notificationService.unreadCountByWorkspace());
     }
 
     @PatchMapping("/{id}/read")

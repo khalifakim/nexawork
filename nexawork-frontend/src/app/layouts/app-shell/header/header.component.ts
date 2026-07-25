@@ -28,6 +28,9 @@ type Menu = 'ws' | 'user' | 'notif' | 'call' | null;
 /** Cadence de rafraîchissement de la bannière « Appel en cours ». */
 const ACTIVE_CALL_POLL_MS = 15_000;
 
+/** Cadence de rafraîchissement de l'indicateur « non-lus dans un autre espace ». */
+const WS_UNREAD_POLL_MS = 30_000;
+
 @Component({
   selector: 'app-header',
   standalone: true,
@@ -40,7 +43,7 @@ const ACTIVE_CALL_POLL_MS = 15_000;
         <div class="logo"><app-logo [markSize]="20" [fontSize]="9.5" [onDark]="true" [stacked]="true" /></div>
         <div class="wswrap">
           <button class="ws" (click)="toggle('ws')">
-            <span class="ws__logo" [style.background]="wsColor()">{{ wsMono() }}</span>
+            <span class="ws__logo" [style.background]="wsColor()">{{ wsMono() }}@if (hasOtherUnread()) { <span class="ws__dot" title="Notifications non lues dans un autre espace"></span> }</span>
             <span class="ws__t"><span class="ws__name">{{ wsName() }}</span><span class="ws__sub">{{ wsMembersLabel() }}</span></span>
             <app-icon name="chevronDown" [size]="13" [stroke]="2.4" />
           </button>
@@ -64,6 +67,7 @@ const ACTIVE_CALL_POLL_MS = 15_000;
                 @for (o of others(); track o.id) {
                   <button class="wsm__row" (click)="switchTo(o)"><span class="wsm__av" [style.background]="o.color">{{ o.name[0] }}</span>
                     <span style="flex:1"><span style="display:block;font-size:13.5px;font-weight:600">{{ o.name }}</span><span style="font-size:11.5px;color:var(--nx-text-500)">{{ roleLabel(o.role) }}</span></span>
+                    @if (unreadForWs(o.id) > 0) { <span class="wsm__dot" [title]="unreadForWs(o.id) + ' notification(s) non lue(s)'"></span> }
                     <span style="font-size:12px;font-weight:600;color:var(--nx-indigo)">Basculer</span></button>
                 }
               </div>
@@ -316,6 +320,23 @@ export class HeaderComponent {
   /** Notifications reçues en temps réel (STOMP), empilées au-dessus de la liste. */
   private pushed = signal<Notif[]>([]);
   notifs = computed<Notif[]>(() => [...this.pushed(), ...this.fetched()]);
+
+  /**
+   * Non-lues par workspace (tous espaces), rafraîchies en fond. Alimente
+   * l'indicateur discret « des non-lus dans un AUTRE espace » du sélecteur : le
+   * contenu des notifications des autres espaces n'est jamais exposé — seul un
+   * point apparaît (isolation par workspace préservée, cohérent avec le mémoire).
+   */
+  private readonly unreadByWs = toSignal(
+    timer(0, WS_UNREAD_POLL_MS).pipe(
+      switchMap(() => this.notifsSvc.unreadByWorkspace().pipe(catchError(() => of<Record<string, number>>({})))),
+    ),
+    { initialValue: {} as Record<string, number> },
+  );
+  /** Non-lues d'un espace donné (0 si aucune). */
+  unreadForWs(id: string): number { return this.unreadByWs()[id] ?? 0; }
+  /** Vrai si un espace ≠ actif a des non-lues → point sur le sélecteur d'espace. */
+  hasOtherUnread = computed(() => this.others().some(o => this.unreadForWs(o.id) > 0));
 
   visibleNotifs = computed(() => {
     const list = this.visibleNotifsAll();

@@ -8,6 +8,7 @@ import com.nexawork.notification.entities.Notification;
 import com.nexawork.notification.entities.enums.NotificationType;
 import com.nexawork.notification.mappers.NotificationMapper;
 import com.nexawork.notification.repositories.NotificationRepository;
+import com.nexawork.notification.repositories.projections.WorkspaceUnreadCount;
 import com.nexawork.notification.security.CallerContext;
 import com.nexawork.notification.services.NotificationService;
 import lombok.AccessLevel;
@@ -19,7 +20,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * Consultation des notifications (§13.7). Filtre {@code isHidden=false} par défaut ;
@@ -57,6 +60,13 @@ public class NotificationServiceImpl implements NotificationService {
                 .totalPages(result.getTotalPages())
                 .totalElements(result.getTotalElements())
                 .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<UUID, Long> unreadCountByWorkspace() {
+        return notificationRepository.countUnreadByWorkspace(caller.userId()).stream()
+                .collect(Collectors.toMap(WorkspaceUnreadCount::getWorkspaceId, WorkspaceUnreadCount::getUnread));
     }
 
     @Override

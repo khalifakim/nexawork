@@ -13,8 +13,12 @@
   border: none; border-radius: 9px; cursor: pointer; background: rgba(255,255,255,.06); color: #fff;
 }
 .ws:hover { background: rgba(255,255,255,.12); }
-.ws__logo { width: 26px; height: 26px; border-radius: 7px;
+.ws__logo { position: relative; width: 26px; height: 26px; border-radius: 7px;
   display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; flex: none; color: #fff; }
+/* Indicateur « des non-lus dans un AUTRE espace » (façon Slack) : point discret sur
+   l'avatar de l'espace, sans révéler le contenu (isolation par workspace préservée). */
+.ws__dot { position: absolute; top: -3px; right: -3px; width: 8px; height: 8px; border-radius: 50%;
+  background: #6C70F0; border: 2px solid var(--nx-ink); box-sizing: content-box; }
 .ws__t { display: flex; flex-direction: column; line-height: 1.05; align-items: flex-start; }
 .ws__name { font-size: 13.5px; font-weight: 600; }
 .ws__sub { font-size: 10.5px; color: rgba(255,255,255,.5); }
@@ -78,6 +82,8 @@
 .wsm__row { width: 100%; display: flex; align-items: center; gap: 11px; padding: 8px 12px; border: none; border-radius: 9px; background: transparent; cursor: pointer; text-align: left; font-family: inherit; font-size: 13.5px; font-weight: 500; color: var(--nx-text); }
 .wsm__row:hover { background: var(--nx-surface-2); }
 .wsm__av { width: 30px; height: 30px; border-radius: 9px; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; flex: none; }
+/* Point de non-lus sur la ligne d'un autre espace (dans le menu ouvert). */
+.wsm__dot { width: 8px; height: 8px; border-radius: 50%; background: var(--nx-indigo); flex: none; }
 
 .call__head { background: linear-gradient(160deg,#1F9159,#15623B); color: #fff; padding: 16px 18px; }
 .call__ignore { flex: none; width: 44px; height: 42px; border: 1px solid var(--nx-border); border-radius: 10px; background: #fff; color: var(--nx-text-500); cursor: pointer; display: flex; align-items: center; justify-content: center; }

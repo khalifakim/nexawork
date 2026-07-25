@@ -25,6 +25,12 @@ export abstract class NotificationsService {
   abstract listPage(opts: { types?: NotificationType[]; page?: number; size?: number }): Observable<NotifPage>;
   /** Flux temps réel de la file personnelle (STOMP). */
   abstract live(): Observable<Notification>;
+  /**
+   * Non-lues par workspace (tous espaces de l'utilisateur). Clé = id de workspace,
+   * valeur = nombre de non-lues. Alimente l'indicateur discret du sélecteur d'espace
+   * (un point sur un espace ≠ actif ayant des non-lus) ; n'expose aucun contenu.
+   */
+  abstract unreadByWorkspace(): Observable<Record<string, number>>;
   /** Marque une notification comme lue. */
   abstract markRead(id: string): Observable<void>;
   /** Masque une notification de la liste. */
@@ -57,6 +63,16 @@ export class NotificationsMockService extends NotificationsService {
     }).pipe(delay(80));
   }
   live(): Observable<Notification> { return EMPTY; }
+  unreadByWorkspace(): Observable<Record<string, number>> {
+    const active = this.session.activeWorkspaceId();
+    const out: Record<string, number> = {};
+    for (const [ws, list] of Object.entries(NOTIFICATIONS_BY_WORKSPACE)) {
+      if (ws === active) continue; // l'espace actif n'alimente pas l'indicateur « ailleurs »
+      const n = list.filter(x => !x.read).length;
+      if (n > 0) out[ws] = n;
+    }
+    return of(out).pipe(delay(80));
+  }
   markRead(_id: string): Observable<void> { return of(void 0); }
   hide(_id: string): Observable<void> { return of(void 0); }
   remove(_id: string): Observable<void> { return of(void 0); }
@@ -122,6 +138,15 @@ export class NotificationsHttpService extends BaseHttpService implements Notific
     return this.stomp.watchNotifications('/user/queue/notifications').pipe(
       map(frame => toNotification(JSON.parse(frame.body) as NotificationResponse)),
     );
+  }
+
+  /**
+   * Non-lues par workspace (endpoint volontairement NON scopé à l'espace actif :
+   * c'est ce qui permet l'indicateur « ailleurs »). Le backend renvoie un objet
+   * `{ workspaceId: count }` — l'espace actif y figure et sera filtré côté vue.
+   */
+  unreadByWorkspace(): Observable<Record<string, number>> {
+    return this.get$<Record<string, number>>('notification', '/notifications/unread-by-workspace');
   }
 
   markRead(id: string): Observable<void> {
