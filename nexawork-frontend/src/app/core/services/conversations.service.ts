@@ -120,6 +120,15 @@ export class ConversationsHttpService extends BaseHttpService implements Convers
       const byId = new Map<string, Member>(dir.map(m => [m.userId ?? '', m]));
       const list = convs.map(c => toConversation(c, meId, byId)).filter((c): c is Conversation => !!c);
       this.cache.set(new Map(list.map(c => [c.id, c])));
+      // Le backend est la source de vérité de la visibilité : il exclut les
+      // conversations que j'ai supprimées tant qu'aucun message n'est arrivé depuis.
+      // S'il en renvoie une, c'est qu'elle est réapparue (nouveau message) → on lève
+      // le masque optimiste local pour qu'elle redevienne visible.
+      const fresh = new Set(list.map(c => c.id));
+      this._deletedByMe.update(prev => {
+        const next = new Set([...prev].filter(id => !fresh.has(id)));
+        return next.size === prev.size ? prev : next;
+      });
       return list;
     }));
   }

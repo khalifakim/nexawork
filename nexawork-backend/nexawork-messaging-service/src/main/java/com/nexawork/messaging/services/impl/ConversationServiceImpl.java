@@ -51,8 +51,17 @@ public class ConversationServiceImpl implements ConversationService {
     @Override
     @Transactional(readOnly = true)
     public List<ConversationResponse> listMine() {
-        return conversationRepository.findMineInWorkspace(caller.organisationId(), caller.userId())
-                .stream().map(this::toDto).toList();
+        UUID me = caller.userId();
+        return conversationRepository.findMineInWorkspace(caller.organisationId(), me).stream()
+                // Une conversation que j'ai supprimée reste masquée tant qu'aucun message
+                // n'arrive depuis ; elle réapparaît (post-suppression) au prochain message.
+                .filter(c -> {
+                    LocalDateTime cleared = clearedAtFor(c.getId(), me);
+                    return cleared == null
+                            || messageRepository.existsByConversationIdAndSentAtAfter(c.getId(), cleared);
+                })
+                .map(c -> toDto(c, me))
+                .toList();
     }
 
     @Override
@@ -68,19 +77,23 @@ public class ConversationServiceImpl implements ConversationService {
         Conversation conversation = conversationRepository
                 .findDirectBetween(workspaceId, me, other)
                 .orElseGet(() -> createDirect(workspaceId, me, other));
-        return toDto(conversation);
+        // On NE réinitialise PAS mon clearedAt : rouvrir une conversation supprimée
+        // n'y ramène pas l'ancien historique (il réapparaît côté de l'autre seulement).
+        return toDto(conversation, me);
     }
 
     @Override
     @Transactional(readOnly = true)
     public MessagePageResponse listMessages(UUID conversationId, String cursor, int size) {
         requireParticipant(conversationId);
+        // Ne renvoie que les messages postérieurs à MA suppression éventuelle.
+        LocalDateTime since = clearedAtFor(conversationId, caller.userId());
         LocalDateTime before = parseCursor(cursor);
         int pageSize = normalizeSize(size);
         PageRequest limit = PageRequest.of(0, pageSize + 1);
         List<Message> page = before == null
-                ? messageRepository.findConversationFirstPage(conversationId, limit)
-                : messageRepository.findConversationBefore(conversationId, before, limit);
+                ? messageRepository.findConversationFirstPage(conversationId, since, limit)
+                : messageRepository.findConversationBefore(conversationId, before, since, limit);
         boolean hasMore = page.size() > pageSize;
         List<Message> content = hasMore ? page.subList(0, pageSize) : page;
         List<MessageResponse> dtos = content.stream().map(assembler::toDto).toList();
@@ -145,7 +158,32 @@ public class ConversationServiceImpl implements ConversationService {
         return assembler.toDto(message);
     }
 
+    @Override
+    public void deleteForMe(UUID conversationId) {
+        ConversationParticipant me = participantRepository
+                .findByConversationIdAndUserId(conversationId, caller.userId())
+                .orElseThrow(() -> new ResourceNotFoundException("Conversation introuvable."));
+        me.setClearedAt(LocalDateTime.now());
+        participantRepository.save(me);
+
+        // Suppression DÉFINITIVE (purge en base) seulement si TOUS les participants
+        // ont supprimé la conversation de leur côté.
+        boolean allCleared = participantRepository.findByConversationId(conversationId).stream()
+                .allMatch(p -> p.getClearedAt() != null);
+        if (allCleared) {
+            messageRepository.deleteByConversationId(conversationId);
+            participantRepository.deleteByConversationId(conversationId);
+            conversationRepository.deleteById(conversationId);
+        }
+    }
+
     // ─── Helpers ────────────────────────────────────────────────────────────────
+
+    /** {@code cleared_at} de l'appelant pour cette conversation, ou {@code null}. */
+    private LocalDateTime clearedAtFor(UUID conversationId, UUID userId) {
+        return participantRepository.findByConversationIdAndUserId(conversationId, userId)
+                .map(ConversationParticipant::getClearedAt).orElse(null);
+    }
 
     private Conversation createDirect(UUID workspaceId, UUID me, UUID other) {
         Conversation conversation = conversationRepository.save(Conversation.builder()
@@ -166,13 +204,14 @@ public class ConversationServiceImpl implements ConversationService {
         }
     }
 
-    private ConversationResponse toDto(Conversation c) {
+    private ConversationResponse toDto(Conversation c, UUID me) {
         List<UUID> participants = participantRepository.findByConversationId(c.getId())
                 .stream().map(ConversationParticipant::getUserId).toList();
         // Vrai compteur de non-lus (messages reçus sans `readAt`) : remplace le
         // booléen `is_read` du participant, jamais remis à jour après création →
         // le badge restait figé à « 1 ». `isRead` en découle (= aucun non-lu).
-        long unread = messageRepository.countUnreadInConversation(c.getId(), caller.userId());
+        // Borné à MA suppression éventuelle : les anciens messages ne comptent plus.
+        long unread = messageRepository.countUnreadInConversation(c.getId(), me, clearedAtFor(c.getId(), me));
         return ConversationResponse.builder()
                 .id(c.getId()).workspaceId(c.getWorkspaceId()).type(c.getType())
                 .participantUserIds(participants)

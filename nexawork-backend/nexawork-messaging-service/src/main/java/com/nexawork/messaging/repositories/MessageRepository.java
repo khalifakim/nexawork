@@ -38,20 +38,32 @@ public interface MessageRepository extends JpaRepository<Message, UUID> {
     List<Message> findChannelBefore(@Param("channelId") UUID channelId,
                                     @Param("before") LocalDateTime before, Pageable pageable);
 
+    // `since` (nullable) = `cleared_at` de l'appelant : ne renvoie que les messages
+    // POSTÉRIEURS à sa suppression de la conversation (null ⇒ tout l'historique).
     @Query("""
             SELECT m FROM Message m
             WHERE m.conversationId = :conversationId
+              AND (:since IS NULL OR m.sentAt > :since)
             ORDER BY m.sentAt DESC
             """)
-    List<Message> findConversationFirstPage(@Param("conversationId") UUID conversationId, Pageable pageable);
+    List<Message> findConversationFirstPage(@Param("conversationId") UUID conversationId,
+                                            @Param("since") LocalDateTime since, Pageable pageable);
 
     @Query("""
             SELECT m FROM Message m
             WHERE m.conversationId = :conversationId AND m.sentAt < :before
+              AND (:since IS NULL OR m.sentAt > :since)
             ORDER BY m.sentAt DESC
             """)
     List<Message> findConversationBefore(@Param("conversationId") UUID conversationId,
-                                         @Param("before") LocalDateTime before, Pageable pageable);
+                                         @Param("before") LocalDateTime before,
+                                         @Param("since") LocalDateTime since, Pageable pageable);
+
+    /** Existe-t-il un message postérieur à `sentAt` ? (réapparition d'une conversation supprimée). */
+    boolean existsByConversationIdAndSentAtAfter(UUID conversationId, LocalDateTime sentAt);
+
+    /** Purge des messages d'une conversation (suppression définitive). */
+    void deleteByConversationId(UUID conversationId);
 
     List<Message> findByChannelIdAndAttachmentUrlIsNotNullAndIsDeletedFalseOrderBySentAtDesc(UUID channelId);
 
@@ -69,9 +81,11 @@ public interface MessageRepository extends JpaRepository<Message, UUID> {
               AND m.isDeleted = false
               AND m.senderUserId <> :userId
               AND m.readAt IS NULL
+              AND (:since IS NULL OR m.sentAt > :since)
             """)
     long countUnreadInConversation(@Param("conversationId") UUID conversationId,
-                                   @Param("userId") UUID userId);
+                                   @Param("userId") UUID userId,
+                                   @Param("since") LocalDateTime since);
 
     /** Messages d'un canal non postés par l'appelant (canal jamais ouvert = tout est non lu). */
     @Query("""

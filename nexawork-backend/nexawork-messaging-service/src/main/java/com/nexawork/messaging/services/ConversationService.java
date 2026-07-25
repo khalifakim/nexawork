@@ -24,6 +24,14 @@ public interface ConversationService {
 
     MessageResponse sendMessage(UUID conversationId, SendMessageRequest request);
 
+    /**
+     * Supprime la conversation POUR L'APPELANT (soft-delete par utilisateur) : pose
+     * son {@code clearedAt}, masque son historique et la retire de sa liste. L'autre
+     * participant continue de tout voir. Purge définitive seulement quand les deux
+     * ont supprimé.
+     */
+    void deleteForMe(UUID conversationId);
+
     /** Marque un message reçu comme lu (readAt = now). 403 si l'appelant n'est pas destinataire. */
     MessageResponse markRead(UUID messageId);
 }

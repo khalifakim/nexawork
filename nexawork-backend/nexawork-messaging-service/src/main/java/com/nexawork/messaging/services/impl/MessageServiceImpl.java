@@ -222,7 +222,7 @@ public class MessageServiceImpl implements MessageService {
         // fils possibles, puis leurs pièces jointes (V2) + l'éventuelle PJ héritée.
         List<Message> messages = new ArrayList<>();
         messages.addAll(messageRepository.findChannelFirstPage(threadId, PageRequest.of(0, 500)));
-        messages.addAll(messageRepository.findConversationFirstPage(threadId, PageRequest.of(0, 500)));
+        messages.addAll(messageRepository.findConversationFirstPage(threadId, null, PageRequest.of(0, 500)));
 
         List<ThreadAttachmentResponse> out = new ArrayList<>();
         for (Message m : messages) {
@@ -254,7 +254,7 @@ public class MessageServiceImpl implements MessageService {
         // Agrège les mentions des messages du fil (canal ou conversation), groupées par type.
         List<Message> messages = new ArrayList<>();
         messages.addAll(messageRepository.findChannelFirstPage(threadId, PageRequest.of(0, 500)));
-        messages.addAll(messageRepository.findConversationFirstPage(threadId, PageRequest.of(0, 500)));
+        messages.addAll(messageRepository.findConversationFirstPage(threadId, null, PageRequest.of(0, 500)));
 
         List<ThreadMentionsResponse.MentionEntry> users = new ArrayList<>();
         List<ThreadMentionsResponse.MentionEntry> tasks = new ArrayList<>();

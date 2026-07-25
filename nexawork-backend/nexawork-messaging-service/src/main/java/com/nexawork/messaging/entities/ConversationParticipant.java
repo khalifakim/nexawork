@@ -15,6 +15,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.io.Serializable;
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 /**
@@ -43,6 +44,16 @@ public class ConversationParticipant {
 
     @Column(name = "is_read", nullable = false)
     private Boolean isRead;
+
+    /**
+     * Suppression PAR UTILISATEUR : instant où ce participant a « supprimé » la
+     * conversation de son côté. Non nul ⇒ les messages antérieurs lui sont masqués
+     * et la conversation disparaît de sa liste (jusqu'à un nouveau message). L'autre
+     * participant continue de tout voir. Suppression définitive uniquement quand les
+     * deux ont un {@code clearedAt}.
+     */
+    @Column(name = "cleared_at")
+    private LocalDateTime clearedAt;
 
     /** Clé primaire composite. */
     @Getter
