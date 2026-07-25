@@ -1,14 +1,20 @@
 package com.nexawork.project.services.impl;
 
+import com.lowagie.text.Chunk;
 import com.lowagie.text.Document;
 import com.lowagie.text.Element;
 import com.lowagie.text.Font;
 import com.lowagie.text.PageSize;
 import com.lowagie.text.Paragraph;
 import com.lowagie.text.Phrase;
+import com.lowagie.text.Rectangle;
+import com.lowagie.text.pdf.ColumnText;
+import com.lowagie.text.pdf.PdfContentByte;
 import com.lowagie.text.pdf.PdfPCell;
 import com.lowagie.text.pdf.PdfPTable;
+import com.lowagie.text.pdf.PdfPageEventHelper;
 import com.lowagie.text.pdf.PdfWriter;
+import com.lowagie.text.pdf.draw.LineSeparator;
 import com.nexawork.commons.exceptions.InvalidRequestException;
 import com.nexawork.project.dtos.responses.DashboardResponse;
 import com.nexawork.project.dtos.responses.ProjectOverviewResponse;
@@ -71,12 +77,13 @@ public class ReportServiceImpl implements ReportService {
 
             section(doc, "Indicateurs clés");
             PdfPTable kpi = table(new float[]{1, 1, 1, 1});
-            kpiHeader(kpi, "Avancement", "Terminées", "En retard", "Membres");
-            kpiValues(kpi,
-                    pct(ov.getProgress()),
-                    nz(ov.getDoneTasks()) + "/" + nz(ov.getTotalTasks()),
-                    String.valueOf(nz(ov.getOverdueTasks())),
-                    String.valueOf(nz(ov.getMemberCount())));
+            kpiTiles(kpi,
+                    new String[]{"Avancement", "Terminées", "En retard", "Membres"},
+                    new String[]{
+                            pct(ov.getProgress()),
+                            nz(ov.getDoneTasks()) + "/" + nz(ov.getTotalTasks()),
+                            String.valueOf(nz(ov.getOverdueTasks())),
+                            String.valueOf(nz(ov.getMemberCount()))});
             doc.add(kpi);
 
             section(doc, "Répartition par statut");
@@ -123,12 +130,13 @@ public class ReportServiceImpl implements ReportService {
 
             section(doc, "Indicateurs clés");
             PdfPTable kpi = table(new float[]{1, 1, 1, 1});
-            kpiHeader(kpi, "Projets actifs", "Tâches en cours", "Tâches en retard", "Membres");
-            kpiValues(kpi,
-                    String.valueOf(nz(k.getActiveProjects())),
-                    String.valueOf(nz(k.getInProgressTasks())),
-                    String.valueOf(nz(k.getOverdueTasks())),
-                    String.valueOf(nz(k.getWorkspaceMembers())));
+            kpiTiles(kpi,
+                    new String[]{"Projets actifs", "Tâches en cours", "Tâches en retard", "Membres"},
+                    new String[]{
+                            String.valueOf(nz(k.getActiveProjects())),
+                            String.valueOf(nz(k.getInProgressTasks())),
+                            String.valueOf(nz(k.getOverdueTasks())),
+                            String.valueOf(nz(k.getWorkspaceMembers()))});
             doc.add(kpi);
 
             section(doc, "Projets (" + dash.getActiveProjectsList().size() + ")");
@@ -185,8 +193,10 @@ public class ReportServiceImpl implements ReportService {
 
     private byte[] render(Body body) {
         try (ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-            Document doc = new Document(PageSize.A4, 42, 42, 48, 42);
-            PdfWriter.getInstance(doc, out);
+            // Marge basse plus grande pour laisser respirer le pied de page paginé.
+            Document doc = new Document(PageSize.A4, 42, 42, 48, 54);
+            PdfWriter writer = PdfWriter.getInstance(doc, out);
+            writer.setPageEvent(new FooterEvent());
             doc.open();
             body.write(doc);
             doc.close();
@@ -196,7 +206,31 @@ public class ReportServiceImpl implements ReportService {
         }
     }
 
+    /** Pied de page sur chaque page : filet fin + marque à gauche, pagination à droite. */
+    static final class FooterEvent extends PdfPageEventHelper {
+        private static final Font FOOT = new Font(Font.HELVETICA, 8, Font.NORMAL, new Color(0x9B, 0x97, 0xA3));
+
+        @Override
+        public void onEndPage(PdfWriter writer, Document doc) {
+            Rectangle page = doc.getPageSize();
+            PdfContentByte cb = writer.getDirectContent();
+            float y = doc.bottomMargin() - 14;
+            cb.setColorStroke(new Color(0xE2, 0xDF, 0xD8));
+            cb.setLineWidth(0.6f);
+            cb.moveTo(doc.leftMargin(), y);
+            cb.lineTo(page.getWidth() - doc.rightMargin(), y);
+            cb.stroke();
+            ColumnText.showTextAligned(cb, Element.ALIGN_LEFT,
+                    new Phrase("NexaWork — Rapport confidentiel", FOOT),
+                    doc.leftMargin(), y - 11, 0);
+            ColumnText.showTextAligned(cb, Element.ALIGN_RIGHT,
+                    new Phrase("Page " + writer.getPageNumber(), FOOT),
+                    page.getWidth() - doc.rightMargin(), y - 11, 0);
+        }
+    }
+
     private void header(Document doc, String title, String subtitle, String workspaceName) {
+        brandHeader(doc);
         Paragraph t = new Paragraph(title, TITLE);
         t.setSpacingAfter(2f);
         doc.add(t);
@@ -207,10 +241,43 @@ public class ReportServiceImpl implements ReportService {
         if (workspaceName != null && !workspaceName.isBlank()) {
             meta.append("Espace de travail : ").append(workspaceName).append("  ·  ");
         }
-        meta.append("Généré le ").append(LocalDateTime.now().format(DATE)).append(" — NexaWork");
+        meta.append("Généré le ").append(LocalDateTime.now().format(DATE));
         Paragraph gen = new Paragraph(meta.toString(), SUBTITLE);
-        gen.setSpacingAfter(14f);
+        gen.setSpacingAfter(8f);
         doc.add(gen);
+        // Filet fin de séparation sous l'en-tête.
+        Paragraph rule = new Paragraph(new Chunk(
+                new LineSeparator(0.8f, 100, new Color(0xE2, 0xDF, 0xD8), Element.ALIGN_CENTER, -2)));
+        rule.setSpacingAfter(12f);
+        doc.add(rule);
+    }
+
+    /** Bandeau de marque NexaWork (mark indigo + « NexaWork ») en haut du rapport. */
+    private void brandHeader(Document doc) {
+        PdfPTable lock = new PdfPTable(new float[]{24, 470});
+        lock.setWidthPercentage(100);
+        lock.setSpacingAfter(10f);
+
+        // Marque : petit carré indigo avec un « N » blanc.
+        PdfPCell mark = new PdfPCell(new Phrase("N", new Font(Font.HELVETICA, 13, Font.BOLD, Color.WHITE)));
+        mark.setBackgroundColor(HEADER_BG);
+        mark.setHorizontalAlignment(Element.ALIGN_CENTER);
+        mark.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        mark.setFixedHeight(22f);
+        mark.setBorder(0);
+        lock.addCell(mark);
+
+        // Mot-symbole : « Nexa » (sombre) + « Work » (indigo).
+        Phrase wm = new Phrase();
+        wm.add(new Chunk("Nexa", new Font(Font.HELVETICA, 15, Font.BOLD, new Color(0x2B, 0x2A, 0x35))));
+        wm.add(new Chunk("Work", new Font(Font.HELVETICA, 15, Font.BOLD, HEADER_BG)));
+        PdfPCell word = new PdfPCell(wm);
+        word.setBorder(0);
+        word.setPaddingLeft(9f);
+        word.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        lock.addCell(word);
+
+        doc.add(lock);
     }
 
     private void section(Document doc, String label) {
@@ -317,19 +384,22 @@ public class ReportServiceImpl implements ReportService {
         }
     }
 
-    private void kpiHeader(PdfPTable table, String... labels) {
-        for (String l : labels) {
-            th(table, l);
-        }
-    }
-
-    private void kpiValues(PdfPTable table, String... values) {
-        Font big = new Font(Font.HELVETICA, 15, Font.BOLD, new Color(0x2B, 0x2A, 0x35));
-        for (String v : values) {
-            PdfPCell cell = new PdfPCell(new Phrase(v, big));
-            cell.setPadding(8f);
-            cell.setHorizontalAlignment(Element.ALIGN_CENTER);
-            cell.setBorderColor(new Color(0xE2, 0xDF, 0xD8));
+    /**
+     * KPI en tuiles : chaque cellule porte un intitulé (petit, gris) au-dessus d'une
+     * grande valeur, sur fond clair — lecture « tableau de bord » plutôt que tableau brut.
+     */
+    private void kpiTiles(PdfPTable table, String[] labels, String[] values) {
+        Font lab = new Font(Font.HELVETICA, 8, Font.BOLD, new Color(0x86, 0x82, 0x8E));
+        Font big = new Font(Font.HELVETICA, 17, Font.BOLD, new Color(0x2B, 0x2A, 0x35));
+        for (int i = 0; i < labels.length; i++) {
+            PdfPCell cell = new PdfPCell();
+            cell.setPadding(9f);
+            cell.setBackgroundColor(new Color(0xF7, 0xF6, 0xFB));
+            cell.setBorderColor(new Color(0xE7, 0xE5, 0xF2));
+            Paragraph pl = new Paragraph(labels[i].toUpperCase(), lab);
+            pl.setSpacingAfter(3f);
+            cell.addElement(pl);
+            cell.addElement(new Paragraph(values[i], big));
             table.addCell(cell);
         }
     }
