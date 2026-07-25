@@ -4,7 +4,7 @@ import {
 } from '@angular/core';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 import { LoaderComponent } from '@shared/ui/loader/loader.component';
-import { FilePreviewComponent } from '@shared/ui/file-preview/file-preview.component';
+import { FilePreviewComponent, isPreviewableFile } from '@shared/ui/file-preview/file-preview.component';
 import { ToastService } from '@core/services/toast.service';
 import { FilesHttpService } from '@core/http/files.http.service';
 import { saveBlob } from '@core/util/download.util';
@@ -93,12 +93,8 @@ export class ApercuDocumentComponent implements OnChanges {
 
   get ext(): string { return (this.name?.split('.').pop() ?? '').toLowerCase(); }
   get extLabel(): string { return (this.ext || 'FIC').toUpperCase().slice(0, 4); }
-  /** Types dont on récupère le binaire pour un rendu enrichi (PDF, image, vidéo, audio, archive ZIP). */
-  get previewable(): boolean {
-    return ['pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'avif',
-      'mp4', 'webm', 'ogv', 'ogg', 'mov', 'm4v',
-      'mp3', 'wav', 'm4a', 'aac', 'oga', 'flac', 'zip'].includes(this.ext);
-  }
+  /** Types dont on récupère le binaire pour un rendu enrichi (PDF, image, vidéo, audio, ZIP, Word/Excel). */
+  get previewable(): boolean { return isPreviewableFile(this.name); }
   get tint(): string { return this.previewable ? '#F5564E' : '#86828E'; }
 
   /** Chemin déjà chargé — évite de re-télécharger sur chaque cycle de détection. */

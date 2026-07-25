@@ -245,6 +245,16 @@ export class FilePreviewComponent implements OnChanges, OnDestroy {
   }
 }
 
+/**
+ * Vrai si le fichier peut être rendu en ligne par {@link FilePreviewComponent}
+ * (PDF, image, vidéo, audio, ZIP navigable, Word/Excel). Source unique pour les
+ * appelants qui décident d'ouvrir l'aperçu vs. proposer le téléchargement — évite
+ * la dérive entre listes d'extensions dupliquées.
+ */
+export function isPreviewableFile(name?: string): boolean {
+  return kindOf(name ?? '') !== 'unsupported';
+}
+
 /** Type de rendu déduit de l'extension du nom de fichier. */
 function kindOf(name: string): Kind {
   const ext = (name.split('.').pop() ?? '').toLowerCase();

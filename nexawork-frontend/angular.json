@@ -24,6 +24,7 @@
             "polyfills": ["zone.js"],
             "tsConfig": "tsconfig.json",
             "inlineStyleLanguage": "scss",
+            "allowedCommonJsDependencies": ["jszip", "mammoth", "@stomp/stompjs"],
             "assets": [
               {
                 "glob": "**/*",

@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@ang
 import { ActivatedRoute } from '@angular/router';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 import { LogoComponent } from '@shared/ui/logo/logo.component';
-import { FilePreviewComponent } from '@shared/ui/file-preview/file-preview.component';
+import { FilePreviewComponent, isPreviewableFile } from '@shared/ui/file-preview/file-preview.component';
 import { PublicShareService } from '@core/services/public-share.service';
 import { PublicShareFileLine, PublicShareInfo } from '@core/models/ged.models';
 
@@ -248,13 +248,8 @@ export class PartagePublicComponent implements OnInit {
     });
   }
 
-  /** Extensions affichables en ligne (aligné sur FilePreviewComponent). */
-  canPreview(name?: string): boolean {
-    const ext = (name?.split('.').pop() ?? '').toLowerCase();
-    return ['pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'avif',
-      'mp4', 'webm', 'ogv', 'ogg', 'mov', 'm4v',
-      'mp3', 'wav', 'm4a', 'aac', 'oga', 'flac', 'zip'].includes(ext);
-  }
+  /** Extensions affichables en ligne (source unique : FilePreviewComponent). */
+  canPreview(name?: string): boolean { return isPreviewableFile(name); }
 
   previewTarget(): void {
     this.error.set('');
