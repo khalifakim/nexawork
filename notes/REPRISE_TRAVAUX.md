@@ -25,6 +25,27 @@
    - Backend : migrations **V5** (reply, colonne `reply_to_message_id`) + **V6** (table `message_reactions`).
      Endpoints `PATCH /messages/{id}` (édition), `POST /messages/{id}/reactions` (toggle).
 
+3bis. **Option C — indicateur de non-lus des AUTRES espaces** (déployé, PAS encore commité) :
+   - Backend notification : `GET /notifications/unread-by-workspace` (agrégat non scopé, aucun contenu exposé).
+   - Frontend header (sélecteur d'espace) : **point discret** sur l'avatar de l'espace + point par ligne dans le
+     menu « Autres espaces », polling 30 s. Isolation préservée (point seulement, jamais le contenu).
+
+3ter. **Brique 4 — liens de partage externes GED** (déployé, PAS encore commité) :
+   - Migration GED **V3** (`ged_shared_links` + colonnes `external_uploader_*` sur `ged_files`).
+   - Backend : `GedFileClient` (relais octets vers File Service, **identité forgée** = créateur du lien, calqué sur
+     le relais invité du Meeting), `SharedLinkService` (token opaque 32o, expiration **date OU nombre d'accès**,
+     mot de passe **BCrypt**, révocation, garde-fous dépôt + **blocklist** exécutables). Contrôleurs authentifié
+     (`/api/v1/ged/shares`) + **public** (`/api/v1/public/shares/**`).
+   - Sécurité : `permitAll /api/v1/public/**` (GED) + `/nexawork-ged-api-v1/api/v1/public/**` (gateway
+     `PublicPathMatcher`) + chemin ajouté au `jwt.interceptor` front (aucun Bearer sur le public). **Vérifié** :
+     public → 404 (passe sans token), authentifié → 401.
+   - Frontend : modal **« Générer un lien »** (mode lecture/dépôt, expiration date/N accès, mot de passe,
+     révocation, copie, liste des liens existants) dans le menu GED ; **page publique `/s/:token`** (hors shell).
+   - **Formats libres** (tout sauf exécutables), nom/email du déposant **optionnels** (anonymat possible).
+   - **Aperçu enrichi** (`FilePreviewComponent` réutilisable) : **vidéo/audio**, image, PDF, **ZIP navigable**
+     (liste + ouverture d'une entrée) — dans l'app ET sur la page publique. Modal d'aperçu **agrandi** (quasi
+     plein écran) + nom du fichier remonté dans la barre du haut.
+
 3. **Présence fiabilisée** (notification-service) — corrige la présence **asymétrique** :
    - Cause : le heartbeat de présence est un `setInterval` **ralenti par le navigateur en arrière-plan** →
      la clé Redis (TTL 30 s) expirait → l'utilisateur tombait hors ligne ; et l'ancien heartbeat ne
@@ -36,7 +57,7 @@
 
 ## 🔜 RESTE À FAIRE (dans l'ordre)
 
-### A. Option C — indicateur de notifications des AUTRES workspaces (petit)
+### A. Option C — indicateur de notifications des AUTRES workspaces ✅ FAIT (voir §3bis, à commiter)
 **Constat vérifié** : les notifications sont **scopées au workspace actif**
 (`NotificationRepository.findVisible` filtre `workspaceId = :ws`). Donc sur W1 on ne voit pas les notifs de W2.
 **Décision retenue (hybride, façon Slack)** : garder la **liste** scopée, mais ajouter un **indicateur discret**
@@ -48,7 +69,7 @@
 - Frontend : sélecteur de workspace = **`layouts/app-shell/sidebar-2/sidebar-2.component.ts`** (ou header) ;
   y afficher un point sur les workspaces (≠ actif) ayant des non-lus.
 
-### B. Brique 4 — lien de partage externe GED (gros, SÉCURITÉ transverse)
+### B. Brique 4 — lien de partage externe GED ✅ FAIT (voir §3ter, à commiter)
 **Décisions de conception validées avec l'utilisateur** :
 - Lien **accessible sans compte** (sinon ce n'est pas « externe ») ; sécurité = **token opaque + expiration +
   mot de passe optionnel + portée limitée à l'élément**.
@@ -72,6 +93,9 @@
   dépôt + saisie mot de passe).
 
 ### C. Aperçu de documents Office (Word) — post-brique 4, optionnel
+> Note : l'aperçu **PDF / image / vidéo / audio / ZIP navigable** est désormais livré (`FilePreviewComponent`,
+> §3ter). Il reste **uniquement le rendu Office** (docx/xlsx) à ajouter dans ce même composant via
+> `docx-preview`/`mammoth.js` — les branches `@case` sont déjà prêtes à accueillir un cas `office`.
 Objectif = **prévisualiser** (pas éditer — l'édition contredirait le mémoire, la prévisualisation est
 **revendiquée** dans le mémoire donc conforme). **Solution retenue** : `docx-preview` ou `mammoth.js` **côté
 navigateur** dans la visionneuse `shared/overlays/apercu-document` (déjà là pour PDF/images).
