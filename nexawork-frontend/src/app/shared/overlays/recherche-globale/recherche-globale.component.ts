@@ -2,8 +2,9 @@ import {
   AfterViewInit, ChangeDetectionStrategy, Component, ElementRef, EventEmitter,
   HostListener, Output, QueryList, ViewChild, ViewChildren, computed, effect, inject, signal,
 } from '@angular/core';
-import { toObservable, toSignal } from '@angular/core/rxjs-interop';
-import { debounceTime, distinctUntilChanged, finalize, switchMap, tap } from 'rxjs/operators';
+import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
+import { of } from 'rxjs';
+import { catchError, debounceTime, distinctUntilChanged, finalize, map, switchMap } from 'rxjs/operators';
 import { Router } from '@angular/router';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 import { SearchService } from '@core/services/search.service';
@@ -34,9 +35,9 @@ import { ShellBus } from '@layouts/app-shell/shell.bus';
           }
         </div>
         <div class="results" #resList>
-          <div class="rh">{{ loading() ? 'Recherche…' : (shown().length + ' résultat' + (shown().length > 1 ? 's' : '')) }}</div>
-          @if (loading() && shown().length === 0) {
-            <div class="res-loading"><span class="spin"></span><span>Chargement des résultats…</span></div>
+          <div class="rh">{{ headerLabel() }}</div>
+          @if (loaderVisible()) {
+            <div class="res-loading"><span class="spin"></span><span>Recherche des résultats…</span></div>
           } @else {
           @for (r of shown(); track r.name; let i = $index) {
             <div class="res" #resRow [class.res--on]="i===highlight()"
@@ -114,32 +115,91 @@ export class RechercheGlobaleComponent implements AfterViewInit {
    * par type reste appliqué côté client sur le jeu renvoyé.
    */
   /**
-   * Vrai tant qu'une requête de recherche est en vol. Initialisé à `true` car une
-   * première recherche part dès l'ouverture (la fédération interroge 4 services) :
-   * sans cet indicateur, le modal affiche « Aucun résultat » pendant le chargement
-   * et donne l'impression d'être vide/cassé.
+   * Base : « top N » de chaque domaine (requête vide), chargée UNE fois à
+   * l'ouverture. Sert de suggestions INSTANTANÉES (filtrées côté client) pendant la
+   * frappe, le temps que la recherche serveur réponde — fini l'écran vide.
    */
-  loading = signal(true);
+  private base = signal<Result[]>([]);
+  /** Chargement initial de la base. */
+  baseLoading = signal(true);
+  /** Derniers résultats serveur + le terme exact auquel ils correspondent. */
+  private serverResults = signal<Result[]>([]);
+  private serverQuery = signal<string | null>(null);
+  /** Vrai tant qu'une recherche serveur est en vol (indicateur discret, pas de blanc). */
+  searching = signal(false);
 
-  private results = toSignal(
-    toObservable(this.query).pipe(
-      debounceTime(250),
-      distinctUntilChanged(),
-      tap(() => this.loading.set(true)),
-      switchMap(q => this.searchSvc.query(q).pipe(finalize(() => this.loading.set(false)))),
-    ),
-    { initialValue: [] as Result[] },
-  );
-
-  shown = computed(() => {
+  /**
+   * Résultats affichés : requête vide → la base ; résultats serveur à jour pour ce
+   * terme → on les montre ; sinon (serveur en cours) → suggestions instantanées
+   * filtrées depuis la base. Puis filtre d'onglet.
+   */
+  shown = computed<Result[]>(() => {
+    const q = this.query().trim();
     const f = this.filter();
-    return this.results().filter(r => f === 'tous' || r.type === f);
+    let list: Result[];
+    if (!q) list = this.base();
+    else if (this.serverQuery() === q) list = this.serverResults();
+    else list = this.clientFilter(this.base(), q);
+    return list.filter(r => f === 'tous' || r.type === f);
   });
+
+  /** Loader plein cadre seulement quand il n'y a RIEN à montrer et qu'on charge. */
+  loaderVisible = computed(() => (this.baseLoading() || this.searching()) && this.shown().length === 0);
+  /** En-tête : « Recherche… » pendant une requête, sinon le compte de résultats. */
+  headerLabel = computed(() =>
+    this.searching() ? 'Recherche…'
+      : this.shown().length + ' résultat' + (this.shown().length > 1 ? 's' : ''));
+
+  /** Filtrage local (base) : nom / identifiant / contexte. */
+  private clientFilter(list: Result[], q: string): Result[] {
+    const t = q.toLowerCase();
+    return list.filter(r =>
+      r.name.toLowerCase().includes(t)
+      || (r.mono ?? '').toLowerCase().includes(t)
+      || r.ctx.toLowerCase().includes(t));
+  }
+
+  /** Recherche serveur immédiate (Entrée) — si la frappe a devancé le débounce. */
+  private runSearchNow(term: string): void {
+    this.searching.set(true);
+    this.searchSvc.query(term).pipe(finalize(() => this.searching.set(false))).subscribe({
+      next: r => { this.serverResults.set(r); this.serverQuery.set(term); },
+      error: () => { this.serverResults.set([]); this.serverQuery.set(term); },
+    });
+  }
 
   @ViewChildren('resRow') private rows!: QueryList<ElementRef<HTMLDivElement>>;
   @ViewChild('searchInput', { static: true }) private searchInput!: ElementRef<HTMLInputElement>;
 
   constructor() {
+    // Base « top N » (requête vide) — peuple l'overlay dès l'ouverture et sert de
+    // suggestions instantanées côté client pendant la frappe.
+    this.searchSvc.query('').pipe(
+      finalize(() => this.baseLoading.set(false)),
+      takeUntilDestroyed(),
+    ).subscribe(r => this.base.set(r));
+
+    // Recherche serveur en direct (débounce court). On NE blanchit PAS l'affichage :
+    // tant qu'elle charge, `shown` retombe sur la base filtrée localement.
+    toObservable(this.query).pipe(
+      debounceTime(200),
+      distinctUntilChanged(),
+      switchMap(raw => {
+        const term = raw.trim();
+        if (!term) { this.searching.set(false); return of({ q: '', r: [] as Result[] }); }
+        this.searching.set(true);
+        return this.searchSvc.query(term).pipe(
+          map(r => ({ q: term, r })),
+          catchError(() => of({ q: term, r: [] as Result[] })),
+        );
+      }),
+      takeUntilDestroyed(),
+    ).subscribe(({ q, r }) => {
+      this.serverResults.set(r);
+      this.serverQuery.set(q);
+      this.searching.set(false);
+    });
+
     // Reset highlight and scroll to top when the filter or the query changes:
     // the previous row index may not exist in the new result set.
     effect(() => {
@@ -235,9 +295,13 @@ export class RechercheGlobaleComponent implements AfterViewInit {
       return;
     }
     if (ev.key === 'Enter') {
-      const list = this.shown();
-      const r = list[this.highlight()];
-      if (r) { ev.preventDefault(); this.open(r); }
+      ev.preventDefault();
+      const q = this.query().trim();
+      // Le serveur n'a pas encore répondu pour CE terme exact → forcer la recherche
+      // (utile si la frappe a devancé le débounce, ou si les suggestions ne suffisent pas).
+      if (q && this.serverQuery() !== q) { this.runSearchNow(q); return; }
+      const r = this.shown()[this.highlight()];
+      if (r) this.open(r);
       return;
     }
   }
