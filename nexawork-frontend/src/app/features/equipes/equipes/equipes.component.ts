@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, ElementRef, Input, OnDestroy, OnInit, computed, effect, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, Input, OnDestroy, OnInit, computed, effect, inject, signal, untracked } from '@angular/core';
 import { ActivatedRoute, NavigationEnd, Router } from '@angular/router';
 import { forkJoin } from 'rxjs';
 import { filter, map } from 'rxjs/operators';
@@ -12,6 +12,8 @@ import { SessionService } from '@core/services/session.service';
 import { ToastService } from '@core/services/toast.service';
 import { Member } from '@core/models/member.models';
 import { ProjectMember } from '@core/models/project.models';
+import { TasksService, BoardData } from '@core/services/tasks.service';
+import { StatusCat } from '@core/models/task.models';
 import { avatarColorFor } from '@core/util/ui.util';
 import { AjouterCollaborateursProjetComponent, AddCollaboratorsPayload } from '@features/equipes/modals/ajouter-collaborateurs-projet/ajouter-collaborateurs-projet.component';
 import { CreerEquipeComponent, CreatedTeam } from '@features/equipes/modals/creer-equipe/creer-equipe.component';
@@ -20,6 +22,11 @@ interface TeamMember { userId: string; name: string; role: string; color: string
 interface Team { id: string; name: string; color: string; members: TeamMember[]; }
 interface Loose { userId: string; name: string; email: string; role: string; color: string; }
 interface MemberPick { userId: string; name: string; role?: string; color: string; me?: boolean; }
+/** Ligne de la vue « Charge de travail » : compteurs de tâches d'un membre du projet. */
+interface WorkloadRow {
+  userId: string; name: string; color: string; role: string;
+  todo: number; active: number; done: number; overdue: number; total: number; activeTotal: number;
+}
 
 @Component({
   selector: 'app-equipes',
@@ -119,6 +126,13 @@ interface MemberPick { userId: string; name: string; role?: string; color: strin
             </div>
           </div>
         }
+        <!-- Bascule Composition / Charge de travail (identique dans /app/equipes et l'onglet projet) -->
+        <div class="viewtabs">
+          <button type="button" [class.viewtabs__on]="view()==='composition'" (click)="setView('composition')"><app-icon name="teams" [size]="15" />Composition</button>
+          <button type="button" [class.viewtabs__on]="view()==='charge'" (click)="setView('charge')"><app-icon name="dashboard" [size]="15" />Charge de travail</button>
+        </div>
+
+        @if (view() === 'composition') {
         <!-- Toolbar : search + chef de projet + bouton + -->
         <div class="toolbar">
           <div class="search">
@@ -292,6 +306,52 @@ interface MemberPick { userId: string; name: string; role?: string; color: strin
           }
         </div>
         }
+        } @else {
+          <!-- ===== Charge de travail par membre (identique /app/equipes et onglet projet) ===== -->
+          @if (chargeLoading()) {
+            <app-loader label="Calcul de la charge…" [minHeight]="200" />
+          } @else {
+            <div class="chg__h">
+              <div class="chg__tt">
+                <span class="chg__t">Charge de travail par membre</span>
+                <span class="chg__s">Tâches actives et en retard par personne sur « {{ projectName() }} ».</span>
+              </div>
+              <div class="chg__legend">
+                <span><i class="ldot ldot--todo"></i>À faire</span>
+                <span><i class="ldot ldot--active"></i>En cours</span>
+                <span><i class="ldot ldot--done"></i>Terminé</span>
+              </div>
+            </div>
+            <div class="chg">
+              @for (r of workload(); track r.userId) {
+                <div class="chgrow">
+                  <span class="chgav" [style.background]="r.color">{{ ini(r.name) }}</span>
+                  <div class="chgb">
+                    <div class="chgn">{{ r.name }} <span class="chgrole">{{ r.role }}</span></div>
+                    <div class="chgbar" [class.chgbar--empty]="!r.total">
+                      @if (r.todo) { <span class="seg seg--todo" [style.flex-grow]="r.todo" [title]="r.todo + ' a faire'"></span> }
+                      @if (r.active) { <span class="seg seg--active" [style.flex-grow]="r.active" [title]="r.active + ' en cours'"></span> }
+                      @if (r.done) { <span class="seg seg--done" [style.flex-grow]="r.done" [title]="r.done + ' terminees'"></span> }
+                    </div>
+                  </div>
+                  <div class="chgmeta">
+                    @if (r.overdue) { <span class="chgbadge"><app-icon name="alert" [size]="12" [stroke]="2" />{{ r.overdue }} en retard</span> }
+                    <span class="chgsum">{{ r.activeTotal ? (r.activeTotal + ' active' + (r.activeTotal > 1 ? 's' : '')) : 'disponible' }}</span>
+                  </div>
+                </div>
+              } @empty {
+                <div class="chg__empty">Aucun membre sur ce projet.</div>
+              }
+              @if (unassignedCount()) {
+                <div class="chgrow chgrow--un">
+                  <span class="chgav chgav--un"><app-icon name="user" [size]="15" /></span>
+                  <div class="chgb"><div class="chgn">Non assigné</div></div>
+                  <div class="chgmeta"><span class="chgsum">{{ unassignedCount() }} tâche{{ unassignedCount() > 1 ? 's' : '' }}</span></div>
+                </div>
+              }
+            </div>
+          }
+        }
       </div>
     }
 
@@ -318,6 +378,7 @@ export class EquipesComponent implements OnInit, OnDestroy {
    */
   @Input() canManage = false;
   private members = inject(MembersService);
+  private tasksSvc = inject(TasksService);
   private el = inject(ElementRef);
   private router = inject(Router);
   private route = inject(ActivatedRoute);
@@ -402,6 +463,77 @@ export class EquipesComponent implements OnInit, OnDestroy {
   /** Vrai pendant le chargement des équipes/membres. */
   loading = signal(false);
 
+  // ── Charge de travail (vue « Charge ») ──────────────────────────────────────
+  /** Vue active de l'onglet Équipes : composition (équipes/membres) ou charge. */
+  view = signal<'composition' | 'charge'>('composition');
+  /** Board du projet (statuts + cartes) chargé à la demande pour calculer la charge. */
+  private board = signal<BoardData | null>(null);
+  /** Projet pour lequel `board` est chargé (évite un rechargement inutile). */
+  private boardPid: string | null = null;
+  chargeLoading = signal(false);
+
+  /** statusId → catégorie de statut (à faire / actif / terminé). */
+  private catOf = computed(() => {
+    const m = new Map<string, StatusCat>();
+    for (const c of this.board()?.columns ?? []) m.set(c.id, c.cat);
+    return m;
+  });
+
+  /** Une ligne de charge par membre du projet (équipes + sans équipe), triée par charge. */
+  workload = computed<WorkloadRow[]>(() => {
+    const b = this.board();
+    if (!b) return [];
+    const cat = this.catOf();
+    const cards = Object.values(b.cards).flat();
+    // Membres du projet = union (par userId) des membres d'équipe et des « sans équipe ».
+    const map = new Map<string, { userId: string; name: string; color: string; role: string }>();
+    for (const t of this.teams()) for (const m of t.members) map.set(m.userId, { userId: m.userId, name: m.name, color: m.color, role: m.role });
+    for (const l of this.loose()) if (!map.has(l.userId)) map.set(l.userId, { userId: l.userId, name: l.name, color: l.color, role: l.role });
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const rows = [...map.values()].map(m => {
+      let todo = 0, active = 0, done = 0, overdue = 0;
+      for (const c of cards) {
+        if (c.assigneeType === 'TEAM' || c.assigneeId !== m.userId) continue;
+        const k = cat.get(c.statusId);
+        if (k === 'done' || k === 'closed') { done++; continue; }
+        if (k === 'active') active++; else todo++;
+        if (c.dueDate) { const d = new Date(c.dueDate); if (!isNaN(d.getTime()) && d < today) overdue++; }
+      }
+      return { ...m, todo, active, done, overdue, total: todo + active + done, activeTotal: todo + active };
+    });
+    rows.sort((a, b2) => (b2.activeTotal - a.activeTotal) || (b2.overdue - a.overdue) || a.name.localeCompare(b2.name));
+    return rows;
+  });
+
+  /** Tâches ouvertes non assignées à une personne (info complémentaire de la charge). */
+  unassignedCount = computed(() => {
+    const b = this.board();
+    if (!b) return 0;
+    const cat = this.catOf();
+    return Object.values(b.cards).flat().filter(c => {
+      if (c.assigneeId && c.assigneeType !== 'TEAM') return false;
+      const k = cat.get(c.statusId);
+      return k !== 'done' && k !== 'closed';
+    }).length;
+  });
+
+  /** Bascule la vue ; charge le board à la première ouverture de « Charge ». */
+  setView(v: 'composition' | 'charge'): void {
+    this.view.set(v);
+    if (v === 'charge') this.ensureBoard();
+  }
+
+  /** Charge le board du projet courant si nécessaire (une fois par projet). */
+  private ensureBoard(): void {
+    const pid = this.projectId();
+    if (!pid || pid === this.boardPid) return;
+    this.chargeLoading.set(true);
+    this.tasksSvc.loadBoard(pid).subscribe({
+      next: b => { this.board.set(b); this.boardPid = pid; this.chargeLoading.set(false); },
+      error: () => this.chargeLoading.set(false),
+    });
+  }
+
   /**
    * Charge les équipes + membres réels du projet et construit `teams`/`loose`.
    * Les noms/couleurs/emails sont résolus via l'annuaire du workspace.
@@ -453,6 +585,11 @@ export class EquipesComponent implements OnInit, OnDestroy {
       if (pid === lastPid) return;
       lastPid = pid;
       this.reload(pid);
+      // La charge dépend du board du nouveau projet : on l'invalide (et on recharge
+      // seulement si l'utilisateur est déjà sur la vue « Charge »).
+      this.board.set(null);
+      this.boardPid = null;
+      if (untracked(this.view) === 'charge') this.ensureBoard();
       // Close inline detail when we navigate away.
       this.openTeam.set(null);
       this.addCollabOpen.set(false);
