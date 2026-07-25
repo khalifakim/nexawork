@@ -8,9 +8,10 @@ import { PublicShareFileLine, PublicShareInfo } from '@core/models/ged.models';
 
 /**
  * Page PUBLIQUE d'un lien de partage externe (Brique 4). Hors application
- * authentifiée : aucun compte requis, le token de l'URL vaut l'accès. Trois cas
- * selon le lien : consultation d'un fichier, consultation d'un dossier, ou boîte
- * de dépôt. Le mot de passe éventuel est demandé avant tout accès.
+ * authentifiée : aucun compte requis, le token de l'URL vaut l'accès. Cas selon le
+ * lien : consultation d'un fichier, consultation d'un dossier, boîte de dépôt
+ * aveugle, ou lecture + dépôt combinés. Le mot de passe éventuel est demandé avant
+ * tout accès.
  */
 @Component({
   selector: 'app-partage-public',
@@ -59,33 +60,7 @@ import { PublicShareFileLine, PublicShareInfo } from '@core/models/ged.models';
           <!-- Déverrouillé -->
           @let i = info()!;
 
-          @if (i.mode === 'DROP') {
-            <!-- Boîte de dépôt -->
-            <div class="hd">
-              <span class="badge badge--drop"><app-icon name="upload" [size]="22" /></span>
-              <h1>Déposer des fichiers</h1>
-              <p>Vos fichiers seront transmis en privé au propriétaire du dossier « {{ i.targetName }} ».</p>
-            </div>
-
-            <div class="field"><label>Votre nom</label><input type="text" [value]="name()" (input)="name.set($any($event.target).value)" placeholder="ex. Jean Dupont" /></div>
-            <div class="field"><label>Votre email</label><input type="email" [value]="email()" (input)="email.set($any($event.target).value)" placeholder="ex. jean@exemple.com" /></div>
-
-            <label class="dropzone">
-              <app-icon name="upload" [size]="26" />
-              <span class="dropzone__t">{{ picked() ? picked()!.name : 'Choisir un fichier à déposer' }}</span>
-              <span class="dropzone__s">{{ constraintsLabel(i) }}</span>
-              <input type="file" hidden (change)="onPick($event)" />
-            </label>
-
-            <button class="primary primary--full" [disabled]="!picked() || busy()" (click)="doUpload()">
-              {{ busy() ? 'Envoi…' : 'Déposer le fichier' }}
-            </button>
-            @if (uploaded().length) {
-              <div class="ok"><app-icon name="check" [size]="16" /> {{ uploaded().length }} fichier(s) déposé(s) : {{ uploadedNames() }}</div>
-            }
-            @if (error()) { <div class="err">{{ error() }}</div> }
-
-          } @else if (i.targetType === 'FILE') {
+          @if (i.targetType === 'FILE') {
             <!-- Consultation d'un fichier -->
             <div class="hd">
               <span class="badge"><app-icon name="file" [size]="22" /></span>
@@ -103,24 +78,51 @@ import { PublicShareFileLine, PublicShareInfo } from '@core/models/ged.models';
             @if (error()) { <div class="err">{{ error() }}</div> }
 
           } @else {
-            <!-- Consultation d'un dossier -->
-            <div class="hd">
-              <span class="badge"><app-icon name="folder" [size]="22" /></span>
-              <h1>{{ i.targetName }}</h1>
-              <p>{{ (i.files?.length || 0) }} fichier(s) partagé(s)</p>
-            </div>
-            @for (f of i.files || []; track f.id) {
-              <div class="frow">
-                <app-icon class="frow__i" name="file" [size]="18" />
-                <span class="frow__n" [title]="f.name">{{ f.name }}</span>
-                <span class="frow__s">{{ sizeLabel(f.fileSize) }}</span>
-                @if (canPreview(f.name)) {
-                  <button class="ic" title="Aperçu" [disabled]="busy()" (click)="previewFolderFile(f)"><app-icon name="eye" [size]="16" /></button>
-                }
-                <button class="ic" title="Télécharger" [disabled]="busy()" (click)="downloadFolderFile(f)"><app-icon name="download" [size]="16" /></button>
+            <!-- Dossier : lecture (READ / READ_WRITE) et/ou dépôt (DROP / READ_WRITE) -->
+            @if (canRead(i)) {
+              <div class="hd">
+                <span class="badge"><app-icon name="folder" [size]="22" /></span>
+                <h1>{{ i.targetName }}</h1>
+                <p>{{ (i.files?.length || 0) }} fichier(s) partagé(s)</p>
               </div>
-            } @empty {
-              <div class="muted">Ce dossier ne contient aucun fichier partageable.</div>
+              @for (f of i.files || []; track f.id) {
+                <div class="frow">
+                  <app-icon class="frow__i" name="file" [size]="18" />
+                  <span class="frow__n" [title]="f.name">{{ f.name }}</span>
+                  <span class="frow__s">{{ sizeLabel(f.fileSize) }}</span>
+                  @if (canPreview(f.name)) {
+                    <button class="ic" title="Aperçu" [disabled]="busy()" (click)="previewFolderFile(f)"><app-icon name="eye" [size]="16" /></button>
+                  }
+                  <button class="ic" title="Télécharger" [disabled]="busy()" (click)="downloadFolderFile(f)"><app-icon name="download" [size]="16" /></button>
+                </div>
+              } @empty {
+                <div class="muted">Ce dossier ne contient aucun fichier pour le moment.</div>
+              }
+            }
+
+            @if (canUpload(i)) {
+              <div class="hd" [class.hd--sub]="canRead(i)">
+                <span class="badge badge--drop"><app-icon name="upload" [size]="22" /></span>
+                <h1>{{ canRead(i) ? 'Ajouter un fichier' : 'Déposer des fichiers' }}</h1>
+                <p>{{ canRead(i) ? 'Ajoutez un fichier à ce dossier partagé — il apparaîtra dans la liste ci-dessus.' : 'Vos fichiers seront transmis en privé au propriétaire du dossier « ' + i.targetName + ' ».' }}</p>
+              </div>
+
+              <div class="field"><label>Votre nom</label><input type="text" [value]="name()" (input)="name.set($any($event.target).value)" placeholder="ex. Jean Dupont" /></div>
+              <div class="field"><label>Votre email</label><input type="email" [value]="email()" (input)="email.set($any($event.target).value)" placeholder="ex. jean@exemple.com" /></div>
+
+              <label class="dropzone">
+                <app-icon name="upload" [size]="26" />
+                <span class="dropzone__t">{{ picked() ? picked()!.name : 'Choisir un fichier à déposer' }}</span>
+                <span class="dropzone__s">{{ constraintsLabel(i) }}</span>
+                <input type="file" hidden (change)="onPick($event)" />
+              </label>
+
+              <button class="primary primary--full" [disabled]="!picked() || busy()" (click)="doUpload()">
+                {{ busy() ? 'Envoi…' : 'Déposer le fichier' }}
+              </button>
+              @if (uploaded().length) {
+                <div class="ok"><app-icon name="check" [size]="16" /> {{ uploaded().length }} fichier(s) déposé(s) : {{ uploadedNames() }}</div>
+              }
             }
             @if (error()) { <div class="err">{{ error() }}</div> }
           }
@@ -149,6 +151,8 @@ import { PublicShareFileLine, PublicShareInfo } from '@core/models/ged.models';
     .state h1 { font-size: 19px; font-weight: 700; color: var(--nx-text, #211d2b); margin: 12px 0 6px; }
     .state p, .hd p { font-size: 13.5px; color: var(--nx-text-500, #6b6675); line-height: 1.5; margin: 0; }
     .hd { text-align: center; margin-bottom: 22px; }
+    /* Sous-section « déposer » quand le lien combine lecture + dépôt : séparateur. */
+    .hd--sub { margin-top: 26px; padding-top: 24px; border-top: 1px solid var(--nx-border, #E6E3DC); }
     .hd h1 { font-size: 19px; font-weight: 700; color: var(--nx-text, #211d2b); margin: 12px 0 6px; word-break: break-word; }
     .badge { width: 52px; height: 52px; border-radius: 14px; background: rgba(91,95,233,.10); color: var(--nx-indigo, #5b5fe9); display: inline-flex; align-items: center; justify-content: center; }
     .badge--err { background: #FDECEB; color: var(--nx-danger, #e0554d); }
@@ -250,6 +254,11 @@ export class PartagePublicComponent implements OnInit {
 
   /** Extensions affichables en ligne (source unique : FilePreviewComponent). */
   canPreview(name?: string): boolean { return isPreviewableFile(name); }
+
+  /** Le lien expose-t-il le contenu du dossier (lecture ou lecture + dépôt) ? */
+  canRead(i: PublicShareInfo): boolean { return i.mode === 'READ' || i.mode === 'READ_WRITE'; }
+  /** Le lien autorise-t-il le dépôt (boîte de dépôt ou lecture + dépôt) ? */
+  canUpload(i: PublicShareInfo): boolean { return i.mode === 'DROP' || i.mode === 'READ_WRITE'; }
 
   previewTarget(): void {
     this.error.set('');

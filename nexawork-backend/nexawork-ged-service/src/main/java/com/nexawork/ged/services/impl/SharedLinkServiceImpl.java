@@ -81,9 +81,9 @@ public class SharedLinkServiceImpl implements SharedLinkService {
         String targetName;
 
         if (request.getTargetType() == TargetType.FILE) {
-            if (request.getMode() == ShareMode.DROP) {
+            if (allowsUpload(request.getMode())) {
                 throw new InvalidRequestException(
-                        "Une boîte de dépôt cible un dossier, pas un fichier.");
+                        "Le dépôt de fichiers cible un dossier, pas un fichier.");
             }
             GedFile file = guard.loadFileInOrg(request.getTargetId());
             access.requireViewable(file);
@@ -107,8 +107,8 @@ public class SharedLinkServiceImpl implements SharedLinkService {
                 .maxAccess(request.getMaxAccess() != null && request.getMaxAccess() > 0
                         ? request.getMaxAccess() : null)
                 .accessCount(0)
-                .maxUploadBytes(request.getMode() == ShareMode.DROP ? request.getMaxUploadBytes() : null)
-                .allowedExtensions(request.getMode() == ShareMode.DROP
+                .maxUploadBytes(allowsUpload(request.getMode()) ? request.getMaxUploadBytes() : null)
+                .allowedExtensions(allowsUpload(request.getMode())
                         ? normalizeExtensions(request.getAllowedExtensions()) : null)
                 .createdByUserId(caller.userId())
                 .revoked(false)
@@ -171,25 +171,28 @@ public class SharedLinkServiceImpl implements SharedLinkService {
 
         b.remainingAccess(remainingAccess(link));
 
-        if (link.getMode() == ShareMode.DROP) {
-            GedFolder folder = loadSharedFolder(link);
-            // Isolation : en dépôt, on n'expose JAMAIS le contenu existant du dossier.
-            b.targetName(folder.getName())
-                    .maxUploadBytes(link.getMaxUploadBytes() != null ? link.getMaxUploadBytes() : DEFAULT_MAX_UPLOAD_BYTES)
-                    .allowedExtensions(link.getAllowedExtensions());
-            return b.build();
-        }
-
-        // READ
+        // Cible FICHIER : lecture seule d'un fichier unique.
         if (link.getTargetType() == TargetType.FILE) {
             GedFile file = loadSharedFile(link.getTargetId(), link);
             b.targetName(file.getName())
                     .fileName(file.getName())
                     .contentType(file.getContentType())
                     .fileSize(file.getFileSize());
-        } else {
-            GedFolder folder = loadSharedFolder(link);
-            b.targetName(folder.getName()).files(listFolderFiles(folder));
+            return b.build();
+        }
+
+        // Cible DOSSIER : lecture et/ou dépôt selon le mode.
+        GedFolder folder = loadSharedFolder(link);
+        b.targetName(folder.getName());
+        // Lecture : la liste des fichiers existants n'est exposée QUE si le mode la
+        // permet. En dépôt seul (DROP), on ne révèle jamais le contenu (isolation).
+        if (allowsRead(link.getMode())) {
+            b.files(listFolderFiles(folder));
+        }
+        // Dépôt : capacités d'upload (taille max, extensions autorisées).
+        if (allowsUpload(link.getMode())) {
+            b.maxUploadBytes(link.getMaxUploadBytes() != null ? link.getMaxUploadBytes() : DEFAULT_MAX_UPLOAD_BYTES)
+                    .allowedExtensions(link.getAllowedExtensions());
         }
         return b.build();
     }
@@ -210,7 +213,7 @@ public class SharedLinkServiceImpl implements SharedLinkService {
     @Override
     public DownloadedFile downloadFolderFile(String token, UUID fileId, String password) {
         SharedLink link = requireActive(token);
-        if (link.getMode() != ShareMode.READ || link.getTargetType() != TargetType.FOLDER) {
+        if (!allowsRead(link.getMode()) || link.getTargetType() != TargetType.FOLDER) {
             throw new ForbiddenException("Ce lien ne permet pas ce téléchargement.");
         }
         requirePassword(link, password);
@@ -236,7 +239,7 @@ public class SharedLinkServiceImpl implements SharedLinkService {
     public PublicShareFileResponse upload(String token, MultipartFile file,
                                           String uploaderName, String uploaderEmail, String password) {
         SharedLink link = requireActive(token);
-        if (link.getMode() != ShareMode.DROP) {
+        if (!allowsUpload(link.getMode())) {
             throw new ForbiddenException("Ce lien n'accepte pas de dépôt de fichier.");
         }
         requirePassword(link, password);
@@ -338,6 +341,16 @@ public class SharedLinkServiceImpl implements SharedLinkService {
 
     private Integer remainingAccess(SharedLink link) {
         return link.getMaxAccess() == null ? null : Math.max(0, link.getMaxAccess() - link.getAccessCount());
+    }
+
+    /** Le mode expose-t-il le contenu existant (consultation/téléchargement) ? */
+    private static boolean allowsRead(ShareMode mode) {
+        return mode == ShareMode.READ || mode == ShareMode.READ_WRITE;
+    }
+
+    /** Le mode autorise-t-il le dépôt de fichiers par un externe ? */
+    private static boolean allowsUpload(ShareMode mode) {
+        return mode == ShareMode.DROP || mode == ShareMode.READ_WRITE;
     }
 
     /** Charge le fichier ciblé par un lien, borné à son workspace (public, sans caller). */

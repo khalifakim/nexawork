@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, EventEmitter, Input, OnInit, Output, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, EventEmitter, Input, OnInit, Output, computed, inject, signal } from '@angular/core';
 import { ModalShellComponent } from '@shared/ui/modal-shell/modal-shell.component';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 import { SharesService } from '@core/services/shares.service';
@@ -12,8 +12,9 @@ type ExpiryKind = 'never' | 'date' | 'count';
  *
  * <p>Un lien ouvre l'accès à CET élément sans compte. La sécurité tient au token
  * opaque + expiration (date ou nombre d'accès) + mot de passe optionnel +
- * révocation. Deux modes : consultation (READ) ou boîte de dépôt (DROP, dossier
- * seulement). Le modal liste aussi les liens déjà existants sur l'élément.</p>
+ * révocation. Trois modes (dossier) : consultation (READ), boîte de dépôt aveugle
+ * (DROP) ou lecture + dépôt (READ_WRITE) ; un fichier n'accepte que la consultation.
+ * Le modal liste aussi les liens déjà existants sur l'élément.</p>
  */
 @Component({
   selector: 'app-partager-lien',
@@ -30,7 +31,7 @@ type ExpiryKind = 'never' | 'date' | 'count';
           @for (l of existing(); track l.id) {
             <div class="link" [class.link--off]="!l.active">
               <span class="link__mode" [class.link__mode--drop]="l.mode === 'DROP'">
-                <app-icon [name]="l.mode === 'DROP' ? 'upload' : 'eye'" [size]="13" />{{ l.mode === 'DROP' ? 'Dépôt' : 'Lecture' }}
+                <app-icon [name]="modeIcon(l.mode)" [size]="13" />{{ modeLabel(l.mode) }}
               </span>
               <span class="link__url" [title]="absolute(l)">{{ absolute(l) }}</span>
               <span class="link__meta">{{ metaLabel(l) }}</span>
@@ -51,7 +52,10 @@ type ExpiryKind = 'never' | 'date' | 'count';
           </button>
           @if (targetType === 'FOLDER') {
             <button class="mode" [class.mode--on]="mode() === 'DROP'" (click)="mode.set('DROP')">
-              <app-icon name="upload" [size]="17" /><span class="mode__t">Boîte de dépôt</span><span class="mode__d">Recevoir des fichiers</span>
+              <app-icon name="upload" [size]="17" /><span class="mode__t">Boîte de dépôt</span><span class="mode__d">Dépôt seul (aveugle)</span>
+            </button>
+            <button class="mode" [class.mode--on]="mode() === 'READ_WRITE'" (click)="mode.set('READ_WRITE')">
+              <app-icon name="folder" [size]="17" /><span class="mode__t">Lecture + dépôt</span><span class="mode__d">Voir et recevoir</span>
             </button>
           }
         </div>
@@ -72,7 +76,7 @@ type ExpiryKind = 'never' | 'date' | 'count';
         <div class="lbl">Mot de passe (optionnel)</div>
         <input class="in" type="text" placeholder="Laisser vide = aucun mot de passe" [value]="password()" (input)="password.set($any($event.target).value)" autocomplete="off" />
 
-        @if (mode() === 'DROP') {
+        @if (uploads()) {
           <div class="lbl">Garde-fous du dépôt (optionnel)</div>
           <input class="in" type="number" min="1" placeholder="Taille max par fichier (Mo) — défaut 25" [value]="maxMb()" (input)="maxMb.set($any($event.target).value)" />
           <input class="in" type="text" placeholder="Extensions autorisées, ex. mp4, zip, pdf (vide = tous les types sauf exécutables)" [value]="allowedExt()" (input)="allowedExt.set($any($event.target).value)" />
@@ -144,6 +148,8 @@ export class PartagerLienComponent implements OnInit {
 
   existing = signal<ShareLinkResponse[]>([]);
   mode = signal<ShareMode>('READ');
+  /** Vrai si le mode courant autorise le dépôt (boîte de dépôt ou lecture + dépôt). */
+  uploads = computed(() => this.mode() === 'DROP' || this.mode() === 'READ_WRITE');
   expiry = signal<ExpiryKind>('never');
   expDate = signal('');
   maxAccess = signal('');
@@ -163,6 +169,15 @@ export class PartagerLienComponent implements OnInit {
   }
 
   absolute(l: ShareLinkResponse): string { return location.origin + (l.path || '/s/' + l.token); }
+
+  /** Libellé court du mode d'un lien (puce de la liste). */
+  modeLabel(m: ShareMode): string {
+    return m === 'DROP' ? 'Dépôt' : m === 'READ_WRITE' ? 'Lecture + dépôt' : 'Lecture';
+  }
+  /** Icône du mode d'un lien. */
+  modeIcon(m: ShareMode): string {
+    return m === 'DROP' ? 'upload' : m === 'READ_WRITE' ? 'folder' : 'eye';
+  }
 
   metaLabel(l: ShareLinkResponse): string {
     if (l.revoked) return 'révoqué';
@@ -188,7 +203,7 @@ export class PartagerLienComponent implements OnInit {
       if (!Number.isFinite(n) || n < 1) { this.error.set('Indiquez un nombre d’accès valide (≥ 1).'); return; }
       req.maxAccess = n;
     }
-    if (this.mode() === 'DROP') {
+    if (this.uploads()) {
       const mb = parseInt(this.maxMb(), 10);
       if (Number.isFinite(mb) && mb > 0) req.maxUploadBytes = mb * 1024 * 1024;
       if (this.allowedExt().trim()) req.allowedExtensions = this.allowedExt().trim();

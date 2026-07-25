@@ -104,7 +104,7 @@ export type AccessLevel = 'READER' | 'EDITOR';
 
 // ── Liens de partage externes (Brique 4) ─────────────────────────────────────
 
-export type ShareMode = 'READ' | 'DROP';
+export type ShareMode = 'READ' | 'DROP' | 'READ_WRITE';
 
 /** Création d'un lien de partage externe (endpoint authentifié). */
 export interface CreateShareLinkRequest {
