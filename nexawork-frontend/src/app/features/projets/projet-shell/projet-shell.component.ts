@@ -27,6 +27,7 @@ import { TasksService } from '@core/services/tasks.service';
 import { workspaceSignal } from '@core/util/workspace-signal';
 import { DataRefreshService } from '@core/services/data-refresh.service';
 import { KanbanStore } from '@features/projets/kanban/kanban.store';
+import * as XLSX from 'xlsx';
 
 interface Tab { key: string; label: string; icon: string; }
 
@@ -60,6 +61,10 @@ interface ConfirmCfg { title: string; danger: boolean; btn: string; icon: string
             <span class="pill" [class.pill--warn]="health().cls === 'warn'">{{ health().label }}</span>
           }
           <span class="spacer"></span>
+
+          <button class="set" (click)="exportExcel()" title="Exporter les taches du projet au format Excel">
+            <app-icon name="download" [size]="15" />Exporter Excel
+          </button>
 
           @if (isRo() && isAdmin()) {
             <button class="btn-restore" (click)="openConfirm('restore')"><app-icon name="restore" [size]="15" />Restaurer</button>
@@ -283,6 +288,49 @@ export class ProjetShellComponent {
   createColName = computed(() => this.store.columns().find(c => c.id === this.createCol())?.name ?? '');
 
   openTask(t: TaskCard): void { this.selected.set({ ...t, proj: this.displayName() }); }
+
+  /**
+   * Exporte toutes les tâches du projet au format Excel (.xlsx) pour un suivi hors
+   * ligne. 100 % navigateur (SheetJS) : aucune donnée n'est envoyée à un tiers. Les
+   * statuts et assignés sont résolus en clair (nom de colonne, nom du membre).
+   */
+  exportExcel(): void {
+    const cards = this.store.allCards();
+    if (cards.length === 0) { this.showToast('Aucune tâche à exporter'); return; }
+    const cols = this.store.columns();
+    const dir = this.directory();
+    const statusName = (id: string) => cols.find(c => c.id === id)?.name ?? '';
+    const assignee = (t: TaskCard) => {
+      if (!t.assigneeId) return '';
+      if (t.assigneeType === 'TEAM') return 'Équipe';
+      return dir.find(m => m.userId === t.assigneeId)?.name ?? '';
+    };
+    const fmt = (iso?: string) => {
+      if (!iso) return '';
+      const d = new Date(iso);
+      return isNaN(d.getTime()) ? '' : d.toLocaleDateString('fr-FR');
+    };
+    const rows = cards.map(t => ({
+      'Clé': t.taskKey,
+      'Titre': t.title,
+      'Statut': statusName(t.statusId),
+      'Priorité': t.prio[0],
+      'Assigné à': assignee(t),
+      'Début': fmt(t.startDate),
+      'Échéance': fmt(t.dueDate),
+      'Estimation': t.estimate ?? '',
+      'Commentaires': t.comments,
+      'Créée le': fmt(t.createdDate),
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [10, 42, 16, 12, 22, 12, 12, 12, 13, 12].map(w => ({ wch: w }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Tâches');
+    const safe = (this.displayName() || 'projet').replace(/[\\/:*?"<>|]/g, '_');
+    XLSX.writeFile(wb, `Taches - ${safe}.xlsx`);
+    this.showToast(`${cards.length} tâche(s) exportée(s) en Excel`);
+    this._t = setTimeout(() => this.roToast.set(null), 2600);
+  }
 
   /**
    * Création depuis le Calendrier : le jour cliqué pré-remplit les deux dates,
