@@ -26,6 +26,8 @@ interface MemberPick { userId: string; name: string; role?: string; color: strin
 interface WorkloadRow {
   userId: string; name: string; color: string; role: string;
   todo: number; active: number; done: number; overdue: number; total: number; activeTotal: number;
+  /** Progression = part des tâches terminées (0–100). */
+  pct: number;
 }
 
 @Component({
@@ -129,7 +131,7 @@ interface WorkloadRow {
         <!-- Bascule Composition / Charge de travail (identique dans /app/equipes et l'onglet projet) -->
         <div class="viewtabs">
           <button type="button" [class.viewtabs__on]="view()==='composition'" (click)="setView('composition')"><app-icon name="teams" [size]="15" />Composition</button>
-          <button type="button" [class.viewtabs__on]="view()==='charge'" (click)="setView('charge')"><app-icon name="dashboard" [size]="15" />Charge de travail</button>
+          <button type="button" [class.viewtabs__on]="view()==='charge'" (click)="setView('charge')"><app-icon name="dashboard" [size]="15" />Progression</button>
         </div>
 
         @if (view() === 'composition') {
@@ -312,31 +314,27 @@ interface WorkloadRow {
             <app-loader label="Calcul de la charge…" [minHeight]="200" />
           } @else {
             <div class="chg__h">
-              <div class="chg__tt">
-                <span class="chg__t">Charge de travail par membre</span>
-                <span class="chg__s">Tâches actives et en retard par personne sur « {{ projectName() }} ».</span>
-              </div>
-              <div class="chg__legend">
-                <span><i class="ldot ldot--todo"></i>À faire</span>
-                <span><i class="ldot ldot--active"></i>En cours</span>
-                <span><i class="ldot ldot--done"></i>Terminé</span>
-              </div>
+              <span class="chg__t">Progression par membre</span>
+              <span class="chg__s">Répartition des tâches et progression (part des tâches terminées) sur « {{ projectName() }} ».</span>
             </div>
             <div class="chg">
               @for (r of workload(); track r.userId) {
                 <div class="chgrow">
                   <span class="chgav" [style.background]="r.color">{{ ini(r.name) }}</span>
                   <div class="chgb">
-                    <div class="chgn">{{ r.name }} <span class="chgrole">{{ r.role }}</span></div>
-                    <div class="chgbar" [class.chgbar--empty]="!r.total">
-                      @if (r.todo) { <span class="seg seg--todo" [style.flex-grow]="r.todo" [title]="r.todo + ' a faire'"></span> }
-                      @if (r.active) { <span class="seg seg--active" [style.flex-grow]="r.active" [title]="r.active + ' en cours'"></span> }
-                      @if (r.done) { <span class="seg seg--done" [style.flex-grow]="r.done" [title]="r.done + ' terminees'"></span> }
+                    <div class="chgtop">
+                      <span class="chgn">{{ r.name }}<span class="chgrole">{{ r.role }}</span></span>
+                      <span class="chgcounts">
+                        <span class="ct ct--todo">{{ r.todo }} à faire</span>
+                        <span class="ct ct--active">{{ r.active }} en cours</span>
+                        <span class="ct ct--done">{{ r.done }} terminé{{ r.done > 1 ? 's' : '' }}</span>
+                        @if (r.overdue) { <span class="ct ct--late"><app-icon name="alert" [size]="11" [stroke]="2" />{{ r.overdue }} en retard</span> }
+                      </span>
                     </div>
-                  </div>
-                  <div class="chgmeta">
-                    @if (r.overdue) { <span class="chgbadge"><app-icon name="alert" [size]="12" [stroke]="2" />{{ r.overdue }} en retard</span> }
-                    <span class="chgsum">{{ r.activeTotal ? (r.activeTotal + ' active' + (r.activeTotal > 1 ? 's' : '')) : 'disponible' }}</span>
+                    <div class="chgprog" [title]="r.done + ' / ' + r.total + ' tâches terminées'">
+                      <div class="chgprog__track"><div class="chgprog__fill" [style.width.%]="r.pct"></div></div>
+                      <span class="chgprog__pct">{{ r.total ? r.pct + '%' : '—' }}</span>
+                    </div>
                   </div>
                 </div>
               } @empty {
@@ -344,9 +342,8 @@ interface WorkloadRow {
               }
               @if (unassignedCount()) {
                 <div class="chgrow chgrow--un">
-                  <span class="chgav chgav--un"><app-icon name="user" [size]="15" /></span>
-                  <div class="chgb"><div class="chgn">Non assigné</div></div>
-                  <div class="chgmeta"><span class="chgsum">{{ unassignedCount() }} tâche{{ unassignedCount() > 1 ? 's' : '' }}</span></div>
+                  <span class="chgav chgav--un"><app-icon name="user" [size]="16" /></span>
+                  <div class="chgb"><span class="chgn">Non assigné<span class="chgrole">{{ unassignedCount() }} tâche{{ unassignedCount() > 1 ? 's' : '' }} sans responsable</span></span></div>
                 </div>
               }
             </div>
@@ -499,7 +496,12 @@ export class EquipesComponent implements OnInit, OnDestroy {
         if (k === 'active') active++; else todo++;
         if (c.dueDate) { const d = new Date(c.dueDate); if (!isNaN(d.getTime()) && d < today) overdue++; }
       }
-      return { ...m, todo, active, done, overdue, total: todo + active + done, activeTotal: todo + active };
+      const total = todo + active + done;
+      return {
+        ...m, todo, active, done, overdue, total,
+        activeTotal: todo + active,
+        pct: total ? Math.round((done / total) * 100) : 0,
+      };
     });
     rows.sort((a, b2) => (b2.activeTotal - a.activeTotal) || (b2.overdue - a.overdue) || a.name.localeCompare(b2.name));
     return rows;
