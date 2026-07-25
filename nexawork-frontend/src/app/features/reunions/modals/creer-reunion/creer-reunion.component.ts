@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy, Component, EventEmitter, Input, Output, computed, inject, signal,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
+import { finalize } from 'rxjs/operators';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 import { MembersService } from '@core/services/members.service';
 import { Member } from '@core/models/member.models';
@@ -56,7 +57,9 @@ interface Person { id: string; n: string; c: string; role: string; email: string
                        (input)="q.set($any($event.target).value); pickerOpen.set(true)"
                        placeholder="Rechercher par nom ou email…" />
               </div>
-              @if (pickerOpen() && suggestions().length) {
+              @if (pickerOpen() && membersLoading()) {
+                <div class="dd dd--load"><span class="ddspin"></span>Chargement des membres…</div>
+              } @else if (pickerOpen() && suggestions().length) {
                 <div class="dd">
                   @for (m of suggestions(); track m.id) {
                     <button class="dd__row" (click)="addMember(m)">
@@ -155,6 +158,9 @@ interface Person { id: string; n: string; c: string; role: string; email: string
     .srch__bar input { flex: 1; min-width: 0; border: none; outline: none; background: transparent; font-family: inherit; font-size: 14px; color: var(--nx-text); }
     .dd { position: absolute; top: 48px; left: 0; right: 0; z-index: 5; background: #fff; border-radius: 12px; border: 1px solid #ECEAE4; box-shadow: 0 10px 30px rgba(20,15,40,.16); padding: 5px; max-height: 200px; overflow-y: auto; }
     .dd--empty { padding: 18px; text-align: center; font-size: 13px; color: var(--nx-text-300); }
+    .dd--load { display: flex; align-items: center; justify-content: center; gap: 9px; padding: 16px; font-size: 13px; color: var(--nx-text-500); }
+    .ddspin { width: 15px; height: 15px; border-radius: 50%; border: 2px solid var(--nx-border, #E6E3DC); border-top-color: var(--nx-indigo, #5b5fe9); animation: ddsp .6s linear infinite; }
+    @keyframes ddsp { to { transform: rotate(360deg); } }
     .dd__row { width: 100%; display: flex; align-items: center; gap: 11px; padding: 9px 11px; border: none; border-radius: 8px; background: transparent; cursor: pointer; font-family: inherit; text-align: left; }
     .dd__row:hover { background: var(--nx-surface-2); }
     .dd__av { width: 32px; height: 32px; flex: none; border-radius: 50%; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; }
@@ -209,8 +215,13 @@ export class CreerReunionComponent {
   external = signal<string[]>([]);
   extInput = signal('');
 
+  /** Vrai tant que l'annuaire du workspace n'est pas revenu (loader du dropdown). */
+  membersLoading = signal(true);
   /** Membres réels du workspace (hors soi) — la liste était codée en dur. */
-  private people = toSignal(this.membersSvc.others(), { initialValue: [] as Member[] });
+  private people = toSignal(
+    this.membersSvc.others().pipe(finalize(() => this.membersLoading.set(false))),
+    { initialValue: [] as Member[] },
+  );
 
   /** Liste déroulante ouverte : dès l'ouverture du modal, puis rouverte au focus. */
   pickerOpen = signal(true);
