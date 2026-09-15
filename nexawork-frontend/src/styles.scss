@@ -67,6 +67,8 @@
   --nx-z-menu: 60;
   --nx-z-overlay: 100;
   --nx-z-modal: 140;
+  /* Modal secondaire ouvert PAR-DESSUS un modal (profil / aperçu depuis un chip). */
+  --nx-z-modal-top: 160;
 }
 
 * { box-sizing: border-box; }

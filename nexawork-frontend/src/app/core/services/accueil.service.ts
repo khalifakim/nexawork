@@ -27,6 +27,10 @@ export abstract class AccueilService {
   abstract myTasks(): Observable<MyTaskSection[]>;
   abstract mentions(): Observable<ReceivedMention[]>;
   abstract dashboard(): Observable<Dashboard>;
+  /** Marque une mention (messagerie) comme lue. */
+  abstract markMentionRead(id: string): Observable<void>;
+  /** Marque toutes les mentions (messagerie) comme lues. */
+  abstract markAllMentionsRead(): Observable<void>;
 }
 
 @Injectable()
@@ -42,12 +46,14 @@ export class AccueilMockService extends AccueilService {
   dashboard(): Observable<Dashboard> {
     return of(DASHBOARD_BY_WORKSPACE[this.session.activeWorkspaceId()] ?? EMPTY_DASHBOARD).pipe(delay(80));
   }
+  markMentionRead(_id: string): Observable<void> { return of(void 0); }
+  markAllMentionsRead(): Observable<void> { return of(void 0); }
 }
 
 // ── Payloads backend ─────────────────────────────────────────────────────────
 
 interface DashboardResponse {
-  kpis: { activeProjects: number; inProgressTasks: number; overdueTasks: number; workspaceMembers?: number };
+  kpis: { activeProjects: number; inProgressTasks: number; overdueTasks: number; workspaceMembers?: number; totalTasks?: number; completedTasks?: number };
   workload: { projectId: string; projectName: string; color?: string; activeTaskCount: number }[];
   alerts: { type: string; severity: string; message: string; projectId?: string }[];
   activeProjectsList: {
@@ -121,6 +127,12 @@ export class AccueilHttpService extends BaseHttpService implements AccueilServic
     const wsId = this.session.activeWorkspaceId();
     if (!wsId) return of(EMPTY_DASHBOARD);
     return this.get$<DashboardResponse>('project', `/workspaces/${wsId}/dashboard`).pipe(map(toDashboard));
+  }
+  markMentionRead(id: string): Observable<void> {
+    return this.patch$<void>('messaging', `/mentions/${id}/read`, {});
+  }
+  markAllMentionsRead(): Observable<void> {
+    return this.post$<void>('messaging', '/mentions/mark-all-read', {}).pipe(map(() => void 0));
   }
 }
 
@@ -196,6 +208,9 @@ function toCommentMention(
     ctx: c.taskKey ? c.taskKey + ' · ' + c.projectName : 'Commentaire',
     date: formatAgo(c.createdAt),
     kind: 'Commentaires',
+    // Le domaine Project n'expose pas l'état « lu » des mentions de commentaires :
+    // elles sont non-lues par défaut et marquées lues localement (store) au clic.
+    read: false,
     // Ouvre la fiche de tâche ancrée sur le commentaire.
     target: { kind: 'task', id: c.taskId, commentId: c.commentId },
   };
@@ -273,14 +288,18 @@ function toDashboard(r: DashboardResponse): Dashboard {
     id: p.id, n: p.name, c: p.color ?? '#5B5FE9', count: p.count,
   }));
 
-  // Avancement global : moyenne des projets actifs (le backend agrège par projet).
-  const tasksTotal = projects.length;
-  const tasksDone = projects.filter(p => p.p >= 100).length;
+  // Tâches terminées / total : agrégat réel de toutes les tâches des projets
+  // actifs du workspace (fourni par le backend), pas un décompte de projets.
+  const tasksTotal = r.kpis?.totalTasks ?? 0;
+  const tasksDone = r.kpis?.completedTasks ?? 0;
+  // Projets « en retard » = projets actifs dont l'échéance est **dépassée**
+  // (jours restants < 0), et non ceux ayant des tâches en retard.
+  const projectsLate = projects.filter(p => p.days < 0).length;
 
   return {
     kpis: {
       projectsActive: r.kpis?.activeProjects ?? 0,
-      projectsLate: overdueProjects.length,
+      projectsLate,
       projectsArchived: 0,
       tasksDone,
       tasksTotal,

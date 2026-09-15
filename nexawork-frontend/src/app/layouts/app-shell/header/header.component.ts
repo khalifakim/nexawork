@@ -463,11 +463,15 @@ export class HeaderComponent {
       return;
     }
     this.close();
-    this.loader.show(800);
-    setTimeout(() => {
-      this.session.switchWorkspace(o.id);
-      this.router.navigate(['/app/accueil/mes-taches']);
-      this.toast.show({ message: 'Vous avez rejoint « ' + o.name + ' »' });
-    }, 800);
+    this.loader.show(8000); // maintenu jusqu'à la fin de la bascule (hide explicite)
+    // 1) Quitter d'abord toute route liée à une entité de l'ancien espace (projet…)
+    //    pour éviter un « projet introuvable » quand l'espace bascule.
+    this.router.navigate(['/app/accueil/mes-taches']).then(() => {
+      // 2) Re-scoper le token puis basculer l'espace actif → rechargements propres.
+      this.session.switchWorkspace(o.id, () => {
+        this.toast.show({ message: 'Vous avez rejoint « ' + o.name + ' »' });
+        this.loader.hide();
+      });
+    });
   }
 }

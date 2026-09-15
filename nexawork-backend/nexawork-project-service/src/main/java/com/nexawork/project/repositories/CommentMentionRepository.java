@@ -11,9 +11,10 @@ import java.util.UUID;
 public interface CommentMentionRepository extends JpaRepository<CommentMention, UUID> {
 
     /**
-     * Mentions reçues par l'utilisateur (onglet « Commentaires »). Jointures
-     * chargées pour construire le DTO (tâche + projet). Une auto-mention (auteur =
-     * destinataire) est exclue en amont (jamais persistée).
+     * Mentions reçues par l'utilisateur (onglet « Commentaires ») DANS un
+     * workspace donné. Jointures chargées pour construire le DTO (tâche + projet).
+     * Le filtre par organisation isole les mentions par espace de travail. Une
+     * auto-mention (auteur = destinataire) est exclue en amont (jamais persistée).
      */
     @Query("""
             SELECT cm FROM CommentMention cm
@@ -21,7 +22,8 @@ public interface CommentMentionRepository extends JpaRepository<CommentMention, 
             JOIN FETCH c.task t
             JOIN FETCH t.project p
             WHERE cm.mentionedUserId = :userId
+              AND p.organisationId = :orgId
             ORDER BY c.createdAt DESC
             """)
-    List<CommentMention> findReceived(@Param("userId") UUID userId);
+    List<CommentMention> findReceived(@Param("orgId") UUID orgId, @Param("userId") UUID userId);
 }

@@ -3,10 +3,15 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { switchMap } from 'rxjs/operators';
 import { IconComponent } from '@shared/ui/icon/icon.component';
-import { TasksService } from '@core/services/tasks.service';
+import { TasksService, BoardData } from '@core/services/tasks.service';
+import { ProjectsService } from '@core/services/projects.service';
+import { MembersService } from '@core/services/members.service';
 import { ReportsService } from '@core/services/reports.service';
 import { SessionService } from '@core/services/session.service';
 import { ProjectOverviewResponse } from '@core/models/task.models';
+import { ProjectTeam } from '@core/models/project.models';
+import { Member } from '@core/models/member.models';
+import { avatarColorFor, initials } from '@core/util/ui.util';
 
 interface Seg { l: string; v: number; c: string; }
 
@@ -105,7 +110,13 @@ interface Seg { l: string; v: number; c: string; }
         @for (d of deadlines(); track d.taskId; let i = $index) {
           <div class="dl__row" [class.dl__row--first]="i===0">
             <div class="dl__t"><span class="dl__dot" [style.background]="isUrgent(d.dueDate) ? 'var(--nx-danger)' : '#C9C5BC'"></span><span>{{ d.title }}</span></div>
-            <span class="dl__w">—</span>
+            <span class="dl__w">
+              @if (resp(d.taskId); as r) {
+                <span class="dl__av" [class.dl__av--team]="r.isTeam" [style.background]="r.color">{{ ini(r.label) }}</span>
+                <span class="dl__wn">{{ r.label }}</span>
+                @if (r.isTeam) { <span class="dl__team">Équipe</span> }
+              } @else { <span class="dl__none">—</span> }
+            </span>
             <span class="dl__d" [style.color]="isUrgent(d.dueDate) ? 'var(--nx-danger)' : 'var(--nx-text-500)'">{{ dueLabel(d.dueDate) }}</span>
           </div>
         } @empty {
@@ -122,6 +133,8 @@ export class VueDEnsembleComponent {
   private router = inject(Router);
   private route = inject(ActivatedRoute);
   private tasksSvc = inject(TasksService);
+  private projectsSvc = inject(ProjectsService);
+  private membersSvc = inject(MembersService);
   private session = inject(SessionService);
   protected reports = inject(ReportsService);
 
@@ -150,6 +163,40 @@ export class VueDEnsembleComponent {
   overdue    = computed(() => this.overview()?.overdueTasks ?? 0);
   members    = computed(() => this.overview()?.memberCount ?? 0);
   deadlines  = computed(() => this.overview()?.upcomingDueTasks ?? []);
+
+  // Responsable des tâches (le service overview ne le porte pas) : résolu depuis
+  // le board + les équipes + l'annuaire, par id de tâche.
+  private board = toSignal(
+    this.route.paramMap.pipe(switchMap(() => this.tasksSvc.loadBoard(this.projectId()))),
+    { initialValue: { columns: [], cards: {} } as BoardData },
+  );
+  private teams = toSignal(
+    this.route.paramMap.pipe(switchMap(() => this.projectsSvc.teams(this.projectId()))),
+    { initialValue: [] as ProjectTeam[] },
+  );
+  private directory = toSignal(this.membersSvc.directory(), { initialValue: [] as Member[] });
+
+  private respByTask = computed(() => {
+    const map = new Map<string, { label: string; isTeam: boolean; color: string }>();
+    const teamById = new Map(this.teams().map(t => [t.id, t]));
+    const memberById = new Map(this.directory().filter(m => m.userId).map(m => [m.userId!, m] as const));
+    for (const c of Object.values(this.board().cards).flat()) {
+      if (!c.assigneeId) continue;
+      if (c.assigneeType === 'TEAM') {
+        const t = teamById.get(c.assigneeId);
+        map.set(c.id, { label: t?.name ?? 'Équipe', isTeam: true, color: t?.color ?? '#6C70F0' });
+      } else {
+        const m = memberById.get(c.assigneeId);
+        map.set(c.id, { label: m?.name ?? 'Membre', isTeam: false, color: m?.color ?? avatarColorFor(c.assigneeId) });
+      }
+    }
+    return map;
+  });
+  /** Responsable d'une tâche d'échéance (null = non assigné). */
+  resp(taskId: string): { label: string; isTeam: boolean; color: string } | null {
+    return this.respByTask().get(taskId) ?? null;
+  }
+  ini(name: string): string { return initials(name); }
 
   segs = computed<Seg[]>(() => {
     const o = this.overview();

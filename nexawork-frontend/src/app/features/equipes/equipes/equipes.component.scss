@@ -132,6 +132,8 @@
 .dmr { font-size: 12.5px; color: #9b97a3; }
 .drm { width: 32px; height: 32px; flex: none; border: 1px solid #F2C4C0; border-radius: 8px; background: #fff; color: var(--nx-danger); cursor: pointer; display: flex; align-items: center; justify-content: center; }
 .drm:hover { background: rgba(245,86,78,.06); }
+.drm--busy { border-color: var(--nx-border, #E6E3DC); cursor: default; }
+.drm__spin { width: 15px; height: 15px; border-radius: 50%; border: 2px solid var(--nx-border, #E6E3DC); border-top-color: var(--nx-danger, #F5564E); animation: chefsp .6s linear infinite; }
 .dempty { padding: 30px; text-align: center; font-size: 13.5px; color: #a8a4af; }
 
 /* === Modal : ajouter un membre à l'équipe === */
@@ -209,6 +211,25 @@
 .ct--done { color: #1f7a52; background: rgba(43,182,115,.14); }
 .ct--late { color: #A8321F; background: rgba(224,85,77,.12); }
 .ct--late app-icon { display: flex; }
+/* Compteur cliquable : ouvre le détail des tâches. */
+.ct--btn { cursor: pointer; transition: filter .12s, box-shadow .12s; }
+.ct--btn:hover { filter: brightness(.96); box-shadow: inset 0 0 0 1px rgba(0,0,0,.08); }
+
+/* ── Modal « détail des tâches d'un compteur » ─────────────────────────────── */
+.mcard--tasks { width: 560px; }
+.tklist { overflow-y: auto; padding: 6px; }
+.tkrow { display: flex; align-items: center; gap: 12px; padding: 11px 12px; border-radius: 10px; }
+.tkrow:hover { background: var(--nx-surface-2, #F4F2ED); }
+.tkrow--btn { cursor: pointer; }
+.tkkey { flex: none; font-size: 11px; font-weight: 700; color: #86828e; background: #F0EEE8; padding: 3px 7px; border-radius: 6px; }
+.tkb { flex: 1; min-width: 0; }
+.tkn { font-size: 13.5px; font-weight: 600; color: #1d1b25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tkmeta { display: flex; align-items: center; gap: 10px; margin-top: 3px; }
+.tkav { font-size: 11.5px; font-weight: 600; color: #7a7682; }
+.tkav--team { color: #5B5FE9; }
+.tkdue { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; color: #9b97a3; }
+.tkdue app-icon { display: flex; }
+.tkstatus { flex: none; font-size: 11px; font-weight: 700; letter-spacing: .02em; text-transform: uppercase; padding: 3px 9px; border-radius: 20px; white-space: nowrap; }
 /* Barre de PROGRESSION : part des tâches terminées (vide si rien de terminé). */
 .chgprog { display: flex; align-items: center; gap: 11px; }
 .chgprog__track { flex: 1; height: 8px; border-radius: 5px; background: #EDEBE4; overflow: hidden; }

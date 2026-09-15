@@ -1,12 +1,10 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { FicheTacheComponent } from '@features/projets/modals/fiche-tache/fiche-tache.component';
-import { AccueilService } from '@core/services/accueil.service';
-import { SessionService } from '@core/services/session.service';
 import { TasksService } from '@core/services/tasks.service';
-import { ReceivedMention as Mention } from '@core/models/accueil.models';
+import { NotificationsStore } from '@core/services/notifications-store.service';
+import { ReceivedMention as Mention, MentionKind } from '@core/models/accueil.models';
 import { TaskCard } from '@core/models/task.models';
-import { workspaceSignal } from '@core/util/workspace-signal';
 
 type FilterKey = 'Toutes' | 'Canaux' | 'Discussions' | 'Commentaires' | 'Non lues';
 
@@ -35,13 +33,13 @@ const TAB_ORDER: FilterKey[] = ['Toutes', 'Canaux', 'Discussions', 'Commentaires
         }
       </div>
 
-      <!-- ONGLETS — Non lues en dernier, avec badge indigo -->
+      <!-- ONGLETS — chacun affiche son nombre de non-lues -->
       <div class="tabs">
         @for (t of tabs; track t) {
           <button class="tab" [class.tab--on]="filter()===t" (click)="filter.set(t)">
             <span>{{ t }}</span>
-            @if (t === 'Non lues' && unreadCount() > 0) {
-              <span class="tab__b" [class.tab__b--on]="filter()===t">{{ unreadCount() }}</span>
+            @if (tabBadge(t) > 0) {
+              <span class="tab__b" [class.tab__b--on]="filter()===t">{{ tabBadge(t) }}</span>
             }
           </button>
         }
@@ -51,9 +49,9 @@ const TAB_ORDER: FilterKey[] = ['Toutes', 'Canaux', 'Discussions', 'Commentaires
       @if (visible().length) {
         <div class="list">
           @for (m of visible(); track m.id; let i = $index) {
-            <div class="row" [class.row--unread]="!isRead(m.id)" (click)="open(m)">
+            <div class="row" [class.row--unread]="!m.read" (click)="open(m)">
               <span class="dot">
-                @if (!isRead(m.id)) { <span class="dot__b"></span> }
+                @if (!m.read) { <span class="dot__b"></span> }
               </span>
               @if (m.photoUrl) {
                 <img class="av av--img" [src]="m.photoUrl" alt="" />
@@ -62,16 +60,16 @@ const TAB_ORDER: FilterKey[] = ['Toutes', 'Canaux', 'Discussions', 'Commentaires
               }
               <div class="b">
                 <div class="hh"><span class="a">{{ m.a }}</span><span class="v"> {{ m.verb }}</span></div>
-                <div class="snip" [class.snip--read]="isRead(m.id)">« {{ m.snip }} »</div>
+                <div class="snip" [class.snip--read]="m.read">« {{ m.snip }} »</div>
                 <div class="meta">
                   <span class="ctx">{{ m.ctx }}</span>
-                  @if (!isRead(m.id)) { <span class="nlu">Non lue</span> }
+                  @if (!m.read) { <span class="nlu">Non lue</span> }
                 </div>
               </div>
               <div class="r">
                 <span class="date">{{ m.date }}</span>
-                @if (!isRead(m.id)) {
-                  <button class="mr" (click)="markOne($event, m.id)">Marquer lu</button>
+                @if (!m.read) {
+                  <button class="mr" (click)="markOne($event, m)">Marquer lu</button>
                 }
               </div>
             </div>
@@ -90,56 +88,48 @@ const TAB_ORDER: FilterKey[] = ['Toutes', 'Canaux', 'Discussions', 'Commentaires
 })
 export class MentionsRecuesComponent {
   private router = inject(Router);
-  private session = inject(SessionService);
-  private accueil = inject(AccueilService);
   private tasksSvc = inject(TasksService);
+  private store = inject(NotificationsStore);
 
   filter      = signal<FilterKey>('Toutes');
   openedTask  = signal<TaskCard | null>(null);
   /** Commentaire à ancrer dans la fiche ouverte (mention de commentaire). */
   anchorComment = signal<string | null>(null);
-  /** Ids the user marked read this session (on top of the mock's own `read` flag). */
-  private readIds = signal<string[]>([]);
-
-  /** Mentions of the active workspace (reload on workspace switch). */
-  private seed = workspaceSignal<Mention[]>(this.session, () => this.accueil.mentions(), []);
 
   tabs = TAB_ORDER;
+  /** Mentions de l'espace actif, avec l'état lu à jour (store partagé). */
+  private list = this.store.mentionList;
+  unreadCount = this.store.mentionsUnread;
+  private unreadByKind = this.store.mentionsUnreadByKind;
 
   visible = computed<Mention[]>(() => {
     const f = this.filter();
-    const list = this.seed();
+    const list = this.list();
     if (f === 'Toutes')   return list;
-    if (f === 'Non lues') return list.filter(m => !this.isRead(m.id));
+    if (f === 'Non lues') return list.filter(m => !m.read);
     return list.filter(m => m.kind === f);
   });
 
-  unreadCount = computed(() => this.seed().filter(m => !this.isRead(m.id)).length);
-
-  isRead(id: string): boolean {
-    if (this.readIds().includes(id)) return true;
-    return this.seed().find(m => m.id === id)?.read === true;
+  /** Nombre de non-lues d'un onglet (0 = pas de badge). */
+  tabBadge(t: FilterKey): number {
+    if (t === 'Toutes' || t === 'Non lues') return this.unreadCount();
+    return this.unreadByKind()[t as MentionKind] ?? 0;
   }
 
-  /** Single row open: mark read then navigate to the concerned element. */
+  /** Ouverture d'une ligne : marque lu (store → décrémente partout) puis navigue. */
   open(m: Mention): void {
-    this.markOneInternal(m.id);
+    this.store.markMention(m);
     this.goTo(m);
   }
 
-  markOne(ev: Event, id: string): void {
+  markOne(ev: Event, m: Mention): void {
     ev.stopPropagation();
-    this.markOneInternal(id);
+    this.store.markMention(m);
   }
 
-  private markOneInternal(id: string): void {
-    if (this.readIds().includes(id)) return;
-    this.readIds.update(ids => [...new Set([...ids, id])]);
-  }
-
-  /** Mark every mention as read (Toutes). */
+  /** Marque toutes les mentions comme lues. */
   markAllRead(): void {
-    this.readIds.set(this.seed().map(m => m.id));
+    this.store.markAllMentions();
   }
 
   /** Route to the element a mention points at, per its serialisable target. */

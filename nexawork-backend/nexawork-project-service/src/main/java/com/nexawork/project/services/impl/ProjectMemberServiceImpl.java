@@ -113,6 +113,13 @@ public class ProjectMemberServiceImpl implements ProjectMemberService {
             member.setIsProjectLead(true);
             projectRepository.save(project);
             log.info("Chef de projet du projet {} redéfini sur {}", projectId, userId);
+        } else if (Boolean.FALSE.equals(request.getSetAsProjectChief())
+                && userId.equals(project.getOwnerUserId())) {
+            // Retrait du chef de projet : le projet repasse sans chef (CU-CP05).
+            project.setOwnerUserId(null);
+            member.setIsProjectLead(false);
+            projectRepository.save(project);
+            log.info("Chef de projet du projet {} retiré", projectId);
         }
         return memberMapper.asDto(projectMemberRepository.save(member));
     }

@@ -155,12 +155,15 @@ export class ParamEspacesComponent {
    * bascule du workspace actif + redirect vers `/parametres/general`.
    */
   openSettings(w: Row): void {
-    this.loader.show(800);
-    setTimeout(() => {
-      this.session.switchWorkspace(w.id);
-      this.router.navigate(['/app/parametres/general']);
-      this.toast.show({ message: 'Vous êtes maintenant sur « ' + w.name + ' »' });
-    }, 800);
+    this.loader.show(8000);
+    // Quitter d'abord la route courante, puis re-scoper le token + basculer l'espace
+    // (rechargements avec le nouveau token → pas de fuite de l'ancien workspace).
+    this.router.navigate(['/app/parametres/general']).then(() => {
+      this.session.switchWorkspace(w.id, () => {
+        this.toast.show({ message: 'Vous êtes maintenant sur « ' + w.name + ' »' });
+        this.loader.hide();
+      });
+    });
   }
 
   /** R20 — ouvre la confirmation avant de retirer le workspace. */

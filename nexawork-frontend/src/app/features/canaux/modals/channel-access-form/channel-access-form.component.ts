@@ -9,7 +9,7 @@ import { IconComponent } from '@shared/ui/icon/icon.component';
 import { ChannelAccessMode, ChannelGrant } from '@core/models/channel.models';
 import { MembersService } from '@core/services/members.service';
 import { ProjectsService } from '@core/services/projects.service';
-import { ProjectTeam } from '@core/models/project.models';
+import { ProjectTeam, ProjectMember } from '@core/models/project.models';
 import { Member } from '@core/models/member.models';
 import { avatarColorFor } from '@core/util/ui.util';
 
@@ -141,7 +141,7 @@ export class ChannelAccessFormComponent {
   pickerOpen = signal(false);
   private _projectId = signal<string | null>(null);
 
-  /** Membres réels de l'espace (la liste était codée en dur). */
+  /** Annuaire réel de l'espace (résolution des noms/couleurs). */
   private directory = toSignal(this.membersSvc.directory(), { initialValue: [] as Member[] });
   /** Équipes réelles du projet — il n'y a pas d'équipe hors projet. */
   private teams = toSignal(
@@ -150,17 +150,34 @@ export class ChannelAccessFormComponent {
     ),
     { initialValue: [] as ProjectTeam[] },
   );
+  /** Membres RÉELS du projet (canal de projet) — `null` = canal d'organisation. */
+  private projMembers = toSignal(
+    toObservable(this._projectId).pipe(
+      switchMap(id => (id ? this.projectsSvc.members(id) : of(null))),
+    ),
+    { initialValue: null as ProjectMember[] | null },
+  );
 
-  private pool = computed<Person[]>(() => [
-    ...this.teams().map(t => ({
-      type: 'team' as const, id: t.id, name: t.name, color: t.color ?? avatarColorFor(t.id),
-    })),
-    ...this.directory()
-      .filter(m => !!m.userId)
-      .map(m => ({
+  private pool = computed<Person[]>(() => {
+    const dir = this.directory().filter(m => !!m.userId);
+    const proj = this.projMembers();
+    // Canal de projet : ne proposer QUE les membres du projet (+ ses équipes).
+    // Canal d'organisation : tous les membres de l'espace.
+    const users = proj
+      ? (() => {
+          const ids = new Set(proj.map(pm => pm.userId));
+          return dir.filter(m => ids.has(m.userId!));
+        })()
+      : dir;
+    return [
+      ...this.teams().map(t => ({
+        type: 'team' as const, id: t.id, name: t.name, color: t.color ?? avatarColorFor(t.id),
+      })),
+      ...users.map(m => ({
         type: 'user' as const, id: m.userId!, name: m.name, color: m.color ?? avatarColorFor(m.userId!),
       })),
-  ]);
+    ];
+  });
 
   /** Ferme le picker au clic hors du bloc (le backdrop `fixed` capturait la molette). */
   @HostListener('document:mousedown', ['$event'])

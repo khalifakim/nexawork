@@ -31,6 +31,12 @@ public interface GedFileRepository extends JpaRepository<GedFile, UUID> {
 
     List<GedFile> findByAddedByUserIdAndIsDeletedTrue(UUID userId);
 
+    // Variantes scopées par organisation : « Mes documents » / corbeille doivent
+    // rester isolés par workspace (un même utilisateur appartient à plusieurs orgs).
+    List<GedFile> findByOrganisationIdAndAddedByUserIdAndIsDeletedFalse(UUID organisationId, UUID userId);
+
+    List<GedFile> findByOrganisationIdAndAddedByUserIdAndIsDeletedTrue(UUID organisationId, UUID userId);
+
     /**
      * Recherche globale (§4.8) : fichiers non supprimés du workspace dont le nom
      * contient le terme. L'organisation est portée par le fichier (V2 : inclut les

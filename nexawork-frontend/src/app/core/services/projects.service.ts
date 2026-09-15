@@ -40,6 +40,8 @@ export abstract class ProjectsService {
   abstract removeMember(projectId: string, userId: string): Observable<void>;
   /** Désigne le chef de projet (Project.ownerUserId). */
   abstract setProjectChief(projectId: string, userId: string): Observable<void>;
+  /** Retire le chef de projet courant (Project.ownerUserId → null). */
+  abstract removeProjectChief(projectId: string, userId: string): Observable<void>;
 }
 
 @Injectable()
@@ -137,6 +139,7 @@ export class ProjectsMockService extends ProjectsService {
   addMember(_projectId: string, _userId: string): Observable<void> { return of(void 0).pipe(delay(60)); }
   removeMember(_projectId: string, _userId: string): Observable<void> { return of(void 0).pipe(delay(60)); }
   setProjectChief(_projectId: string, _userId: string): Observable<void> { return of(void 0).pipe(delay(60)); }
+  removeProjectChief(_projectId: string, _userId: string): Observable<void> { return of(void 0).pipe(delay(60)); }
 }
 
 @Injectable()
@@ -193,6 +196,9 @@ export class ProjectsHttpService extends BaseHttpService implements ProjectsServ
   }
   setProjectChief(projectId: string, userId: string): Observable<void> {
     return this.patch$<unknown>('project', `/projects/${projectId}/members/${userId}`, { setAsProjectChief: true }).pipe(map(() => void 0));
+  }
+  removeProjectChief(projectId: string, userId: string): Observable<void> {
+    return this.patch$<unknown>('project', `/projects/${projectId}/members/${userId}`, { setAsProjectChief: false }).pipe(map(() => void 0));
   }
 }
 

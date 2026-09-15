@@ -3,7 +3,7 @@ import { ActivatedRoute } from '@angular/router';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 import { LoaderComponent } from '@shared/ui/loader/loader.component';
-import { FilterChipComponent, FilterOption } from '@shared/ui/filter-chip/filter-chip.component';
+import { FilterChipComponent, FilterOption, UNASSIGNED_VALUE } from '@shared/ui/filter-chip/filter-chip.component';
 import { DueBucket, KanbanColumn, TaskCard } from '@core/models/task.models';
 import { Member } from '@core/models/member.models';
 import { MembersService } from '@core/services/members.service';
@@ -26,7 +26,7 @@ import { KanbanStore } from './kanban.store';
         <app-filter-chip label="Échéance" [options]="ECH_OPTS" [value]="store.filters().ech"
                          (valueChange)="store.setFilter('ech', $any($event))" />
         <span class="spacer"></span>
-        <button class="tb-export" (click)="export.emit()" title="Exporter les taches du projet au format Excel"><app-icon name="sheet" [size]="15" />Exporter Excel</button>
+        <button class="tb-export" (click)="export.emit()" title="Exporter les tâches du projet au format Excel"><app-icon name="fileExcel" [size]="18" /></button>
         @if (!readonly) {
           <button class="add-task" (click)="create.emit('')"><app-icon name="plus" [size]="15" [stroke]="2.2" />Ajouter une tâche</button>
           @if (canManageBoard) {
@@ -209,12 +209,14 @@ export class KanbanComponent {
    */
   assigneOpts = computed<FilterOption[]>(() => {
     const byId = new Map(this.directory().filter(m => m.userId).map(m => [m.userId!, m] as const));
-    return this.store.assignedUserIds()
+    const people = this.store.assignedUserIds()
       .flatMap<FilterOption>(id => {
         const m = byId.get(id);
         return m ? [{ value: id, label: m.name, dot: avatarColorFor(id) }] : [];
       })
       .sort((a, b) => a.label.localeCompare(b.label));
+    // Option « Non assigné » quand au moins une tâche n'a pas de responsable.
+    return this.store.hasUnassigned() ? [...people, { value: UNASSIGNED_VALUE, label: 'Non assigné', dot: '#C9C5BC' }] : people;
   });
   readonly PRIO_OPTS: FilterOption[] = [
     { value: 'Haute', label: 'Haute', dot: '#F5564E' },

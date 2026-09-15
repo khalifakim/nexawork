@@ -9,6 +9,7 @@ import { ProjectsService } from '@core/services/projects.service';
 import { ConversationsService } from '@core/services/conversations.service';
 import { ChannelsService } from '@core/services/channels.service';
 import { AccueilService } from '@core/services/accueil.service';
+import { NotificationsStore } from '@core/services/notifications-store.service';
 import { MembersService } from '@core/services/members.service';
 import { ReceivedMention } from '@core/models/accueil.models';
 import { Member } from '@core/models/member.models';
@@ -76,10 +77,10 @@ class LiveTypingSet {
           <app-icon class="row__i" name="taskCheck" [size]="16" /><span>Mes tâches</span>
         </a>
         <a class="row" routerLink="/app/accueil/mentions-recues" routerLinkActive="row--on">
-          <app-icon class="row__i" name="at" [size]="16" /><span>Mentions reçues</span>@if (mentionsCount() > 0) { <span class="row__badge">{{ mentionsCount() }}</span> }
+          <app-icon class="row__i" name="at" [size]="16" /><span>Mentions reçues</span>@if (mentionsUnread() > 0) { <span class="row__u">{{ mentionsUnread() }}</span> }
         </a>
         <a class="row" routerLink="/app/accueil/notifications" routerLinkActive="row--on">
-          <app-icon class="row__i" name="bell" [size]="16" /><span>Notifications</span>
+          <app-icon class="row__i" name="bell" [size]="16" /><span>Notifications</span>@if (notifUnread() > 0) { <span class="row__u">{{ notifUnread() }}</span> }
         </a>
         @if (isAdmin()) {
           <a class="row" routerLink="/app/accueil/tableau-de-bord" routerLinkActive="row--on">
@@ -375,12 +376,14 @@ class LiveTypingSet {
     .row--sub { padding-left: 30px; }
     .row__i { color: var(--nx-text-400); display: flex; flex: none; }
     .row--on .row__i { color: var(--nx-indigo); }
-    .row > span:not(.dot):not(.row__badge):not(.row__pct):not(.chev2):not(.lock):not(.chtyping):not(.chbadge) { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .row > span:not(.dot):not(.row__badge):not(.row__pct):not(.chev2):not(.lock):not(.chtyping):not(.chbadge):not(.row__u) { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     /* Indicateur « en train d'écrire » d'un canal (sidebar) — vert, compact (§#3). */
     .chtyping { flex: none; color: var(--nx-success); font-size: 11px; font-weight: 600; font-style: italic; white-space: nowrap; }
     /* Badge de messages non lus d'un canal (parité conversations §6). */
     .chbadge { flex: none; min-width: 17px; height: 17px; padding: 0 5px; border-radius: 9px; background: var(--nx-indigo); color: #fff; font-size: 10.5px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
     .row__badge { font-size: 11px; color: var(--nx-text-500); font-weight: 600; }
+    /* Compteur « non lues » (mentions / notifications) — juste le nombre, sans fond. */
+    .row__u { flex: none; margin-left: auto; color: var(--nx-indigo); font-size: 12px; font-weight: 700; }
     .row__pct { font-size: 11px; color: var(--nx-text-500); font-weight: 600; }
     .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
     /* Équipe ouverte : bloc imbriqué sous le projet (fidèle au prototype) */
@@ -488,14 +491,14 @@ export class Sidebar2Component {
   private toast = inject(ToastService);
   bus = inject(ShellBus);
   private channelsSvc = inject(ChannelsService);
-  private accueilSvc = inject(AccueilService);
+  private notifStore = inject(NotificationsStore);
   private membersSvc = inject(MembersService);
   /** True when current user is ADMIN or OWNER of the active workspace. */
   isAdmin = this.session.isAdmin;
 
-  /** Nombre réel de mentions reçues (badge « Mentions reçues »). */
-  private mentionsList = workspaceSignal<ReceivedMention[]>(this.session, () => this.accueilSvc.mentions(), []);
-  mentionsCount = computed(() => this.mentionsList().length);
+  /** Badges « non lues » (partagés avec le header et les pages Accueil). */
+  mentionsUnread = this.notifStore.mentionsUnread;
+  notifUnread = this.notifStore.notifUnread;
   /** Nombre réel de membres en ligne (badge « En ligne » des conversations). */
   private onlineList = workspaceSignal<Member[]>(this.session, () => this.membersSvc.online(), []);
   onlineCount = computed(() => this.onlineList().length);

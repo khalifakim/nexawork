@@ -1,6 +1,6 @@
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
-import { NotificationsService } from '@core/services/notifications.service';
+import { NotificationsStore } from '@core/services/notifications-store.service';
 import { Notification as Notif, NotificationType } from '@core/models/notification.models';
 import { ShellBus } from '@layouts/app-shell/shell.bus';
 import { initials } from '@core/util/ui.util';
@@ -8,6 +8,8 @@ import { initials } from '@core/util/ui.util';
 /** Onglets de filtre → ensembles de types backend (pas d'onglet « Mention » : les
  *  mentions ont leur page dédiée « Mentions reçues »). */
 interface Filter { key: string; label: string; types: NotificationType[]; }
+// Les mentions (type MENTION) ne figurent PAS ici : elles ont leur page dédiée
+// « Mentions reçues » (et restent visibles dans la cloche du header).
 const FILTERS: Filter[] = [
   { key: 'tout',     label: 'Toutes',    types: [] },
   { key: 'message',  label: 'Messages',  types: ['MESSAGE_RECEIVED'] },
@@ -15,8 +17,8 @@ const FILTERS: Filter[] = [
   { key: 'projet',   label: 'Projets',   types: ['ADDED_TO_PROJECT', 'MEMBER_INVITED', 'EXTERNAL_GUEST_INVITED'] },
   { key: 'document', label: 'Documents', types: ['DOCUMENT_SHARED'] },
   { key: 'reunion',  label: 'Réunions',  types: ['MEETING_INVITED', 'CALL_ENDED'] },
+  { key: 'nonlu',    label: 'Non lues',  types: [] },
 ];
-const PAGE_SIZE = 20;
 
 /** Libellé court du contexte (pastille), par type de notification. */
 const TYPE_LABEL: Record<NotificationType, string> = {
@@ -55,7 +57,10 @@ const TYPE_LABEL: Record<NotificationType, string> = {
 
       <div class="tabs">
         @for (f of filters; track f.key) {
-          <button class="tab" [class.tab--on]="active()===f.key" (click)="setFilter(f)">{{ f.label }}</button>
+          <button class="tab" [class.tab--on]="active()===f.key" (click)="setFilter(f)">
+            <span>{{ f.label }}</span>
+            @if (tabBadge(f) > 0) { <span class="tab__b" [class.tab__b--on]="active()===f.key">{{ tabBadge(f) }}</span> }
+          </button>
         }
       </div>
 
@@ -79,14 +84,9 @@ const TYPE_LABEL: Record<NotificationType, string> = {
               </div>
             </div>
           }
-          @if (page() + 1 < totalPages()) {
-            <button class="loadmore" (click)="loadMore()" [disabled]="loading()">
-              {{ loading() ? 'Chargement…' : 'Charger plus' }}
-            </button>
-          }
         </div>
       } @else {
-        <div class="empty">{{ loading() ? 'Chargement…' : 'Aucune notification dans cette catégorie.' }}</div>
+        <div class="empty">{{ active() === 'nonlu' ? 'Toutes vos notifications ont été lues ✓' : 'Aucune notification dans cette catégorie.' }}</div>
       }
     </div>
   `,
@@ -105,6 +105,8 @@ const TYPE_LABEL: Record<NotificationType, string> = {
     .tab { display: inline-flex; align-items: center; gap: 6px; padding: 10px 14px; border: none; background: transparent; cursor: pointer;
       font-family: inherit; font-size: 13.5px; font-weight: 500; color: #86828e; border-bottom: 2px solid transparent; margin-bottom: -1px; }
     .tab--on { font-weight: 600; color: #1d1b25; border-bottom-color: #5B5FE9; }
+    .tab__b { min-width: 17px; height: 17px; padding: 0 5px; border-radius: 9px; background: #E2DFD8; color: #6b6770; font-size: 10.5px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
+    .tab__b--on { background: #5B5FE9; color: #fff; }
 
     .list { flex: 1; min-height: 0; overflow-y: auto; margin-bottom: 32px; background: #fff; border-radius: 14px; border: 1px solid #F0EEE9; }
     .row { display: flex; align-items: flex-start; gap: 10px; padding: 15px 18px 15px 14px; border-top: 1px solid #F4F2ED; cursor: pointer; background: transparent; }
@@ -138,58 +140,38 @@ const TYPE_LABEL: Record<NotificationType, string> = {
   `],
 })
 export class ToutesNotificationsComponent {
-  private notifsSvc = inject(NotificationsService);
+  private store = inject(NotificationsStore);
   private router = inject(Router);
   private bus = inject(ShellBus);
 
   filters = FILTERS;
   active = signal<string>('tout');
-  items = signal<Notif[]>([]);
-  page = signal(0);
-  totalPages = signal(1);
-  unread = signal(0);
-  loading = signal(false);
+  private all = this.store.notifs;
+  unread = this.store.notifUnread;
 
-  private currentTypes(): NotificationType[] {
-    return FILTERS.find(f => f.key === this.active())?.types ?? [];
+  /** Notifications visibles selon l'onglet (filtre côté client). */
+  items = computed<Notif[]>(() => {
+    const f = FILTERS.find(x => x.key === this.active());
+    const all = this.all();
+    if (!f || f.key === 'tout') return all;
+    if (f.key === 'nonlu') return all.filter(n => !n.read);
+    return all.filter(n => f.types.includes(n.type));
+  });
+
+  /** Nombre de non-lues d'un onglet (0 = pas de badge). */
+  tabBadge(f: Filter): number {
+    if (f.key === 'tout' || f.key === 'nonlu') return this.unread();
+    return this.all().filter(n => !n.read && f.types.includes(n.type)).length;
   }
 
-  constructor() { this.reload(); }
-
-  setFilter(f: Filter): void {
-    if (this.active() === f.key) return;
-    this.active.set(f.key);
-    this.reload();
-  }
+  setFilter(f: Filter): void { this.active.set(f.key); }
 
   label(t: NotificationType): string { return TYPE_LABEL[t] ?? 'Notification'; }
-
-  /** (Re)charge depuis la page 0 pour le filtre courant. */
-  private reload(): void {
-    this.loading.set(true);
-    this.notifsSvc.listPage({ types: this.currentTypes(), page: 0, size: PAGE_SIZE }).subscribe({
-      next: p => { this.items.set(p.items); this.page.set(p.page); this.totalPages.set(p.totalPages); this.unread.set(p.unreadCount); this.loading.set(false); },
-      error: () => this.loading.set(false),
-    });
-  }
-
-  loadMore(): void {
-    if (this.loading()) return;
-    this.loading.set(true);
-    this.notifsSvc.listPage({ types: this.currentTypes(), page: this.page() + 1, size: PAGE_SIZE }).subscribe({
-      next: p => { this.items.update(l => [...l, ...p.items]); this.page.set(p.page); this.totalPages.set(p.totalPages); this.loading.set(false); },
-      error: () => this.loading.set(false),
-    });
-  }
-
   ini(name: string): string { return initials(name); }
 
-  /** Ouvre l'élément visé — marque lu, puis route (même logique que la cloche du header). */
+  /** Ouvre l'élément visé — marque lu (store → décrémente partout), puis route. */
   open(n: Notif): void {
-    if (!n.read) {
-      this.items.update(l => l.map(x => x.id === n.id ? { ...x, read: true } : x));
-      if (!n.id.startsWith('ch-')) this.notifsSvc.markRead(n.id).subscribe({ error: () => {} });
-    }
+    this.store.markNotif(n.id);
     if (n.target?.startsWith('/')) { this.router.navigateByUrl(n.target); return; }
     switch (n.kind) {
       case 'tache':    this.bus.openTask(n.target); break;
@@ -201,10 +183,6 @@ export class ToutesNotificationsComponent {
 
   remove(n: Notif, ev: Event): void {
     ev.stopPropagation();
-    if (n.id.startsWith('ch-')) { this.items.update(l => l.filter(x => x.id !== n.id)); return; }
-    this.notifsSvc.remove(n.id).subscribe({
-      next: () => this.items.update(l => l.filter(x => x.id !== n.id)),
-      error: () => {},
-    });
+    this.store.removeNotif(n.id);
   }
 }

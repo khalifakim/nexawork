@@ -4,6 +4,7 @@ import { TasksService } from '@core/services/tasks.service';
 import { ToastService } from '@core/services/toast.service';
 import { DueBucket, KanbanColumn, StatusCat, TaskCard } from '@core/models/task.models';
 import { toStatusCategory } from '@core/util/task-display.util';
+import { UNASSIGNED_VALUE } from '@shared/ui/filter-chip/filter-chip.component';
 
 export type { StatusCat } from '@core/models/task.models';
 
@@ -62,7 +63,8 @@ export class KanbanStore {
     const f = this.filters();
     const list = this.board()[colId] ?? [];
     return list.filter(t => {
-      if (f.assigne && t.assigneeId !== f.assigne) return false;
+      if (f.assigne === UNASSIGNED_VALUE) { if (t.assigneeId) return false; }
+      else if (f.assigne && t.assigneeId !== f.assigne) return false;
       if (f.prio && t.prio[0] !== f.prio) return false;
       if (f.ech && t.due !== f.ech) return false;
       return true;
@@ -91,6 +93,10 @@ export class KanbanStore {
     }
     return [...ids];
   });
+
+  /** Vrai si au moins une tâche du board n'a pas d'assigné (→ option « Non assigné »). */
+  readonly hasUnassigned = computed<boolean>(() =>
+    Object.values(this.board()).some(list => list.some(t => !t.assigneeId)));
 
   setFilter<K extends keyof KanbanFilters>(key: K, value: KanbanFilters[K]): void {
     this.filters.update(f => ({ ...f, [key]: value }));

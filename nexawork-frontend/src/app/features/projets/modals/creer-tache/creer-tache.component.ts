@@ -122,7 +122,7 @@ const IC_USER   = '<circle cx="12" cy="8" r="3.4"/><path d="M5.5 20c0-3.6 2.9-6.
 
             <!-- Assignés -->
             <div class="frow">
-              <div class="fl"><app-icon [path]="IC_USER" [size]="17" /><span>Assignés<i class="req">*</i></span></div>
+              <div class="fl"><app-icon [path]="IC_USER" [size]="17" /><span>Assignés</span></div>
               <div class="fv">
                 <div class="fw">
                   @if (assignee()) {
@@ -190,7 +190,7 @@ const IC_USER   = '<circle cx="12" cy="8" r="3.4"/><path d="M5.5 20c0-3.6 2.9-6.
 
             <!-- Date de début -->
             <div class="frow">
-              <div class="fl"><app-icon name="calendar" [size]="17" /><span>Date de début<i class="req">*</i></span></div>
+              <div class="fl"><app-icon name="calendar" [size]="17" /><span>Date de début</span></div>
               <div class="fv">
                 <div class="fw">
                   @if (dateDebut()) {
@@ -220,7 +220,7 @@ const IC_USER   = '<circle cx="12" cy="8" r="3.4"/><path d="M5.5 20c0-3.6 2.9-6.
 
             <!-- Date de fin -->
             <div class="frow">
-              <div class="fl"><app-icon name="calendar" [size]="17" /><span>Date de fin<i class="req">*</i></span></div>
+              <div class="fl"><app-icon name="calendar" [size]="17" /><span>Date de fin</span></div>
               <div class="fv">
                 <div class="fw">
                   @if (dateFin()) {
@@ -250,7 +250,7 @@ const IC_USER   = '<circle cx="12" cy="8" r="3.4"/><path d="M5.5 20c0-3.6 2.9-6.
 
             <!-- Priorité -->
             <div class="frow">
-              <div class="fl"><app-icon name="flag" [size]="17" /><span>Priorité<i class="req">*</i></span></div>
+              <div class="fl"><app-icon name="flag" [size]="17" /><span>Priorité</span></div>
               <div class="fv">
                 <div class="fw">
                   @if (curPrio(); as p) {
@@ -810,16 +810,11 @@ export class CreerTacheComponent implements OnInit, AfterViewInit {
     this.columns.find(c => c.id === this.statusId()) ?? this.columns[0]);
   curPrio   = computed(() => PRIOS.find(p => p.name === this.priority()) ?? null);
   /**
-   * Champs obligatoires (§14) : nom, assigné, date de début, date de fin, priorité.
-   * Le statut est toujours défini (colonne d'origine).
+   * Champs obligatoires : le **nom** et le **statut** uniquement. Le statut est
+   * prérempli sur le statut d'entrée du workflow (« À faire »). Assigné, dates et
+   * priorité restent facultatifs à la création.
    */
-  canCreate = computed(() =>
-    !!this.title().trim()
-    && !!this.statusId()
-    && !!this.assigneeId()
-    && !!this.dateDebut()
-    && !!this.dateFin()
-    && !!this.priority());
+  canCreate = computed(() => !!this.title().trim() && !!this.statusId());
   filteredMembers = computed<AssignableMember[]>(() => {
     const q = this.assigneeQuery().toLowerCase().trim();
     return this.members().filter(m => m.name.toLowerCase().includes(q));

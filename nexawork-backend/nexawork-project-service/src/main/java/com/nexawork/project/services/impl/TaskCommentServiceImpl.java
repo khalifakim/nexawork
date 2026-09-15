@@ -136,7 +136,7 @@ public class TaskCommentServiceImpl implements TaskCommentService {
     @Override
     @Transactional(readOnly = true)
     public List<ReceivedCommentMentionResponse> listReceivedMentions() {
-        return commentMentionRepository.findReceived(caller.userId()).stream()
+        return commentMentionRepository.findReceived(caller.organisationId(), caller.userId()).stream()
                 .map(cm -> {
                     TaskComment c = cm.getComment();
                     Task t = c.getTask();

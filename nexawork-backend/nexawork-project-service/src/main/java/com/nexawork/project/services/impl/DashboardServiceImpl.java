@@ -73,6 +73,7 @@ public class DashboardServiceImpl implements DashboardService {
 
         int inProgressTasks = (int) tasks.stream().filter(this::isActiveTask).count();
         int overdueTasks = (int) tasks.stream().filter(t -> isOverdue(t, today)).count();
+        int completedTasks = (int) tasks.stream().filter(this::isFinal).count();
 
         List<DashboardResponse.WorkloadEntry> workload = activeProjects.stream()
                 .map(p -> DashboardResponse.WorkloadEntry.builder()
@@ -126,6 +127,8 @@ public class DashboardServiceImpl implements DashboardService {
                 .inProgressTasks(inProgressTasks)
                 .overdueTasks(overdueTasks)
                 .workspaceMembers(null) // domaine Auth — le frontend complète (option B)
+                .totalTasks(tasks.size())
+                .completedTasks(completedTasks)
                 .build();
 
         return DashboardResponse.builder()

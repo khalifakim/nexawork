@@ -56,7 +56,12 @@
 .dl__t { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .dl__dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
 .dl__t span:last-child { font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.dl__w { font-size: 13px; color: var(--nx-text-600); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dl__w { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--nx-text-600); min-width: 0; }
+.dl__av { flex: none; width: 24px; height: 24px; border-radius: 50%; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 9.5px; font-weight: 700; }
+.dl__av--team { border-radius: 7px; }
+.dl__wn { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dl__team { flex: none; font-size: 9.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #9b97a3; background: #EFEDE7; border-radius: 5px; padding: 2px 5px; }
+.dl__none { color: var(--nx-text-400); }
 .dl__d { font-size: 12.5px; font-weight: 700; text-align: right; }
 
 @media (max-width: 1100px) {

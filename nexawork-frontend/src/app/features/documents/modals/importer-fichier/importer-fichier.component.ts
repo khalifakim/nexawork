@@ -58,7 +58,7 @@ import { ME } from '@core/util/ui.util';
         <div class="err"><app-icon name="alert" [size]="15" />{{ error }}</div>
       }
 
-      <div footer>
+      <div footer class="foot-actions">
         <button class="ghost" [disabled]="busy" (click)="closed.emit()">Annuler</button>
         <button class="primary" [disabled]="!file() || busy" (click)="doImport()">
           @if (busy) { <span class="btnspin"></span>Import en cours… } @else { Importer }
@@ -96,6 +96,8 @@ import { ME } from '@core/util/ui.util';
     .btnspin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid rgba(255,255,255,.4); border-top-color: #fff;
       display: inline-block; margin-right: 8px; vertical-align: -2px; animation: bsp .7s linear infinite; }
     @keyframes bsp { to { transform: rotate(360deg); } }
+    /* Boutons du footer projetés dans un seul conteneur : on rétablit l'espacement. */
+    .foot-actions { display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
   `],
   styleUrls: ['../_ged-modal.shared.scss'],
 })
@@ -123,11 +125,16 @@ export class ImporterFichierComponent {
   onPick(ev: Event): void {
     const input = ev.target as HTMLInputElement;
     const f = input.files?.[0] ?? null;
+    const prev = this.file();
+    // Met à jour le nom avec celui du (nouveau) fichier tant que l'utilisateur ne
+    // l'a pas personnalisé : champ vide, OU nom encore égal à celui du fichier
+    // précédent (cas du bouton « Changer » — le nom suit le nouveau fichier).
+    if (f && (!this.name().trim() || this.name().trim() === prev?.name)) {
+      this.name.set(f.name);
+    }
     this.file.set(f);
     // Nouveau fichier → on replie l'aperçu de l'ancien.
     this.showPreview.set(false);
-    // Pré-remplit le nom avec celui du fichier s'il est encore vide.
-    if (f && !this.name().trim()) this.name.set(f.name);
     input.value = '';
   }
 

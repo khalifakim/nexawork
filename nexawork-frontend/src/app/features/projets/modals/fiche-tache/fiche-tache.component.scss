@@ -37,6 +37,8 @@
 .pdot { width: 8px; height: 8px; border-radius: 2px; }
 .av { width: 26px; height: 26px; border-radius: 50%; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; flex: none; }
 .av--sm { width: 24px; height: 24px; }
+.av--team { border-radius: 7px; }
+.team-tag { font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #9b97a3; background: #EFEDE7; border-radius: 5px; padding: 2px 6px; margin-left: 2px; }
 
 .sep { height: 1px; background: var(--nx-border-card); margin: 14px 0 18px; }
 .block { margin-bottom: 20px; }
@@ -75,6 +77,10 @@
 .x { width: 30px; height: 30px; border: none; border-radius: 8px; background: transparent; color: var(--nx-text-400); cursor: pointer; display: flex; align-items: center; justify-content: center; }
 .x:hover { background: #F0EEE8; }
 .thread { flex: 1; min-height: 0; overflow-y: auto; padding: 2px 16px 10px; }
+/* Chargement / vide du fil de commentaires. */
+.cm-load { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 30px 12px; font-size: 13px; color: var(--nx-text-500); }
+.cm-load__s { width: 18px; height: 18px; flex: none; border: 2.5px solid #E6E3DC; border-top-color: var(--nx-indigo); border-radius: 50%; animation: nxSpin .7s linear infinite; }
+.cm-empty { padding: 30px 12px; text-align: center; font-size: 13px; color: var(--nx-text-400); }
 .cm { display: flex; gap: 10px; padding: 10px 0; border-top: 1px solid #F4F2ED; position: relative; }
 .cm:first-child { border-top: none; }
 .cm--mine .cm__x { color: var(--nx-text); }
@@ -115,13 +121,70 @@
 
 /* Titre / description en lecture (non-édition) */
 .title--ro { padding: 0 0 16px; }
-.title--edit { border-bottom: 2px solid var(--nx-indigo); padding-bottom: 12px; margin-bottom: 4px; }
+.title--edit { border-bottom: 1px dashed var(--nx-border); padding-bottom: 12px; margin-bottom: 4px; }
+.title--edit:focus { border-bottom-color: var(--nx-indigo); }
 .desc--ro { min-height: 20px; padding: 2px 0; font-size: 13.5px; line-height: 1.6; color: var(--nx-text-600); white-space: pre-wrap; }
+/* Description en édition : proche de l'affichage (fond transparent, bordure discrète). */
+.desc--edit { background: transparent; border: 1px dashed var(--nx-border-card); color: var(--nx-text-600); }
+.desc--edit:focus { border-style: solid; border-color: var(--nx-indigo); }
 
 /* Champs éditables inline (statut, assigné, dates, priorité, estimé) */
 .ed { height: 34px; padding: 0 10px; border: 1px solid var(--nx-border); border-radius: 8px; background: #fff; font-family: inherit; font-size: 13.5px; color: var(--nx-text); outline: none; min-width: 180px; }
 .ed:focus { border-color: var(--nx-indigo); }
 .ed--sel { cursor: pointer; }
+
+/* ── Valeurs cliquables en édition : même rendu que l'affichage, + menu ─────── */
+.fw { position: relative; display: inline-block; }
+/* Le statut reste une pastille pleine ; on la rend cliquable. */
+.status--btn { border: 1px solid transparent; cursor: pointer; font-family: inherit; gap: 8px; }
+.status--btn:hover { filter: brightness(.97); }
+.status--btn app-icon { color: currentColor; opacity: .7; margin-left: 2px; }
+/* Assigné / priorité / dates / estimé : texte + valeur, bouton discret. */
+.assignee--btn, .prio--btn, .fvbtn {
+  display: inline-flex; align-items: center; height: 34px; padding: 0 8px;
+  border: 1px solid transparent; border-radius: 9px; background: transparent;
+  cursor: pointer; font-family: inherit; font-size: 13.5px; font-weight: 600; color: var(--nx-text);
+}
+.assignee--btn { gap: 9px; }
+.prio--btn { gap: 8px; }
+.fvbtn { gap: 6px; }
+.assignee--btn:hover, .prio--btn:hover, .fvbtn:hover { background: var(--nx-surface-2); }
+.assignee--btn app-icon, .prio--btn app-icon, .fvbtn app-icon { color: var(--nx-text-300); margin-left: 2px; }
+.fvbtn.fv--muted { color: var(--nx-text-300); }
+.ghostf {
+  display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 11px;
+  border: 1px dashed var(--nx-border); border-radius: 8px; background: transparent;
+  color: #7a7682; font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.ghostf:hover { background: var(--nx-surface-2); }
+.ghostf app-icon { color: var(--nx-text-400); }
+
+/* Menu déroulant partagé (statut / assigné / priorité / dates / estimé) */
+.dd {
+  position: absolute; top: 40px; left: 0; z-index: 20;
+  background: #fff; border-radius: 12px; border: 1px solid var(--nx-border-card);
+  box-shadow: 0 12px 34px rgba(20,15,40,.18); padding: 7px;
+  min-width: 210px; max-height: 280px; overflow-y: auto;
+}
+.dd--wide { width: 286px; }
+.dd__i {
+  width: 100%; box-sizing: border-box; display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px; border: none; border-radius: 8px; background: transparent;
+  cursor: pointer; font-family: inherit; text-align: left;
+}
+.dd__i:hover, .dd__i--sel { background: var(--nx-surface-2); }
+.dd__i .sdot, .dd__i .pdot { flex: none; }
+.dd__name { flex: 1; font-size: 13px; font-weight: 600; color: var(--nx-text); }
+.dd__sep { height: 1px; background: var(--nx-border-card); margin: 7px 4px; }
+.dd__lbl { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--nx-text-300); padding: 4px 10px 6px; }
+.dd__empty { padding: 12px 10px; font-size: 13px; color: var(--nx-text-300); text-align: center; }
+.dd__search, .dd__est { width: 100%; box-sizing: border-box; height: 36px; padding: 0 11px; border-radius: 8px; border: 1px solid var(--nx-border); font-family: inherit; font-size: 13px; color: var(--nx-text); margin-bottom: 7px; outline: none; }
+.dd__search:focus, .dd__est:focus { border-color: var(--nx-indigo); }
+.dd__date { width: 100%; box-sizing: border-box; height: 38px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--nx-border); font-family: inherit; font-size: 13px; color: var(--nx-text); }
+.dd__clear { margin-top: 7px; width: 100%; height: 32px; border: none; border-radius: 8px; background: var(--nx-surface-2); color: var(--nx-text-500); font-family: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.dd__clear:hover { background: var(--nx-surface-3); }
+.mode-toggle { width: 100%; box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 9px 10px; border: none; border-radius: 8px; background: rgba(91,95,233,.08); cursor: pointer; font-family: inherit; font-size: 13px; font-weight: 600; color: var(--nx-indigo); text-align: left; }
+.mode-toggle:hover { background: rgba(91,95,233,.16); }
 
 /* Erreur inline sous le champ Statut (transition FSM refusée) */
 .frow--top { align-items: flex-start; }

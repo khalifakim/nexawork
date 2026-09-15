@@ -138,17 +138,18 @@ public class GedFileServiceImpl implements GedFileService {
     @Override
     @Transactional(readOnly = true)
     public List<FileResponse> myDocuments() {
-        // « Mes documents » — tout ce que l'utilisateur a déposé (§11.1), non supprimé.
-        return fileRepository.findByAddedByUserIdAndIsDeletedFalse(caller.userId()).stream()
-                .map(fileMapper::asDto).toList();
+        // « Mes documents » — ce que l'utilisateur a déposé (§11.1), non supprimé,
+        // DANS l'espace de travail actif (isolation par organisation).
+        return fileRepository.findByOrganisationIdAndAddedByUserIdAndIsDeletedFalse(caller.organisationId(), caller.userId())
+                .stream().map(fileMapper::asDto).toList();
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<FileResponse> trash() {
-        // R11 : corbeille filtrée par utilisateur (chacun ne voit que ses éléments).
-        return fileRepository.findByAddedByUserIdAndIsDeletedTrue(caller.userId()).stream()
-                .map(fileMapper::asDto).toList();
+        // R11 : corbeille filtrée par utilisateur ET par organisation (isolation workspace).
+        return fileRepository.findByOrganisationIdAndAddedByUserIdAndIsDeletedTrue(caller.organisationId(), caller.userId())
+                .stream().map(fileMapper::asDto).toList();
     }
 
     @Override

@@ -29,6 +29,10 @@ public class DashboardResponse {
         private Integer inProgressTasks;
         private Integer overdueTasks;
         private Integer workspaceMembers;
+        /** Nombre total de tâches (tous projets actifs du workspace). */
+        private Integer totalTasks;
+        /** Tâches en statut final (DONE/CLOSED), tous projets actifs confondus. */
+        private Integer completedTasks;
     }
 
     /** Charge par projet : nombre de tâches actives (§5.2 « charge par projet »). */

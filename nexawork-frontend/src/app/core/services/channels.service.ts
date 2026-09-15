@@ -242,7 +242,11 @@ export class ChannelsHttpService extends BaseHttpService implements ChannelsServ
    */
   markRead(id: string): void {
     const uuid = this.uuidOf(id);
-    this._list.update(l => l.map(c => (c.id === id || (uuid && c.uuid === uuid)) ? { ...c, unread: 0 } : c));
+    // On avance aussi `lastReadAt` localement : sinon, à la réouverture du canal
+    // dans la même session (liste non rechargée), le séparateur « Messages non
+    // lus » serait recalculé sur l'ancienne date et réapparaîtrait à tort.
+    const now = new Date().toISOString();
+    this._list.update(l => l.map(c => (c.id === id || (uuid && c.uuid === uuid)) ? { ...c, unread: 0, lastReadAt: now } : c));
     if (uuid) this.patch$<unknown>('messaging', `/channels/${uuid}/read`, {}, SILENT()).subscribe({ error: () => {} });
   }
 

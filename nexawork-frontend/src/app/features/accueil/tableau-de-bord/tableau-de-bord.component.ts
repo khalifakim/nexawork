@@ -56,7 +56,7 @@ const EMPTY_DASHBOARD: Dashboard = {
         <!-- Carte cliquable : redirige vers Paramètres → Membres -->
         <button type="button" class="card kpi kpi--btn" (click)="goToMembers()">
           <div class="kpi__l">Membres du workspace</div>
-          <div class="kpi__num">{{ k().members }}</div>
+          <div class="kpi__num">{{ memberCount() }}</div>
           <div class="kpi__sub">Voir tous les membres<app-icon class="kpi__go" name="chevronRight" [size]="15" [stroke]="2.2" /></div>
         </button>
       </div>
@@ -149,6 +149,8 @@ export class TableauDeBordComponent {
   dash = this.query.value;
   loading = this.query.loading;
   k = computed(() => this.dash().kpis);
+  /** Nombre de membres du workspace actif (le KPI backend ne le porte pas — domaine Auth). */
+  memberCount = computed(() => this.session.activeWorkspace().members ?? 0);
   donePct = computed(() => { const t = this.k().tasksTotal; return t ? Math.round(this.k().tasksDone / t * 100) : 0; });
 
   overdueOpen = signal(false);

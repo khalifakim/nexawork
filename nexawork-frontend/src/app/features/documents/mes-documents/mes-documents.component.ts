@@ -5,6 +5,7 @@ import { IconComponent } from '@shared/ui/icon/icon.component';
 import { ApercuDocumentComponent } from '@shared/overlays/apercu-document/apercu-document.component';
 import { FilterChipComponent, FilterOption } from '@shared/ui/filter-chip/filter-chip.component';
 import { DocMenuComponent, DocMenuItem } from '@shared/ui/doc-menu/doc-menu.component';
+import { PartagerLienComponent } from '@features/documents/modals/partager-lien/partager-lien.component';
 import { ToastService } from '@core/services/toast.service';
 import { GedOverlayBus } from '@core/services/ged-overlay.bus';
 import { GedService } from '@core/services/ged.service';
@@ -14,7 +15,7 @@ import { Project } from '@core/models/project.models';
 import { environment } from '@environment/environment';
 
 interface Doc {
-  name: string; space: string; scope: string; date: string; type: string; size: string; it: string;
+  name: string; space: string; scope: string; date: string; modified: string; type: string; size: string; it: string;
   /** Élément GED réel sous-jacent (mode backend) — porte l'UUID. */
   item?: GedItem;
 }
@@ -34,7 +35,7 @@ const SPACE_COLOR: Record<string, string> = {
   selector: 'app-mes-documents',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IconComponent, ApercuDocumentComponent, FilterChipComponent, DocMenuComponent],
+  imports: [IconComponent, ApercuDocumentComponent, FilterChipComponent, DocMenuComponent, PartagerLienComponent],
   template: `
     <div class="wrap">
       <div class="head">
@@ -62,7 +63,7 @@ const SPACE_COLOR: Record<string, string> = {
         }
       } @else {
         <div class="tbl">
-          <div class="thead"><span>Nom</span><span>Emplacement</span><span>Date de partage</span><span>Type</span><span>Taille</span><span></span></div>
+          <div class="thead"><span>Nom</span><span>Emplacement</span><span>Date de partage</span><span>Dernière modification</span><span>Type</span><span>Taille</span><span></span></div>
           @for (it of shown(); track it.name) {
             <div class="row" (click)="open(it)">
               <div class="name">
@@ -74,6 +75,7 @@ const SPACE_COLOR: Record<string, string> = {
               </div>
               <div class="loc"><span class="dot" [style.background]="spaceColor(it.space)"></span><span class="loc__t"><span class="loc__a">{{ it.space }}</span><span class="loc__b">{{ it.scope }}</span></span></div>
               <span class="muted">{{ it.date }}</span>
+              <span class="muted">{{ it.modified }}</span>
               <span class="muted muted--sm">{{ it.type }}</span>
               <span class="muted">{{ it.size }}</span>
               <div class="act">
@@ -88,6 +90,9 @@ const SPACE_COLOR: Record<string, string> = {
       }
     </div>
     @if (preview(); as p) { <app-apercu-document [name]="p.name" [url]="p.url" (closed)="preview.set(null)" /> }
+    @if (shareItem(); as s) {
+      <app-partager-lien [targetType]="s.it === 'folder' ? 'FOLDER' : 'FILE'" [targetId]="s.item!.id!" [targetName]="s.name" (closed)="shareItem.set(null)" />
+    }
   `,
   styleUrl: './mes-documents.component.scss',
 })
@@ -100,6 +105,8 @@ export class MesDocumentsComponent {
   private readonly real = !environment.mock.ged;
 
   preview = signal<{ name: string; url?: string } | null>(null);
+  /** Document dont on génère un lien de partage (modal). */
+  shareItem = signal<Doc | null>(null);
   q = signal('');
   fSpace = signal<string | null>(null);
   fType = signal<string | null>(null);
@@ -130,7 +137,8 @@ export class MesDocumentsComponent {
         name: it.name,
         space: project?.name ?? 'Espace Organisation',
         scope: project ? 'Projet' : 'Organisation',
-        date: it.mod ?? '',
+        date: it.added ?? it.mod ?? '',
+        modified: it.mod ?? '',
         type: this.typeLabel(it.type),
         size: it.size,
         it: it.type,
@@ -144,15 +152,15 @@ export class MesDocumentsComponent {
   }
 
   private mockItems: Doc[] = [
-    { name: 'Plan de release v3.pdf',     space: 'Refonte App Mobile',    scope: 'Projet',       date: "Aujourd'hui, 11:05", type: 'PDF',     size: '1,8 Mo', it: 'pdf' },
-    { name: 'Notes atelier produit.docx', space: 'Espace Organisation',   scope: 'Organisation', date: 'Hier, 16:32',        type: 'Document', size: '210 Ko', it: 'doc' },
-    { name: 'Wireframes onboarding.fig',  space: 'Refonte App Mobile',    scope: 'Projet',       date: 'Hier, 10:12',        type: 'Figma',   size: '5,6 Mo', it: 'fig' },
-    { name: 'Suivi budget annuel.xlsx',   space: 'Espace Organisation',   scope: 'Organisation', date: '16 mai 2026',        type: 'Tableur', size: '120 Ko', it: 'sheet' },
-    { name: 'Visuels page tarifs.png',    space: 'Site Vitrine 2025',     scope: 'Projet',       date: '14 mai 2026',        type: 'Image',   size: '1,2 Mo', it: 'img' },
-    { name: 'Roadmap Q3.pdf',             space: 'Campagne Q3 Marketing', scope: 'Projet',       date: '12 mai 2026',        type: 'PDF',     size: '940 Ko', it: 'pdf' },
-    { name: 'Schéma base de données.pdf', space: 'Migration Backend',     scope: 'Projet',       date: '9 mai 2026',         type: 'PDF',     size: '660 Ko', it: 'pdf' },
-    { name: 'Tokens couleurs.xlsx',       space: 'Design System Nexa',    scope: 'Projet',       date: '6 mai 2026',         type: 'Tableur', size: '48 Ko',  it: 'sheet' },
-    { name: 'Livrables client',           space: 'Espace Organisation',   scope: 'Organisation', date: '3 mai 2026',         type: 'Dossier', size: '—',      it: 'folder' },
+    { name: 'Plan de release v3.pdf',     space: 'Refonte App Mobile',    scope: 'Projet',       date: "Aujourd'hui, 11:05", modified: "Aujourd'hui, 11:05", type: 'PDF',     size: '1,8 Mo', it: 'pdf' },
+    { name: 'Notes atelier produit.docx', space: 'Espace Organisation',   scope: 'Organisation', date: 'Hier, 16:32',        modified: 'Hier, 16:32',        type: 'Document', size: '210 Ko', it: 'doc' },
+    { name: 'Wireframes onboarding.fig',  space: 'Refonte App Mobile',    scope: 'Projet',       date: 'Hier, 10:12',        modified: 'Hier, 10:12',        type: 'Figma',   size: '5,6 Mo', it: 'fig' },
+    { name: 'Suivi budget annuel.xlsx',   space: 'Espace Organisation',   scope: 'Organisation', date: '16 mai 2026',        modified: '18 mai 2026',        type: 'Tableur', size: '120 Ko', it: 'sheet' },
+    { name: 'Visuels page tarifs.png',    space: 'Site Vitrine 2025',     scope: 'Projet',       date: '14 mai 2026',        modified: '14 mai 2026',        type: 'Image',   size: '1,2 Mo', it: 'img' },
+    { name: 'Roadmap Q3.pdf',             space: 'Campagne Q3 Marketing', scope: 'Projet',       date: '12 mai 2026',        modified: '15 mai 2026',        type: 'PDF',     size: '940 Ko', it: 'pdf' },
+    { name: 'Schéma base de données.pdf', space: 'Migration Backend',     scope: 'Projet',       date: '9 mai 2026',         modified: '9 mai 2026',         type: 'PDF',     size: '660 Ko', it: 'pdf' },
+    { name: 'Tokens couleurs.xlsx',       space: 'Design System Nexa',    scope: 'Projet',       date: '6 mai 2026',         modified: '6 mai 2026',         type: 'Tableur', size: '48 Ko',  it: 'sheet' },
+    { name: 'Livrables client',           space: 'Espace Organisation',   scope: 'Organisation', date: '3 mai 2026',         modified: '3 mai 2026',         type: 'Dossier', size: '—',      it: 'folder' },
   ];
 
   /** Vrai si une recherche/un filtre est actif (distingue « vide » de « aucun résultat »). */
@@ -177,6 +185,8 @@ export class MesDocumentsComponent {
     ];
     if (!isFolder) items.push({ action: 'versions', label: 'Historique des versions', icon: 'clock' });
     items.push({ action: 'access', label: 'Gérer les accès', icon: 'lock', sep: true });
+    // Lien de partage : uniquement pour les éléments réels (porteurs d'un UUID backend).
+    if (it.item?.id) items.push({ action: 'share', label: 'Générer un lien de partage', icon: 'share' });
     items.push({ action: 'rename', label: 'Renommer', icon: 'edit' });
     items.push({ action: 'delete', label: 'Supprimer', icon: 'trash', danger: true, sep: true });
     return items;
@@ -192,6 +202,7 @@ export class MesDocumentsComponent {
       case 'access':
         if (it.item) this.gedOverlay.openAccessFor(it.item); else this.gedOverlay.openAccess(it.name);
         break;
+      case 'share':    if (it.item?.id) this.shareItem.set(it); break;
       case 'rename':   this.toast.show({ message: 'Renommer « ' + it.name + ' »' }); break;
       case 'delete':
         if (it.item) {

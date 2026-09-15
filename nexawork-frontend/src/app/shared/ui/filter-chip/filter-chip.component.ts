@@ -3,6 +3,9 @@ import { IconComponent } from '@shared/ui/icon/icon.component';
 
 export interface FilterOption { value: string; label: string; dot?: string; }
 
+/** Valeur sentinelle du filtre « Assigné à » désignant les tâches **sans assigné**. */
+export const UNASSIGNED_VALUE = '__unassigned__';
+
 /**
  * Dropdown filter chip — faithful reproduction of the prototype `filterChip`.
  * Shows the selected option's label when set (indigo state), a "Tous" reset

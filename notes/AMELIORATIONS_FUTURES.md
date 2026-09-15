@@ -153,6 +153,53 @@ alertes) côté serveur + un sélecteur côté frontend. *(Modif d'une fonctionn
 
 ---
 
+## 12. Résilience & cohérence dans l'architecture distribuée (événementiel)
+
+Analyse de l'existant et perspectives — utile à défendre en soutenance (distingue *ce qui est couvert* de *ce qui ne l'est pas*).
+
+### 12.1 Ce qui EST couvert aujourd'hui ✅
+- **Chorégraphie événementielle** (pas d'orchestrateur/saga central). À la création d'un projet, `ProjectServiceImpl`
+  publie `project.created` sur l'exchange topic `nexawork.events` (`durable=true`). GED (`ProjectCreatedConsumer` →
+  dossier racine « Pièces jointes aux tâches ») et Messaging (canaux) **réagissent indépendamment**.
+- **Service consommateur arrêté = incohérence seulement temporaire.** Chaque consumer a sa **file dédiée et durable**
+  (`nexawork.ged.project-created`, etc. — cf. `scripts/init-rabbitmq.sh`). Les événements s'y accumulent et sont
+  traités au redémarrage.
+- **Idempotence réelle** (un rejeu ne duplique pas) : index unique partiel `uk_ged_root_folder_per_project`
+  `(project_id, folder_type) WHERE parent_id IS NULL` + `existsBy…` défensif dans le consumer. Idem contraintes
+  d'unicité côté messaging (`uk_channel_members_channel_user`, `uk_channel_reads_channel_user`, `uk_reaction_once`).
+- **Argument fort vs synchrone** : avec un appel HTTP direct, un échec est **perdu** (aucune trace). Ici l'événement est
+  **persisté** → même en échec il reste **identifiable et rejouable**. L'opposition n'est pas *cohérent vs incohérent*,
+  c'est **rattrapable vs perdu**.
+
+### 12.2 Ce qui N'EST PAS couvert (perspectives, peu coûteuses) ❌
+- **Message en échec durable (poison message).** Aucun `ErrorHandler`/`RetryTemplate`/`RepublishMessageRecoverer` ni
+  **dead-letter exchange** n'est configuré → défauts Spring AMQP : sur exception le message est **remis en file
+  immédiatement** (boucle serrée). Manque : **DLQ + relance à backoff croissant** pour isoler le message fautif et le
+  rejouer après correction.
+- **Incohérence déjà installée.** Aucune **tâche de réconciliation périodique** (`@Scheduled`) ne vérifie que chaque
+  projet possède bien son dossier racine et ses canaux. (Le seul `@Scheduled` existant, `CallSweeper` du meeting-service,
+  ferme les appels fantômes — sans rapport.) Complément naturel du point précédent.
+
+### 12.3 Autorisation ≠ propagation d'état (point d'architecture important) ⭐
+Cas « un membre retiré d'un projet ne doit plus voir la GED du projet » :
+- **État actuel** : le contrôle d'accès GED (`AccessEvaluator.hasAccess`, règle REF G) s'arrête à l'**organisation** —
+  `OPEN` = visible par **tout membre du workspace**, `PRIVATE` = créateur seul, `SHARED` = grants explicites.
+  **L'appartenance au *projet* n'est jamais vérifiée.** → un membre retiré d'un projet **voit encore** les fichiers OPEN
+  de ce projet (il reste membre du workspace). Lacune de correction si l'exigence est « GED projet = membres du projet ».
+- **Mauvaise approche** : répliquer les membres dans le GED via événements `member-added/removed`. Une **révocation**
+  d'accès exige une cohérence **immédiate** ; si l'événement `member-removed` est perdu (cf. absence de DLQ) →
+  **trou de sécurité** pendant la fenêtre d'incohérence.
+- **Bonne pratique** : **l'autorisation s'évalue à la requête, contre la source de vérité** — au listing/lecture d'un
+  élément rattaché à un projet, le GED vérifie l'appartenance du `caller` au projet (appel au Project service — le
+  `RestClient` existe déjà, il ne sert aujourd'hui qu'aux pièces jointes de tâches ; ou via un claim de membership).
+  → révocation **atomique et immédiate**, **aucun saga ni compensation**, l'incohérence devient **impossible**.
+- **Principe à retenir** : les événements/sagas propagent des **faits métier** (cohérence à terme acceptable) ;
+  les **décisions d'autorisation** se vérifient à chaud (cohérence immédiate). Ne pas mélanger les deux.
+- 📄 **Perspective (non implémenté).** Changement de sécurité sur un chemin de lecture critique → à faire **hors période
+  de soutenance**, avec tests.
+
+---
+
 ## ⚠️ Note de cohérence mémoire (IMPORTANT)
 Le mémoire présente **explicitement comme PERSPECTIVES (non implémentées)** : les **automatisations poussées** (§4),
 les **rôles personnalisés** (§9) et l'**édition de documents** (§10). → **Ne PAS les implémenter avant la soutenance** :

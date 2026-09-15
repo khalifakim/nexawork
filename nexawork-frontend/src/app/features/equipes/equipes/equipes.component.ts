@@ -13,10 +13,11 @@ import { ToastService } from '@core/services/toast.service';
 import { Member } from '@core/models/member.models';
 import { ProjectMember } from '@core/models/project.models';
 import { TasksService, BoardData } from '@core/services/tasks.service';
-import { StatusCat } from '@core/models/task.models';
-import { avatarColorFor } from '@core/util/ui.util';
+import { StatusCat, TaskCard } from '@core/models/task.models';
+import { avatarColorFor, tintOf } from '@core/util/ui.util';
 import { AjouterCollaborateursProjetComponent, AddCollaboratorsPayload } from '@features/equipes/modals/ajouter-collaborateurs-projet/ajouter-collaborateurs-projet.component';
 import { CreerEquipeComponent, CreatedTeam } from '@features/equipes/modals/creer-equipe/creer-equipe.component';
+import { FicheTacheComponent } from '@features/projets/modals/fiche-tache/fiche-tache.component';
 
 interface TeamMember { userId: string; name: string; role: string; color: string; }
 interface Team { id: string; name: string; color: string; members: TeamMember[]; }
@@ -34,12 +35,20 @@ interface TeamWorkloadRow {
   id: string; name: string; color: string; count: number;
   todo: number; active: number; done: number; overdue: number; total: number; pct: number;
 }
+/** Catégorie cliquable d'un compteur de la vue Progression. */
+type ChargeCat = 'todo' | 'active' | 'done' | 'overdue';
+/** Tâche affichée dans le modal de détail d'un compteur. */
+interface TaskLite {
+  id: string; key: string; title: string;
+  statusName: string; statusColor: string;
+  assignee: string; assigneeIsTeam: boolean; due: string;
+}
 
 @Component({
   selector: 'app-equipes',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IconComponent, AjouterCollaborateursProjetComponent, CreerEquipeComponent, LoaderComponent],
+  imports: [IconComponent, AjouterCollaborateursProjetComponent, CreerEquipeComponent, LoaderComponent, FicheTacheComponent],
   template: `
     @if (openTeam(); as t) {
       <!-- ===== Détail d'une équipe (inline — reste sur l'onglet) ===== -->
@@ -59,7 +68,13 @@ interface TeamWorkloadRow {
               <div class="drow" [class.drow--first]="i===0">
                 <span class="dav" [style.background]="m.color">{{ ini(m.name) }}</span>
                 <div class="db"><div class="dmn">{{ m.name }}</div><div class="dmr">{{ m.role }}</div></div>
-                @if (!readonly && canManageEff()) { <button class="drm" title="Retirer de l'équipe" (click)="removeFromTeam(t.id, m)"><app-icon name="x" [size]="15" /></button> }
+                @if (!readonly && canManageEff()) {
+                  @if (teamRemoving().has(m.userId)) {
+                    <span class="drm drm--busy" title="Retrait en cours…"><span class="drm__spin"></span></span>
+                  } @else {
+                    <button class="drm" title="Retirer de l'équipe" (click)="removeFromTeam(t.id, m)"><app-icon name="x" [size]="15" /></button>
+                  }
+                }
               </div>
             } @empty {
               <div class="dempty">Cette équipe n'a plus de membre.</div>
@@ -154,12 +169,18 @@ interface TeamWorkloadRow {
 
           @if (!readonly && canManageEff()) {
             <div class="chefwrap">
-              <button class="chef" [class.chef--on]="chefOpen()" [class.chef--set]="!!chef()" [disabled]="chefSaving()" (click)="toggleChef($event)">
+              <button class="chef" [class.chef--on]="chefOpen()" [class.chef--set]="!!chef()" [disabled]="chefSaving() || chefRemoving()" (click)="toggleChef($event)">
                 @if (chefSaving()) {
                   <span class="chef__spin"></span>
                   <span class="chef__t">
                     <span class="chef__l">Chef de projet</span>
                     <span class="chef__n">Assignation de {{ pendingChefName() }}…</span>
+                  </span>
+                } @else if (chefRemoving()) {
+                  <span class="chef__spin"></span>
+                  <span class="chef__t">
+                    <span class="chef__l">Chef de projet</span>
+                    <span class="chef__n">Retrait de {{ removingChefName() }}…</span>
                   </span>
                 } @else if (chef(); as c) {
                   <span class="chef__a" [style.background]="memberColor(c)">{{ ini(c) }}</span>
@@ -343,10 +364,10 @@ interface TeamWorkloadRow {
                       <div class="chgtop">
                         <span class="chgn">{{ r.name }}<span class="chgrole">{{ r.role }}</span></span>
                         <span class="chgcounts">
-                          <span class="ct ct--todo">{{ r.todo }} à faire</span>
-                          <span class="ct ct--active">{{ r.active }} en cours</span>
-                          <span class="ct ct--done">{{ r.done }} terminé{{ r.done > 1 ? 's' : '' }}</span>
-                          @if (r.overdue) { <span class="ct ct--late"><app-icon name="alert" [size]="11" [stroke]="2" />{{ r.overdue }} en retard</span> }
+                          <span class="ct ct--todo" [class.ct--btn]="r.todo" (click)="openDetail('member', r.userId, r.name, 'todo', r.todo)">{{ r.todo }} à faire</span>
+                          <span class="ct ct--active" [class.ct--btn]="r.active" (click)="openDetail('member', r.userId, r.name, 'active', r.active)">{{ r.active }} en cours</span>
+                          <span class="ct ct--done" [class.ct--btn]="r.done" (click)="openDetail('member', r.userId, r.name, 'done', r.done)">{{ r.done }} terminé{{ r.done > 1 ? 's' : '' }}</span>
+                          @if (r.overdue) { <span class="ct ct--late ct--btn" (click)="openDetail('member', r.userId, r.name, 'overdue', r.overdue)"><app-icon name="alert" [size]="11" [stroke]="2" />{{ r.overdue }} en retard</span> }
                         </span>
                       </div>
                       <div class="chgprog" [title]="r.done + ' / ' + r.total + ' tâches terminées'">
@@ -372,10 +393,10 @@ interface TeamWorkloadRow {
                       <div class="chgtop">
                         <span class="chgn">{{ t.name }}<span class="chgrole">{{ t.count }} membre{{ t.count > 1 ? 's' : '' }}</span></span>
                         <span class="chgcounts">
-                          <span class="ct ct--todo">{{ t.todo }} à faire</span>
-                          <span class="ct ct--active">{{ t.active }} en cours</span>
-                          <span class="ct ct--done">{{ t.done }} terminé{{ t.done > 1 ? 's' : '' }}</span>
-                          @if (t.overdue) { <span class="ct ct--late"><app-icon name="alert" [size]="11" [stroke]="2" />{{ t.overdue }} en retard</span> }
+                          <span class="ct ct--todo" [class.ct--btn]="t.todo" (click)="openDetail('team', t.id, t.name, 'todo', t.todo)">{{ t.todo }} à faire</span>
+                          <span class="ct ct--active" [class.ct--btn]="t.active" (click)="openDetail('team', t.id, t.name, 'active', t.active)">{{ t.active }} en cours</span>
+                          <span class="ct ct--done" [class.ct--btn]="t.done" (click)="openDetail('team', t.id, t.name, 'done', t.done)">{{ t.done }} terminé{{ t.done > 1 ? 's' : '' }}</span>
+                          @if (t.overdue) { <span class="ct ct--late ct--btn" (click)="openDetail('team', t.id, t.name, 'overdue', t.overdue)"><app-icon name="alert" [size]="11" [stroke]="2" />{{ t.overdue }} en retard</span> }
                         </span>
                       </div>
                       <div class="chgprog" [title]="t.done + ' / ' + t.total + ' tâches terminées'">
@@ -403,6 +424,49 @@ interface TeamWorkloadRow {
     }
     @if (createTeamOpen()) {
       <app-creer-equipe (created)="onTeamCreated($event)" (closed)="createTeamOpen.set(false)" />
+    }
+
+    <!-- Détail des tâches d'un compteur (À faire / En cours / Terminées / En retard) -->
+    @if (detailOpen(); as d) {
+      <div class="mov" (click)="detailOpen.set(null)">
+        <div class="mcard mcard--tasks" (click)="$event.stopPropagation()">
+          <div class="mhd">
+            <div class="mhd__t">
+              <div class="mhd__title">{{ catLabel(d.cat) }} · {{ detailTasks().length }} tâche{{ detailTasks().length > 1 ? 's' : '' }}</div>
+              <div class="mhd__sub">{{ d.scope === 'team' ? 'Équipe' : 'Membre' }} · {{ d.name }}</div>
+            </div>
+            <button class="mx" (click)="detailOpen.set(null)"><app-icon name="x" [size]="16" /></button>
+          </div>
+          <div class="tklist">
+            @for (t of detailTasks(); track t.id) {
+              <div class="tkrow tkrow--btn" (click)="openTaskDetail(t.id)" title="Ouvrir la tâche">
+                <span class="tkkey nx-mono">{{ t.key }}</span>
+                <div class="tkb">
+                  <div class="tkn">{{ t.title }}</div>
+                  <div class="tkmeta">
+                    <span class="tkav" [class.tkav--team]="t.assigneeIsTeam">{{ t.assignee }}</span>
+                    @if (t.due) { <span class="tkdue"><app-icon name="calendar" [size]="11" />{{ t.due }}</span> }
+                  </div>
+                </div>
+                <span class="tkstatus" [style.color]="t.statusColor" [style.background]="tint(t.statusColor)">{{ t.statusName }}</span>
+              </div>
+            } @empty {
+              <div class="mempty">Aucune tâche dans cette catégorie.</div>
+            }
+          </div>
+        </div>
+      </div>
+    }
+
+    <!-- Fiche détail d'une tâche ouverte depuis le modal des compteurs -->
+    @if (openTaskCard(); as tc) {
+      <app-fiche-tache
+        [task]="tc"
+        [readonly]="readonly"
+        (closed)="openTaskCard.set(null)"
+        (openTask)="openTaskDetail($event)"
+        (updated)="onTaskUpdated()"
+        (deleted)="onTaskDeleted($event)" />
     }
   `,
   styleUrl: './equipes.component.scss',
@@ -474,11 +538,17 @@ export class EquipesComponent implements OnInit, OnDestroy {
 
   q        = signal('');
   chef     = signal<string | null>(null);
+  /** userId du chef de projet courant (pour le retrait côté serveur). */
+  chefUserId = signal<string | null>(null);
   chefOpen = signal(false);
   /** Assignation du chef de projet en cours (loader dans le champ). */
   chefSaving = signal(false);
   /** Nom du membre en cours d'assignation comme chef (affiché pendant le chargement). */
   pendingChefName = signal<string | null>(null);
+  /** Retrait du chef de projet en cours (loader dans le champ). */
+  chefRemoving = signal(false);
+  /** Nom du chef en cours de retrait (affiché pendant le chargement). */
+  removingChefName = signal<string | null>(null);
   chefQ    = signal('');
 
   // team detail (inline) + card menu + rename
@@ -495,6 +565,8 @@ export class EquipesComponent implements OnInit, OnDestroy {
 
   // "assigner à une équipe" dropdown (loose members table), keyed by member name
   assignOpen = signal<string | null>(null);
+  /** userId des membres dont le retrait de l'équipe est en cours (loader sur la ligne). */
+  teamRemoving = signal<Set<string>>(new Set<string>());
 
   /** Directory loaded once on init. */
   private directory = signal<Member[]>([]);
@@ -524,45 +596,78 @@ export class EquipesComponent implements OnInit, OnDestroy {
     return m;
   });
 
-  /** Une ligne de charge par membre du projet (équipes + sans équipe), triée par charge. */
+  /**
+   * Une ligne de charge par membre du projet (équipes + sans équipe), triée par
+   * charge. Une tâche assignée à une **équipe** est comptabilisée pour **chaque
+   * membre** de cette équipe (en plus des tâches assignées nominativement).
+   */
   workload = computed<WorkloadRow[]>(() => {
     const b = this.board();
     if (!b) return [];
     const cat = this.catOf();
     const cards = Object.values(b.cards).flat();
     // Membres du projet = union (par userId) des membres d'équipe et des « sans équipe ».
-    const map = new Map<string, { userId: string; name: string; color: string; role: string }>();
-    for (const t of this.teams()) for (const m of t.members) map.set(m.userId, { userId: m.userId, name: m.name, color: m.color, role: m.role });
-    for (const l of this.loose()) if (!map.has(l.userId)) map.set(l.userId, { userId: l.userId, name: l.name, color: l.color, role: l.role });
+    const info = new Map<string, { userId: string; name: string; color: string; role: string }>();
+    for (const t of this.teams()) for (const m of t.members) info.set(m.userId, { userId: m.userId, name: m.name, color: m.color, role: m.role });
+    for (const l of this.loose()) if (!info.has(l.userId)) info.set(l.userId, { userId: l.userId, name: l.name, color: l.color, role: l.role });
+    // Membres (userId) de chaque équipe — pour ventiler les tâches d'équipe.
+    const teamMembers = new Map<string, string[]>();
+    for (const t of this.teams()) teamMembers.set(t.id, t.members.map(m => m.userId));
     const today = new Date(); today.setHours(0, 0, 0, 0);
-    const rows = [...map.values()].map(m => {
-      let todo = 0, active = 0, done = 0, overdue = 0;
-      for (const c of cards) {
-        if (c.assigneeType === 'TEAM' || c.assigneeId !== m.userId) continue;
-        const k = cat.get(c.statusId);
-        if (k === 'done' || k === 'closed') { done++; continue; }
-        if (k === 'active') active++; else todo++;
-        if (c.dueDate) { const d = new Date(c.dueDate); if (!isNaN(d.getTime()) && d < today) overdue++; }
+    // Compteurs par membre.
+    const counts = new Map<string, { todo: number; active: number; done: number; overdue: number }>();
+    for (const uid of info.keys()) counts.set(uid, { todo: 0, active: 0, done: 0, overdue: 0 });
+    for (const c of cards) {
+      // Destinataires : les membres de l'équipe assignée, ou l'assigné nominatif.
+      const targets = (c.assigneeType === 'TEAM' && c.assigneeId)
+        ? (teamMembers.get(c.assigneeId) ?? [])
+        : (c.assigneeId ? [c.assigneeId] : []);
+      if (!targets.length) continue;
+      const k = cat.get(c.statusId);
+      const overdue = !!c.dueDate && (() => { const d = new Date(c.dueDate); return !isNaN(d.getTime()) && d < today; })();
+      for (const uid of targets) {
+        const cnt = counts.get(uid);
+        if (!cnt) continue; // sécurité : ignore un assigné hors projet
+        if (k === 'done' || k === 'closed') { cnt.done++; continue; }
+        if (k === 'active') cnt.active++; else cnt.todo++;
+        if (overdue) cnt.overdue++;
       }
-      const total = todo + active + done;
+    }
+    const rows = [...info.values()].map(m => {
+      const cnt = counts.get(m.userId)!;
+      const total = cnt.todo + cnt.active + cnt.done;
       return {
-        ...m, todo, active, done, overdue, total,
-        activeTotal: todo + active,
-        pct: total ? Math.round((done / total) * 100) : 0,
+        ...m, todo: cnt.todo, active: cnt.active, done: cnt.done, overdue: cnt.overdue, total,
+        activeTotal: cnt.todo + cnt.active,
+        pct: total ? Math.round((cnt.done / total) * 100) : 0,
       };
     });
     rows.sort((a, b2) => (b2.activeTotal - a.activeTotal) || (b2.overdue - a.overdue) || a.name.localeCompare(b2.name));
     return rows;
   });
 
-  /** Progression agrégée PAR ÉQUIPE : somme des tâches des membres de chaque équipe. */
+  /**
+   * Progression PAR ÉQUIPE : tâches assignées **à l'équipe** + tâches assignées
+   * nominativement à ses membres. Chaque tâche est comptée une seule fois par
+   * équipe (assignation à l'équipe et à un membre sont mutuellement exclusives).
+   */
   workloadByTeam = computed<TeamWorkloadRow[]>(() => {
-    const byUser = new Map(this.workload().map(r => [r.userId, r]));
+    const b = this.board();
+    if (!b) return [];
+    const cat = this.catOf();
+    const cards = Object.values(b.cards).flat();
+    const today = new Date(); today.setHours(0, 0, 0, 0);
     return this.teams().map(t => {
+      const memberSet = new Set(t.members.map(m => m.userId));
       let todo = 0, active = 0, done = 0, overdue = 0;
-      for (const m of t.members) {
-        const r = byUser.get(m.userId);
-        if (r) { todo += r.todo; active += r.active; done += r.done; overdue += r.overdue; }
+      for (const c of cards) {
+        const belongs = (c.assigneeType === 'TEAM' && c.assigneeId === t.id)
+          || (c.assigneeType !== 'TEAM' && !!c.assigneeId && memberSet.has(c.assigneeId));
+        if (!belongs) continue;
+        const k = cat.get(c.statusId);
+        if (k === 'done' || k === 'closed') { done++; continue; }
+        if (k === 'active') active++; else todo++;
+        if (c.dueDate) { const d = new Date(c.dueDate); if (!isNaN(d.getTime()) && d < today) overdue++; }
       }
       const total = todo + active + done;
       return {
@@ -573,17 +678,114 @@ export class EquipesComponent implements OnInit, OnDestroy {
     }).sort((a, b2) => (b2.active - a.active) || (b2.overdue - a.overdue) || a.name.localeCompare(b2.name));
   });
 
-  /** Tâches ouvertes non assignées à une personne (info complémentaire de la charge). */
+  /** Tâches ouvertes réellement sans assigné (ni personne, ni équipe). */
   unassignedCount = computed(() => {
     const b = this.board();
     if (!b) return 0;
     const cat = this.catOf();
     return Object.values(b.cards).flat().filter(c => {
-      if (c.assigneeId && c.assigneeType !== 'TEAM') return false;
+      if (c.assigneeId) return false; // assignée à une personne ou une équipe
       const k = cat.get(c.statusId);
       return k !== 'done' && k !== 'closed';
     }).length;
   });
+
+  // ── Détail des tâches d'un compteur (modal) ─────────────────────────────────
+  /** Compteur ouvert : périmètre (membre/équipe), cible et catégorie. */
+  detailOpen = signal<{ scope: 'member' | 'team'; id: string; name: string; cat: ChargeCat } | null>(null);
+
+  /** statusId → nom + couleur de la colonne (pour la pastille de statut du modal). */
+  private colInfo = computed(() => {
+    const m = new Map<string, { name: string; color: string }>();
+    for (const c of this.board()?.columns ?? []) m.set(c.id, { name: c.name, color: c.color });
+    return m;
+  });
+
+  /** Ouvre le modal listant les tâches d'un compteur (si non nul). */
+  openDetail(scope: 'member' | 'team', id: string, name: string, cat: ChargeCat, count: number): void {
+    if (!count) return;
+    this.detailOpen.set({ scope, id, name, cat });
+  }
+
+  /** Libellé lisible d'une catégorie de compteur. */
+  catLabel(cat: ChargeCat): string {
+    return cat === 'todo' ? 'À faire' : cat === 'active' ? 'En cours' : cat === 'done' ? 'Terminées' : 'En retard';
+  }
+  tint(hex: string): string { return tintOf(hex); }
+
+  /** Nom lisible de l'assigné d'une tâche (personne ou équipe). */
+  private assigneeName(c: TaskCard): string {
+    if (c.assigneeType === 'TEAM' && c.assigneeId) return this.teams().find(t => t.id === c.assigneeId)?.name ?? 'Équipe';
+    if (c.assigneeId) {
+      const inTeam = this.teams().flatMap(t => t.members).find(m => m.userId === c.assigneeId);
+      if (inTeam) return inTeam.name;
+      const l = this.loose().find(m => m.userId === c.assigneeId);
+      if (l) return l.name;
+      return this.directory().find(m => m.userId === c.assigneeId)?.name ?? 'Assigné';
+    }
+    return 'Non assigné';
+  }
+  private fmtShort(iso: string): string {
+    const d = new Date(iso);
+    return isNaN(d.getTime()) ? '' : d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+  }
+
+  /** Tâches correspondant au compteur ouvert (même logique de périmètre que la vue). */
+  detailTasks = computed<TaskLite[]>(() => {
+    const d = this.detailOpen();
+    const b = this.board();
+    if (!d || !b) return [];
+    const cat = this.catOf();
+    const col = this.colInfo();
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const teamMembers = new Map<string, string[]>();
+    for (const t of this.teams()) teamMembers.set(t.id, t.members.map(m => m.userId));
+    const inScope = (c: TaskCard): boolean => {
+      if (d.scope === 'member') {
+        if (c.assigneeType === 'TEAM' && c.assigneeId) return (teamMembers.get(c.assigneeId) ?? []).includes(d.id);
+        return c.assigneeType !== 'TEAM' && c.assigneeId === d.id;
+      }
+      const memberSet = new Set(teamMembers.get(d.id) ?? []);
+      return (c.assigneeType === 'TEAM' && c.assigneeId === d.id)
+        || (c.assigneeType !== 'TEAM' && !!c.assigneeId && memberSet.has(c.assigneeId));
+    };
+    const matchCat = (c: TaskCard): boolean => {
+      const k = cat.get(c.statusId);
+      if (d.cat === 'done') return k === 'done' || k === 'closed';
+      if (d.cat === 'overdue') {
+        if (k === 'done' || k === 'closed' || !c.dueDate) return false;
+        const dd = new Date(c.dueDate); return !isNaN(dd.getTime()) && dd < today;
+      }
+      if (d.cat === 'active') return k === 'active';
+      return k !== 'done' && k !== 'closed' && k !== 'active'; // à faire
+    };
+    return Object.values(b.cards).flat().filter(c => inScope(c) && matchCat(c)).map(c => {
+      const ci = col.get(c.statusId);
+      return {
+        id: c.id, key: c.taskKey, title: c.title,
+        statusName: ci?.name ?? c.tag[0], statusColor: ci?.color ?? c.tag[1] ?? '#8E8AA0',
+        assignee: this.assigneeName(c), assigneeIsTeam: c.assigneeType === 'TEAM',
+        due: c.dueDate ? this.fmtShort(c.dueDate) : '',
+      };
+    });
+  });
+
+  /** Tâche ouverte dans la fiche détail (depuis le modal des compteurs). */
+  openTaskCard = signal<(TaskCard & { proj?: string }) | null>(null);
+
+  /** Ouvre la fiche détail d'une tâche à partir de son id (carte du board courant). */
+  openTaskDetail(id: string): void {
+    const card = Object.values(this.board()?.cards ?? {}).flat().find(c => c.id === id);
+    if (card) this.openTaskCard.set({ ...card, proj: this.projectName() });
+  }
+  /** Recharge le board courant (après édition/suppression d'une tâche) pour rafraîchir les compteurs. */
+  private reloadBoard(): void {
+    const pid = this.projectId();
+    if (!pid) return;
+    this.tasksSvc.loadBoard(pid).subscribe(b => { this.board.set(b); this.boardPid = pid; });
+  }
+  onTaskUpdated(): void { this.reloadBoard(); }
+  onTaskDeleted(_id: string): void { this.openTaskCard.set(null); this.reloadBoard(); }
 
   /** Bascule la vue ; charge le board à la première ouverture de « Charge ». */
   setView(v: 'composition' | 'charge'): void {
@@ -606,8 +808,8 @@ export class EquipesComponent implements OnInit, OnDestroy {
    * Charge les équipes + membres réels du projet et construit `teams`/`loose`.
    * Les noms/couleurs/emails sont résolus via l'annuaire du workspace.
    */
-  private reload(pid: string | null): void {
-    if (!pid) { this.teams.set([]); this.loose.set([]); return; }
+  private reload(pid: string | null, done?: () => void): void {
+    if (!pid) { this.teams.set([]); this.loose.set([]); done?.(); return; }
     this.loading.set(true);
     forkJoin({
       teams: this.projectsSvc.teams(pid),
@@ -634,13 +836,15 @@ export class EquipesComponent implements OnInit, OnDestroy {
         })));
         // Chef de projet réel = ownerUserId du projet, résolu en nom.
         const proj = this.projects().find(p => p.id === pid);
+        this.chefUserId.set(proj?.ownerUserId ?? null);
         this.chef.set(proj?.ownerUserId ? (byId.get(proj.ownerUserId)?.name ?? null) : null);
         // Garde le détail d'équipe ouvert synchronisé.
         const open = this.openTeam();
         if (open) this.openTeam.set(this.teams().find(t => t.id === open.id) ?? null);
         this.loading.set(false);
+        done?.();
       },
-      error: () => this.loading.set(false),
+      error: () => { this.loading.set(false); done?.(); },
     });
   }
 
@@ -668,12 +872,21 @@ export class EquipesComponent implements OnInit, OnDestroy {
     });
   }
 
-  /** Tous les membres du workspace (annuaire réel) — pour la désignation du chef. */
-  private allMembers = computed<MemberPick[]>(() => {
+  /**
+   * Membres RÉELS du projet courant (équipes + sans équipe), pour la désignation
+   * du chef. Reconstruit dès que `teams`/`loose` changent : si un membre est
+   * retiré du projet, il disparaît immédiatement de la liste du chef.
+   */
+  private projectMembers = computed<MemberPick[]>(() => {
     const meId = this.session.user()?.id;
-    return this.directory().filter(m => m.userId).map(m => ({
-      userId: m.userId!, name: m.name, role: m.role, color: m.color, me: m.userId === meId,
-    }));
+    const map = new Map<string, MemberPick>();
+    for (const t of this.teams()) for (const m of t.members) {
+      map.set(m.userId, { userId: m.userId, name: m.name, role: m.role, color: m.color, me: m.userId === meId });
+    }
+    for (const l of this.loose()) if (!map.has(l.userId)) {
+      map.set(l.userId, { userId: l.userId, name: l.name, role: l.role, color: l.color, me: l.userId === meId });
+    }
+    return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
   });
 
   /** Distinct people across all teams + unassigned members (project header count). */
@@ -696,7 +909,7 @@ export class EquipesComponent implements OnInit, OnDestroy {
   /** Members filtered by the chef-picker search query. */
   filteredMembers = computed<MemberPick[]>(() => {
     const q = this.chefQ().toLowerCase().trim();
-    return this.allMembers().filter(m => m.name.toLowerCase().includes(q));
+    return this.projectMembers().filter(m => m.name.toLowerCase().includes(q));
   });
 
   /** Teams filtered by the toolbar search (matches team name OR any member inside). */
@@ -862,7 +1075,19 @@ export class EquipesComponent implements OnInit, OnDestroy {
   removeFromTeam(teamId: string, m: TeamMember): void {
     const pid = this.projectId();
     if (!pid) return;
-    this.projectsSvc.setMemberTeam(pid, m.userId, null).subscribe(() => this.reload(pid));
+    // Loader sur la ligne tant que le retrait n'est pas confirmé côté serveur ;
+    // toast une fois réellement effectif (mêmes repères que l'ajout).
+    this.teamRemoving.update(s => { const n = new Set(s); n.add(m.userId); return n; });
+    this.projectsSvc.setMemberTeam(pid, m.userId, null).subscribe({
+      next: () => this.reload(pid, () => {
+        this.teamRemoving.update(s => { const n = new Set(s); n.delete(m.userId); return n; });
+        this.toast.show({ message: m.name + ' retiré de l\'équipe' });
+      }),
+      error: () => {
+        this.teamRemoving.update(s => { const n = new Set(s); n.delete(m.userId); return n; });
+        this.toast.show({ message: 'Impossible de retirer ce membre. Réessayez.', icon: 'warning' });
+      },
+    });
   }
 
   // ── Card 3-dots menu: rename / delete ────────────────────────────────────
@@ -923,6 +1148,7 @@ export class EquipesComponent implements OnInit, OnDestroy {
     this.projectsSvc.setProjectChief(pid, m.userId).subscribe({
       next: () => {
         this.chef.set(m.name);
+        this.chefUserId.set(m.userId);
         this.chefSaving.set(false);
         this.pendingChefName.set(null);
         this.toast.show({ message: m.name + ' est désormais chef de projet' });
@@ -935,11 +1161,30 @@ export class EquipesComponent implements OnInit, OnDestroy {
     });
   }
   removeChef(): void {
-    // Pas d'endpoint de retrait dédié : on efface l'affichage (le chef reste tant
-    // qu'un autre n'est pas désigné côté serveur).
-    this.chef.set(null);
     this.chefOpen.set(false);
     this.chefQ.set('');
+    const pid = this.projectId();
+    const uid = this.chefUserId();
+    const name = this.chef();
+    if (!pid || !uid) { this.chef.set(null); this.chefUserId.set(null); return; }
+    // Même comportement que l'assignation : loader pendant l'appel serveur, puis
+    // toast une fois le retrait réellement effectif (Project.ownerUserId → null).
+    this.removingChefName.set(name);
+    this.chefRemoving.set(true);
+    this.projectsSvc.removeProjectChief(pid, uid).subscribe({
+      next: () => {
+        this.chef.set(null);
+        this.chefUserId.set(null);
+        this.chefRemoving.set(false);
+        this.removingChefName.set(null);
+        this.toast.show({ message: (name ?? 'Le chef de projet') + ' n\'est plus chef de projet' });
+      },
+      error: () => {
+        this.chefRemoving.set(false);
+        this.removingChefName.set(null);
+        this.toast.show({ message: 'Impossible de retirer le chef de projet. Réessayez.', icon: 'warning' });
+      },
+    });
   }
   closePopovers(): void {
     if (this.chefOpen()) this.chefOpen.set(false);
@@ -948,7 +1193,7 @@ export class EquipesComponent implements OnInit, OnDestroy {
     if (this.addMenuOpen()) this.addMenuOpen.set(false);
   }
   memberColor(name: string): string {
-    return this.allMembers().find(m => m.name === name)?.color ?? '#9b97a3';
+    return this.projectMembers().find(m => m.name === name)?.color ?? '#9b97a3';
   }
 
   /** Redirige vers la page Projets (pour créer un premier projet). */

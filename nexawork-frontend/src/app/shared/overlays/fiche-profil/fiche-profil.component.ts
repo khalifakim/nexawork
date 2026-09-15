@@ -39,7 +39,7 @@ const EMPTY_MEMBER: Member = { name: '', color: '#86828E', role: '', email: '', 
     </div>
   `,
   styles: [`
-    .ov { position: fixed; inset: 0; z-index: var(--nx-z-modal); background: rgba(22,19,31,.5); backdrop-filter: blur(2px); display: flex; align-items: center; justify-content: center; padding: 40px; }
+    .ov { position: fixed; inset: 0; z-index: var(--nx-z-modal-top); background: rgba(22,19,31,.5); backdrop-filter: blur(2px); display: flex; align-items: center; justify-content: center; padding: 40px; }
     .card { width: 340px; max-width: 92vw; background: #fff; border-radius: 16px; box-shadow: var(--nx-shadow-modal); border: 1px solid var(--nx-border-card); overflow: hidden; animation: nxFade .18s ease; }
     .head { display: flex; align-items: center; gap: 14px; padding: 20px 18px 16px; }
     .t { flex: 1; min-width: 0; }

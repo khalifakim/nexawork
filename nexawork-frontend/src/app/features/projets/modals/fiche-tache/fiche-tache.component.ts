@@ -14,6 +14,7 @@ import { MentionRef } from '@core/models/mention.models';
 import { avatarColorFor } from '@core/util/ui.util';
 import { TasksService } from '@core/services/tasks.service';
 import { MembersService } from '@core/services/members.service';
+import { ProjectsService } from '@core/services/projects.service';
 import { SessionService } from '@core/services/session.service';
 import { FilesHttpService } from '@core/http/files.http.service';
 import { ToastService } from '@core/services/toast.service';
@@ -80,7 +81,7 @@ interface CommentRow {
             }
           </div>
 
-          <div class="lbody">
+          <div class="lbody" (click)="closeField()">
             @if (editMode()) {
               <input class="title title--edit" [value]="eTitle()" (input)="eTitle.set($any($event.target).value)" placeholder="Nom de la tâche" />
             } @else {
@@ -88,12 +89,24 @@ interface CommentRow {
             }
 
             <div class="fields">
+              <!-- Statut -->
               <div class="frow frow--top"><span class="fl"><app-icon name="taskCheck" [size]="16" />Statut</span>
                 @if (editMode()) {
                   <div class="edwrap">
-                    <select class="ed ed--sel" [class.ed--err]="statusError()" [value]="eStatusId()" (change)="eStatusId.set($any($event.target).value); statusError.set('')">
-                      @for (c of columns(); track c.id) { <option [value]="c.id">{{ c.name }}</option> }
-                    </select>
+                    <div class="fw">
+                      <button class="status status--btn" [style.color]="eStatusCol()?.color" [style.background]="tint(eStatusCol()?.color)" (click)="$event.stopPropagation(); openField('status')">
+                        <span class="sdot" [style.background]="eStatusCol()?.color"></span>{{ eStatusCol()?.name }}<app-icon name="chevronDown" [size]="13" [stroke]="2.4" />
+                      </button>
+                      @if (field() === 'status') {
+                        <div class="dd" (click)="$event.stopPropagation()">
+                          @for (c of columns(); track c.id) {
+                            <button class="dd__i" [class.dd__i--sel]="c.id === eStatusId()" (click)="pickStatus(c.id)">
+                              <span class="sdot" [style.background]="c.color"></span><span class="dd__name">{{ c.name }}</span>
+                            </button>
+                          }
+                        </div>
+                      }
+                    </div>
                     @if (statusError()) {
                       <div class="ederr"><app-icon name="alert" [size]="13" />{{ statusError() }}</div>
                     }
@@ -102,44 +115,113 @@ interface CommentRow {
                   <span class="status" [style.color]="task.tag[1]" [style.background]="statusBg()"><span class="sdot" [style.background]="task.tag[1]"></span>{{ task.tag[0] }}</span>
                 }
               </div>
+              <!-- Assignés -->
               <div class="frow"><span class="fl"><app-icon name="user" [size]="16" />Assignés</span>
                 @if (editMode()) {
-                  <select class="ed ed--sel" [value]="eAssigneeId()" (change)="eAssigneeId.set($any($event.target).value)">
-                    <option value="">Non assigné</option>
-                    @for (m of directory(); track m.userId) { <option [value]="m.userId">{{ m.name }}</option> }
-                  </select>
+                  <div class="fw">
+                    @if (editAssigneeName()) {
+                      <button class="assignee assignee--btn" (click)="$event.stopPropagation(); openField('assignee')">
+                        <span class="av" [class.av--team]="editAssigneeIsTeam()" [style.background]="editAssigneeColor()">{{ editAssigneeInitials() }}</span>
+                        <span>{{ editAssigneeName() }}</span>@if (editAssigneeIsTeam()) { <span class="team-tag">Équipe</span> }<app-icon name="chevronDown" [size]="13" [stroke]="2.4" />
+                      </button>
+                    } @else {
+                      <button class="ghostf" (click)="$event.stopPropagation(); openField('assignee')"><app-icon name="userPlus" [size]="15" />Assigner</button>
+                    }
+                    @if (field() === 'assignee') {
+                      <div class="dd dd--wide" (click)="$event.stopPropagation()">
+                        <button class="mode-toggle" (click)="assignMode.set(assignMode() === 'team' ? 'user' : 'team')">
+                          <app-icon [name]="assignMode() === 'team' ? 'user' : 'teams'" [size]="16" />{{ assignMode() === 'team' ? 'Assigner à une personne' : 'Assigner à une équipe' }}
+                        </button>
+                        <div class="dd__sep"></div>
+                        @if (assignMode() === 'user') {
+                          <input class="dd__search" autofocus placeholder="Rechercher une personne…" [value]="assigneeQuery()" (click)="$event.stopPropagation()" (input)="assigneeQuery.set($any($event.target).value)" />
+                          @for (m of filteredProjMembers(); track m.id) {
+                            <button class="dd__i" [class.dd__i--sel]="eAssigneeKey() === 'USER:' + m.id" (click)="pickAssignee('USER:' + m.id)">
+                              <span class="av av--sm" [style.background]="memberColorId(m.id)">{{ ini(m.name) }}</span><span class="dd__name">{{ m.name }}</span>
+                            </button>
+                          } @empty { <div class="dd__empty">Aucun membre dans ce projet.</div> }
+                        } @else {
+                          <div class="dd__lbl">Équipes du projet</div>
+                          @for (t of projTeams(); track t.id) {
+                            <button class="dd__i" [class.dd__i--sel]="eAssigneeKey() === 'TEAM:' + t.id" (click)="pickAssignee('TEAM:' + t.id)">
+                              <span class="av av--sm av--team" [style.background]="t.color">{{ t.name[0] }}</span><span class="dd__name">{{ t.name }}</span>
+                            </button>
+                          } @empty { <div class="dd__empty">Aucune équipe dans ce projet.</div> }
+                        }
+                        @if (eAssigneeKey()) { <button class="dd__clear" (click)="pickAssignee('')">Retirer l'assignation</button> }
+                      </div>
+                    }
+                  </div>
                 } @else if (task.assigneeId) {
-                  <span class="assignee"><span class="av" [style.background]="assigneeColor()">{{ assigneeInitials() }}</span>{{ assigneeLabel() }}</span>
+                  <span class="assignee"><span class="av" [class.av--team]="assigneeIsTeam()" [style.background]="assigneeColor()">{{ assigneeInitials() }}</span>{{ assigneeLabel() }}@if (assigneeIsTeam()) { <span class="team-tag">Équipe</span> }</span>
                 } @else {
                   <span class="fv fv--muted">Non assigné</span>
                 }
               </div>
+              <!-- Date de début -->
               <div class="frow"><span class="fl"><app-icon name="calendar" [size]="16" />Date de début</span>
                 @if (editMode()) {
-                  <input class="ed" type="date" [value]="eStart()" (change)="eStart.set($any($event.target).value)" />
+                  <div class="fw">
+                    <button class="fvbtn" [class.fv--muted]="!eStart()" (click)="$event.stopPropagation(); openField('start')">{{ eStart() ? fmtDate(eStart()) : 'Ajouter' }}<app-icon name="chevronDown" [size]="13" [stroke]="2.4" /></button>
+                    @if (field() === 'start') {
+                      <div class="dd" (click)="$event.stopPropagation()">
+                        <input type="date" class="dd__date" autofocus [value]="eStart()" (change)="eStart.set($any($event.target).value)" />
+                        @if (eStart()) { <button class="dd__clear" (click)="eStart.set(''); closeField()">Effacer</button> }
+                      </div>
+                    }
+                  </div>
                 } @else {
                   <span class="fv" [class.fv--muted]="!task.startDate">{{ task.startDate ? fmtDate(task.startDate) : 'Non définie' }}</span>
                 }
               </div>
+              <!-- Date de fin -->
               <div class="frow"><span class="fl"><app-icon name="calendar" [size]="16" />Date de fin</span>
                 @if (editMode()) {
-                  <input class="ed" type="date" [value]="eDue()" (change)="eDue.set($any($event.target).value)" />
+                  <div class="fw">
+                    <button class="fvbtn" [class.fv--muted]="!eDue()" (click)="$event.stopPropagation(); openField('due')">{{ eDue() ? fmtDate(eDue()) : 'Ajouter' }}<app-icon name="chevronDown" [size]="13" [stroke]="2.4" /></button>
+                    @if (field() === 'due') {
+                      <div class="dd" (click)="$event.stopPropagation()">
+                        <input type="date" class="dd__date" autofocus [value]="eDue()" (change)="eDue.set($any($event.target).value)" />
+                        @if (eDue()) { <button class="dd__clear" (click)="eDue.set(''); closeField()">Effacer</button> }
+                      </div>
+                    }
+                  </div>
                 } @else {
                   <span class="fv" [class.fv--muted]="!task.dueDate">{{ task.dueDate ? fmtDate(task.dueDate) : 'Non définie' }}</span>
                 }
               </div>
+              <!-- Priorité -->
               <div class="frow"><span class="fl"><app-icon name="flag" [size]="16" />Priorité</span>
                 @if (editMode()) {
-                  <select class="ed ed--sel" [value]="ePriority()" (change)="ePriority.set($any($event.target).value)">
-                    @for (p of PRIORITIES; track p.value) { <option [value]="p.value">{{ p.label }}</option> }
-                  </select>
+                  <div class="fw">
+                    <button class="prio prio--btn" [style.color]="ePrioMeta()?.color" (click)="$event.stopPropagation(); openField('priority')">
+                      <span class="pdot" [style.background]="ePrioMeta()?.color"></span>{{ ePrioMeta()?.label }}<app-icon name="chevronDown" [size]="13" [stroke]="2.4" />
+                    </button>
+                    @if (field() === 'priority') {
+                      <div class="dd" (click)="$event.stopPropagation()">
+                        @for (p of PRIORITIES; track p.value) {
+                          <button class="dd__i" [class.dd__i--sel]="p.value === ePriority()" (click)="pickPriority(p.value)">
+                            <span class="pdot" [style.background]="p.color"></span><span class="dd__name">{{ p.label }}</span>
+                          </button>
+                        }
+                      </div>
+                    }
+                  </div>
                 } @else {
                   <span class="prio" [style.color]="task.prio[1]"><span class="pdot" [style.background]="task.prio[1]"></span>{{ task.prio[0] }}</span>
                 }
               </div>
+              <!-- Temps estimé -->
               <div class="frow"><span class="fl"><app-icon name="clockEst" [size]="16" />Temps estimé</span>
                 @if (editMode()) {
-                  <input class="ed" [value]="eEstimate()" (input)="eEstimate.set($any($event.target).value)" placeholder="Ex. 3 h, 2 j…" />
+                  <div class="fw">
+                    <button class="fvbtn" [class.fv--muted]="!eEstimate()" (click)="$event.stopPropagation(); openField('estimate')">{{ eEstimate() || 'Ajouter' }}<app-icon name="chevronDown" [size]="13" [stroke]="2.4" /></button>
+                    @if (field() === 'estimate') {
+                      <div class="dd" (click)="$event.stopPropagation()">
+                        <input class="dd__est" autofocus [value]="eEstimate()" placeholder="Ex. 3 h, 2 j…" (click)="$event.stopPropagation()" (input)="eEstimate.set($any($event.target).value)" (keydown.enter)="closeField()" />
+                      </div>
+                    }
+                  </div>
                 } @else {
                   <span class="fv" [class.fv--muted]="!task.estimate">{{ task.estimate || 'Non défini' }}</span>
                 }
@@ -151,7 +233,7 @@ interface CommentRow {
             <div class="block">
               <div class="block__t">Description</div>
               @if (editMode()) {
-                <textarea class="desc" rows="3" [value]="eDesc()" (input)="eDesc.set($any($event.target).value)" placeholder="Ajoutez une description…"></textarea>
+                <textarea class="desc desc--edit" rows="3" [value]="eDesc()" (input)="eDesc.set($any($event.target).value)" placeholder="Ajoutez une description…"></textarea>
               } @else {
                 <div class="desc desc--ro">{{ task.desc || 'Aucune description.' }}</div>
               }
@@ -257,6 +339,12 @@ interface CommentRow {
                   }
                 </div>
               </div>
+            } @empty {
+              @if (commentsLoading()) {
+                <div class="cm-load"><span class="cm-load__s"></span><span>Chargement des commentaires…</span></div>
+              } @else {
+                <div class="cm-empty">Aucun commentaire pour l'instant.</div>
+              }
             }
           </div>
           @if (!readonly) {
@@ -292,6 +380,7 @@ export class FicheTacheComponent implements OnChanges {
   protected bus = inject(ShellBus);
   private tasksSvc = inject(TasksService);
   private membersSvc = inject(MembersService);
+  private projectsSvc = inject(ProjectsService);
   private session = inject(SessionService);
   private filesSvc = inject(FilesHttpService);
   private toast = inject(ToastService);
@@ -300,6 +389,8 @@ export class FicheTacheComponent implements OnChanges {
 
   protected subtasks = signal<SubRow[]>([]);
   protected comments = signal<CommentRow[]>([]);
+  /** Chargement du fil de commentaires (spinner tant qu'il n'est pas revenu). */
+  protected commentsLoading = signal(false);
   /** Envoi de commentaire en cours (spinner du composeur). */
   protected commentSending = signal(false);
   /** Commentaire à cibler (notification de mention de commentaire) — défilement + surbrillance. */
@@ -317,11 +408,26 @@ export class FicheTacheComponent implements OnChanges {
   /** Statuts (colonnes) et membres du projet — chargés à l'entrée en édition. */
   protected columns = signal<KanbanColumn[]>([]);
   protected directory = signal<Member[]>([]);
+  /** userId des membres RÉELS du projet (assignables) — chargés au (ré)ouverture. */
+  protected projMemberIds = signal<string[]>([]);
+  /** Équipes RÉELLES du projet (assignables). */
+  protected projTeams = signal<{ id: string; name: string; color: string }[]>([]);
+  /** Membres du projet résolus en noms via l'annuaire (réactif). */
+  protected projMembers = computed<{ id: string; name: string }[]>(() => {
+    const dir = this.directory();
+    return this.projMemberIds().map(id => ({
+      id, name: dir.find(m => m.userId === id)?.name ?? 'Membre',
+    }));
+  });
   // Valeurs en cours d'édition.
   protected eTitle = signal('');
   protected eDesc = signal('');
   protected eStatusId = signal('');
-  protected eAssigneeId = signal('');
+  /**
+   * Assigné en cours d'édition, encodé « TYPE:id » (`USER:<uuid>` ou `TEAM:<uuid>`),
+   * ou chaîne vide = non assigné. Permet un seul <select> mixant membres et équipes.
+   */
+  protected eAssigneeKey = signal('');
   protected eStart = signal('');
   protected eDue = signal('');
   protected ePriority = signal<TaskPriority>('MEDIUM');
@@ -329,17 +435,68 @@ export class FicheTacheComponent implements OnChanges {
   /** Message d'erreur affiché sous le champ Statut si la transition est refusée (FSM). */
   protected statusError = signal('');
 
+  // ── Menus déroulants du mode édition (mêmes interactions que le modal de création) ──
+  /** Champ dont le menu est ouvert (`status` | `assignee` | `start` | `due` | `priority` | `estimate`). */
+  protected field = signal<string | null>(null);
+  /** Onglet du sélecteur d'assigné : personne ou équipe. */
+  protected assignMode = signal<'user' | 'team'>('user');
+  /** Filtre de recherche du sélecteur d'assigné. */
+  protected assigneeQuery = signal('');
+
+  /** Statut sélectionné en édition (colonne courante du <select> d'origine). */
+  protected eStatusCol = computed(() => this.columns().find(c => c.id === this.eStatusId()));
+  /** Métadonnées de la priorité sélectionnée en édition. */
+  protected ePrioMeta = computed(() => PRIORITIES.find(p => p.value === this.ePriority()));
+  /** Décodage « TYPE:id » de l'assigné en cours d'édition. */
+  private eAssigneeParts = computed<{ type: string; id: string } | null>(() => {
+    const k = this.eAssigneeKey();
+    if (!k) return null;
+    const i = k.indexOf(':');
+    return { type: k.slice(0, i), id: k.slice(i + 1) };
+  });
+  protected editAssigneeIsTeam = computed(() => this.eAssigneeParts()?.type === 'TEAM');
+  protected editAssigneeName = computed<string | null>(() => {
+    const p = this.eAssigneeParts();
+    if (!p) return null;
+    if (p.type === 'TEAM') return this.projTeams().find(t => t.id === p.id)?.name ?? 'Équipe';
+    if (p.id === this.session.user()?.id) return (this.session.user()?.displayName ?? 'Moi') + ' (moi)';
+    return this.projMembers().find(m => m.id === p.id)?.name ?? 'Membre';
+  });
+  protected editAssigneeColor = computed(() => {
+    const p = this.eAssigneeParts();
+    if (!p) return '#8E8AA0';
+    if (p.type === 'TEAM') return this.projTeams().find(t => t.id === p.id)?.color ?? '#6C70F0';
+    return avatarColorFor(p.id);
+  });
+  protected editAssigneeInitials = computed(() => {
+    const n = this.editAssigneeName();
+    return n ? this.ini(n) : '';
+  });
+  /** Membres du projet filtrés par la recherche du sélecteur d'assigné. */
+  protected filteredProjMembers = computed(() => {
+    const q = this.assigneeQuery().toLowerCase().trim();
+    return this.projMembers().filter(m => m.name.toLowerCase().includes(q));
+  });
+
   private loadedTaskId: string | null = null;
 
   statusBg = computed(() => this.tintFromColor(this.task.tag[1]));
-  assigneeColor = computed(() => this.task.assigneeId ? avatarColorFor(this.task.assigneeId) : '#8E8AA0');
+  assigneeColor = computed(() => {
+    const id = this.task.assigneeId;
+    if (!id) return '#8E8AA0';
+    if (this.task.assigneeType === 'TEAM') return this.projTeams().find(t => t.id === id)?.color ?? '#6C70F0';
+    return avatarColorFor(id);
+  });
   assigneeLabel = computed(() => {
     const id = this.task.assigneeId;
     if (!id) return 'Non assigné';
+    if (this.task.assigneeType === 'TEAM') return this.projTeams().find(t => t.id === id)?.name ?? 'Équipe';
     if (id === this.session.user()?.id) return (this.session.user()?.displayName ?? 'Moi') + ' (moi)';
     // Résolution du nom via l'annuaire réel des membres.
     return this.directory().find(m => m.userId === id)?.name ?? 'Assigné';
   });
+  /** Vrai si l'assigné courant est une équipe (avatar carré + libellé « Équipe »). */
+  assigneeIsTeam = computed(() => this.task.assigneeType === 'TEAM' && !!this.task.assigneeId);
   assigneeInitials = computed(() => this.ini(this.assigneeLabel()));
 
   constructor() {
@@ -377,7 +534,8 @@ export class FicheTacheComponent implements OnChanges {
     this.eTitle.set(this.task.title);
     this.eDesc.set(this.task.desc ?? '');
     this.eStatusId.set(this.task.statusId);
-    this.eAssigneeId.set(this.task.assigneeId ?? '');
+    // Préremplit l'assigné courant (membre OU équipe) dans le sélecteur mixte.
+    this.eAssigneeKey.set(this.task.assigneeId ? `${this.task.assigneeType ?? 'USER'}:${this.task.assigneeId}` : '');
     // `<input type="date">` exige exactement `yyyy-MM-dd` : on tronque une éventuelle
     // partie horaire (sinon le champ resterait vide alors que la date existe).
     this.eStart.set((this.task.startDate ?? '').slice(0, 10));
@@ -389,7 +547,31 @@ export class FicheTacheComponent implements OnChanges {
     this.editMode.set(true);
   }
 
-  cancelEdit(): void { this.editMode.set(false); }
+  cancelEdit(): void { this.editMode.set(false); this.field.set(null); }
+
+  // ── Interactions des menus déroulants (édition) ──────────────────────────────
+  /** Ouvre/ferme le menu d'un champ ; réinitialise la recherche d'assigné. */
+  openField(k: string): void {
+    this.field.set(this.field() === k ? null : k);
+    this.assigneeQuery.set('');
+    if (k === 'assignee' && this.field() === 'assignee') {
+      // Positionne l'onglet du sélecteur sur le type déjà assigné.
+      this.assignMode.set(this.editAssigneeIsTeam() ? 'team' : 'user');
+    }
+  }
+  closeField(): void { this.field.set(null); }
+  pickStatus(id: string): void { this.eStatusId.set(id); this.statusError.set(''); this.field.set(null); }
+  /** Sélectionne un assigné (clé « TYPE:id »), ou vide pour retirer l'assignation. */
+  pickAssignee(key: string): void {
+    this.eAssigneeKey.set(this.eAssigneeKey() === key ? '' : key);
+    this.field.set(null);
+    this.assigneeQuery.set('');
+  }
+  pickPriority(v: TaskPriority): void { this.ePriority.set(v); this.field.set(null); }
+  /** Teinte de fond d'une pastille de statut (exposée au template). */
+  tint(hex?: string): string { return this.tintFromColor(hex ?? ''); }
+  /** Couleur d'avatar déterministe d'un membre (par userId). */
+  memberColorId(id: string): string { return avatarColorFor(id); }
 
   /**
    * Enregistre toutes les modifications : champs de la tâche (updateTask) + statut
@@ -410,10 +592,12 @@ export class FicheTacheComponent implements OnChanges {
       dueDate: this.eDue() || undefined,
       estimate: this.eEstimate() || undefined,
     };
-    // Assigné : soit un membre, soit retrait explicite.
-    if (this.eAssigneeId()) {
-      payload.assigneeType = 'USER';
-      payload.assigneeId = this.eAssigneeId();
+    // Assigné : membre, équipe, ou retrait explicite (clé « TYPE:id » ou vide).
+    const key = this.eAssigneeKey();
+    if (key) {
+      const sep = key.indexOf(':');
+      payload.assigneeType = key.slice(0, sep) === 'TEAM' ? 'TEAM' : 'USER';
+      payload.assigneeId = key.slice(sep + 1);
     } else {
       payload.clearAssignee = true;
     }
@@ -462,10 +646,20 @@ export class FicheTacheComponent implements OnChanges {
     this.tasksSvc.subtasks(id).subscribe(list =>
       this.subtasks.set(list.map(s => ({ id: s.id, title: s.title, done: s.done }))));
     this.tasksSvc.attachments(id).subscribe(list => this.attachments.set(list));
-    this.tasksSvc.comments(id).subscribe(list => this.comments.set(list.map(c => this.toRow(c))));
+    this.comments.set([]);
+    this.commentsLoading.set(true);
+    this.tasksSvc.comments(id).subscribe({
+      next: list => { this.comments.set(list.map(c => this.toRow(c))); this.commentsLoading.set(false); },
+      error: () => this.commentsLoading.set(false),
+    });
     // Précharge les statuts du projet pour que le sélecteur soit prérempli
     // dès l'entrée en édition (les <option> doivent exister avant le [value]).
     this.tasksSvc.loadBoard(this.task.projectId).subscribe(b => this.columns.set(b.columns));
+    // Précharge les membres + équipes RÉELS du projet : nécessaires à l'affichage
+    // (résolution d'une équipe assignée) ET au sélecteur d'assigné en édition.
+    this.projectsSvc.members(this.task.projectId).subscribe(list => this.projMemberIds.set(list.map(m => m.userId)));
+    this.projectsSvc.teams(this.task.projectId).subscribe(list =>
+      this.projTeams.set(list.map(t => ({ id: t.id, name: t.name, color: t.color ?? '#6C70F0' }))));
   }
 
   private toRow(c: TaskComment): CommentRow {

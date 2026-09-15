@@ -57,7 +57,7 @@ import { saveBlob } from '@core/util/download.util';
     </div>
   `,
   styles: [`
-    .ov { position: fixed; inset: 0; z-index: var(--nx-z-modal); background: rgba(22,19,31,.5); backdrop-filter: blur(2px); display: flex; justify-content: center; padding: 32px 24px; box-sizing: border-box; }
+    .ov { position: fixed; inset: 0; z-index: var(--nx-z-modal-top); background: rgba(22,19,31,.5); backdrop-filter: blur(2px); display: flex; justify-content: center; padding: 32px 24px; box-sizing: border-box; }
     .panel { width: 1180px; max-width: 96vw; height: 100%; max-height: 100%; background: #fff; border-radius: 16px; box-shadow: var(--nx-shadow-modal); display: flex; flex-direction: column; overflow: hidden; animation: nxFade .18s ease; }
     .head { flex: none; display: flex; align-items: center; gap: 11px; padding: 13px 16px 13px 20px; border-bottom: 1px solid var(--nx-border-card); }
     .bc { display: flex; align-items: center; gap: 6px; flex: none; font-size: 12.5px; font-weight: 600; color: var(--nx-text-400); }

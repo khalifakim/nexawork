@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output, comput
 import { toSignal } from '@angular/core/rxjs-interop';
 import { IconComponent } from '@shared/ui/icon/icon.component';
 import { LoaderComponent } from '@shared/ui/loader/loader.component';
-import { FilterChipComponent, FilterOption } from '@shared/ui/filter-chip/filter-chip.component';
+import { FilterChipComponent, FilterOption, UNASSIGNED_VALUE } from '@shared/ui/filter-chip/filter-chip.component';
 import { TaskCard } from '@core/models/task.models';
 import { Member } from '@core/models/member.models';
 import { MembersService } from '@core/services/members.service';
@@ -351,12 +351,13 @@ export class CalendrierComponent {
   /** Options « Assigné à » — mêmes règles que le Kanban (assignés présents). */
   assigneOpts = computed<FilterOption[]>(() => {
     const byId = new Map(this.directory().filter(m => m.userId).map(m => [m.userId!, m] as const));
-    return this.store.assignedUserIds()
+    const people = this.store.assignedUserIds()
       .flatMap<FilterOption>(id => {
         const m = byId.get(id);
         return m ? [{ value: id, label: m.name, dot: avatarColorFor(id) }] : [];
       })
       .sort((a, b) => a.label.localeCompare(b.label));
+    return this.store.hasUnassigned() ? [...people, { value: UNASSIGNED_VALUE, label: 'Non assigné', dot: '#C9C5BC' }] : people;
   });
 
   /** Statuts terminaux — une tâche qui y est n'est jamais « en retard ». */
@@ -367,7 +368,8 @@ export class CalendrierComponent {
     const a = this.assigne(), p = this.prio();
     return this.store.allCards().filter(t => {
       if (!t.startDate && !t.dueDate) return false;
-      if (a && t.assigneeId !== a) return false;
+      if (a === UNASSIGNED_VALUE) { if (t.assigneeId) return false; }
+      else if (a && t.assigneeId !== a) return false;
       if (p && t.prio[0] !== p) return false;
       return true;
     });

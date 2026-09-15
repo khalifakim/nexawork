@@ -231,12 +231,17 @@ export class SessionService {
     this.scopeTokenTo(id, () => this.router.navigate(['/app']));
   }
 
-  /** Basculer l'espace actif (menu workspace du header / R19). */
+  /**
+   * Basculer l'espace actif (menu workspace du header / R19). On re-scelle le
+   * token sur le nouvel espace **avant** de basculer `activeWorkspaceId` : ainsi
+   * tous les rechargements workspace-scopés (`workspaceSignal`, stores) se
+   * déclenchent avec le **nouveau** token → aucune fuite de données de l'ancien
+   * espace. `then` est appelé une fois l'espace effectivement basculé.
+   */
   switchWorkspace(id: string, then?: () => void): void {
     if (!this._workspaces().some(w => w.id === id)) return;
-    this._activeWorkspaceId.set(id);
-    if (environment.mock.auth) { then?.(); return; }
-    this.scopeTokenTo(id, then);
+    if (environment.mock.auth) { this._activeWorkspaceId.set(id); then?.(); return; }
+    this.scopeTokenTo(id, () => { this._activeWorkspaceId.set(id); then?.(); });
   }
 
   /** `refresh(refreshToken, workspaceId)` → token org-scopé, puis callback. */
