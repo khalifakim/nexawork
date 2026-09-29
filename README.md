@@ -20,7 +20,7 @@ La configuration de développement est identique à la configuration de producti
 ## Démarrage — tout lancer d'un coup
 
 ```powershell
-cd "D:\Mémoire Master\nexawork"
+cd "D:\nexawork"
 docker compose up -d --build
 ```
 
