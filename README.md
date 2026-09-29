@@ -1,7 +1,6 @@
-# NexaWork
+# Khalif AKIM - NexaWork
 
 Plateforme collaborative unifiée — gestion de projets, messagerie, GED et visioconférence.
-Mémoire Master 2 SID, UCAD Dakar.
 
 **Stack :** Spring Boot 3.4.5 · Spring Cloud Gateway · Angular 20 · PostgreSQL 17 · RabbitMQ · Redis · MinIO · Jitsi Meet · Docker
 
